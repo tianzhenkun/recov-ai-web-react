@@ -1,10 +1,12 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
+import type { RuoyiRequestOptions } from '@/adapters/ruoyi/request';
 
 export type RuoyiRouteMeta = {
   title?: string;
   icon?: string;
   noCache?: boolean;
-  link?: string;
+  link?: string | null;
+  activeMenu?: string | null;
   [key: string]: unknown;
 };
 
@@ -19,7 +21,8 @@ export type RuoyiRoute = {
   children?: RuoyiRoute[];
 };
 
-export const getRouters = () =>
+export const getRouters = (options: RuoyiRequestOptions = {}) =>
   ruoyiRequest<RuoyiRoute[]>('/system/menu/getRouters', {
     method: 'get',
+    ...options,
   });

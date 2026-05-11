@@ -1,5 +1,8 @@
 import { LinkOutlined } from '@ant-design/icons';
-import type { Settings as LayoutSettings } from '@ant-design/pro-components';
+import type {
+  Settings as LayoutSettings,
+  MenuDataItem,
+} from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
@@ -10,6 +13,7 @@ import React from 'react';
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
 
+import { buildLayoutMenuData, loadRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import {
   AvatarDropdown,
   DocLink,
@@ -25,6 +29,8 @@ import { errorConfig } from './requestErrorConfig';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
+const isExternalPath = (path?: string) =>
+  /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
 
 export type RuoyiCurrentUser = API.CurrentUser & {
   roles?: string[];
@@ -101,6 +107,17 @@ export const layout: RunTimeLayoutConfig = ({
   return {
     menuItemRender: (item, dom) => {
       if (item.path) {
+        if (isExternalPath(item.path)) {
+          return (
+            <a
+              href={item.path}
+              rel="noreferrer"
+              target={item.target || '_blank'}
+            >
+              {dom}
+            </a>
+          );
+        }
         return (
           <Link to={item.path} prefetch>
             {dom}
@@ -108,6 +125,23 @@ export const layout: RunTimeLayoutConfig = ({
         );
       }
       return dom;
+    },
+    menu: {
+      params: {
+        currentUserId: initialState?.currentUser?.userid,
+      },
+      request: async (_params, defaultMenuData: MenuDataItem[]) => {
+        if (!initialState?.currentUser) {
+          return buildLayoutMenuData([], defaultMenuData);
+        }
+
+        try {
+          const ruoyiMenuData = await loadRuoyiMenuData();
+          return buildLayoutMenuData(ruoyiMenuData, defaultMenuData);
+        } catch {
+          return buildLayoutMenuData([], defaultMenuData);
+        }
+      },
     },
     actionsRender: () => [
       <DocLink key="doc" />,

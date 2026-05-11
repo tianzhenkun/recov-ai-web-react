@@ -288,10 +288,10 @@ export default [
   },
   {
     path: '/',
-    redirect: '/dashboard/analysis',
+    component: './ruoyi/landing',
   },
   {
-    component: './exception/404',
+    component: './ruoyi/placeholder',
     path: '/*',
   },
 ];

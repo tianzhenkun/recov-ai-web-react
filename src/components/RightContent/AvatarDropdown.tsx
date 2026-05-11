@@ -7,6 +7,7 @@ import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
 import { Spin } from 'antd';
 import React, { startTransition } from 'react';
+import { clearCachedRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { removeToken } from '@/adapters/ruoyi/token';
 import { logout } from '@/services/ruoyi/auth';
 import HeaderDropdown from '../HeaderDropdown';
@@ -25,6 +26,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       await logout();
     } finally {
       removeToken();
+      clearCachedRuoyiMenuData();
     }
     const { search, pathname } = window.location;
     const urlParams = new URL(window.location.href).searchParams;

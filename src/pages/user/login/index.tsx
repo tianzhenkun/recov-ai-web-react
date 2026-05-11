@@ -21,6 +21,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { clearCachedRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { RuoyiError } from '@/adapters/ruoyi/response';
 import { setToken } from '@/adapters/ruoyi/token';
 import { Footer } from '@/components';
@@ -314,6 +315,7 @@ const Login: React.FC = () => {
       }
 
       setToken(accessToken);
+      clearCachedRuoyiMenuData();
       rememberLoginValues(values);
       message.success('登录成功');
       await fetchUserInfo();
