@@ -1,5 +1,4 @@
 import { history, request as umiRequest } from '@umijs/max';
-import { message } from 'antd';
 import {
   decryptBase64,
   decryptWithAes,
@@ -11,6 +10,8 @@ import {
   rsaEncrypt,
 } from './crypto';
 import { getBaseApi, getClientId } from './env';
+import { showRuoyiError } from './message';
+import { normalizeRuoyiParams } from './params';
 import {
   getRuoyiMessage,
   isRuoyiResponse,
@@ -153,6 +154,20 @@ const toRequestHeaders = (headers: InternalHeaders) =>
     {},
   );
 
+const hasContentType = (headers: Record<string, string>) =>
+  Object.keys(headers).some((key) => key.toLowerCase() === 'content-type');
+
+const withJsonContentType = (headers: Record<string, string>) => {
+  if (hasContentType(headers)) return headers;
+  return {
+    'Content-Type': 'application/json;charset=utf-8',
+    ...headers,
+  };
+};
+
+const isFormData = (data: unknown) =>
+  typeof FormData !== 'undefined' && data instanceof FormData;
+
 const decryptResponseData = (encryptedKey: string, data: unknown) => {
   const base64Key = rsaDecrypt(encryptedKey);
   const aesKey = decryptBase64(base64Key);
@@ -220,11 +235,25 @@ export async function ruoyiRequest<T = unknown>(
     getResponse: true,
   };
 
+  if (method === 'get') {
+    requestOptions.params = normalizeRuoyiParams(requestOptions.params);
+  }
+
+  if (
+    ['post', 'put', 'patch'].includes(method) &&
+    options.data !== undefined &&
+    !isFormData(options.data)
+  ) {
+    requestOptions.headers = withJsonContentType(
+      requestOptions.headers || requestHeaders,
+    );
+  }
+
   if (shouldEncrypt) {
     const { encryptedData, encryptedKey } = encryptRequestData(options.data);
     requestOptions.data = encryptedData;
     requestOptions.headers = {
-      ...requestHeaders,
+      ...withJsonContentType(requestOptions.headers || requestHeaders),
       [encryptHeader]: encryptedKey,
     };
   }
@@ -254,7 +283,7 @@ export async function ruoyiRequest<T = unknown>(
   if (rawData.code !== RuoYiCode.SUCCESS) {
     const errorMessage = getRuoyiMessage(rawData);
     if (!options.skipErrorHandler) {
-      message.error(errorMessage);
+      showRuoyiError(errorMessage);
     }
     throw new RuoyiError(errorMessage, rawData);
   }

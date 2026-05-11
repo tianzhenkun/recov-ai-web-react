@@ -16,7 +16,9 @@ export { default as ArticleListContent } from './ArticleListContent';
 export { default as AvatarList } from './AvatarList';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { default as OfflineBanner } from './OfflineBanner';
+export { Permission, PermissionButton, usePermission } from './Permission';
 export { default as StandardFormRow } from './StandardFormRow';
+export { default as TableActions } from './TableActions';
 export { default as TagSelect } from './TagSelect';
 
 export { AvatarDropdown, DocLink, Footer, LangDropdown, VersionDropdown };

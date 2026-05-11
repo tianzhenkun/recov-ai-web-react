@@ -6,6 +6,7 @@ import type {
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
+import { App as AntdApp } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
@@ -14,6 +15,7 @@ import React from 'react';
 dayjs.extend(relativeTime);
 
 import { buildLayoutMenuData, loadRuoyiMenuData } from '@/adapters/ruoyi/menu';
+import { setRuoyiMessage } from '@/adapters/ruoyi/message';
 import {
   AvatarDropdown,
   DocLink,
@@ -31,6 +33,16 @@ const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
+
+const RuoyiAppBridge = ({ children }: { children: React.ReactNode }) => {
+  const { message } = AntdApp.useApp();
+
+  React.useEffect(() => {
+    setRuoyiMessage(message);
+  }, [message]);
+
+  return <>{children}</>;
+};
 
 export type RuoyiCurrentUser = API.CurrentUser & {
   roles?: string[];
@@ -244,9 +256,11 @@ export const request: RequestConfig = {
 
 export function rootContainer(container: React.ReactNode) {
   return (
-    <>
-      <OfflineBanner />
-      <ErrorBoundary>{container}</ErrorBoundary>
-    </>
+    <AntdApp>
+      <RuoyiAppBridge>
+        <OfflineBanner />
+        <ErrorBoundary>{container}</ErrorBoundary>
+      </RuoyiAppBridge>
+    </AntdApp>
   );
 }

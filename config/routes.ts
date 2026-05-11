@@ -287,6 +287,41 @@ export default [
     component: './chatbot',
   },
   {
+    path: '/system/user',
+    component: './ruoyi/system/user',
+    hideInMenu: true,
+  },
+  {
+    path: '/system/user-auth/role/:userId',
+    component: './ruoyi/system/user-auth-role',
+    hideInMenu: true,
+  },
+  {
+    path: '/system/role',
+    component: './ruoyi/system/role',
+    hideInMenu: true,
+  },
+  {
+    path: '/system/role-auth/user/:roleId',
+    component: './ruoyi/system/role-auth-user',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/menu',
+    component: './ruoyi/system/menu',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/dict',
+    component: './ruoyi/system/dict',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/dict-data/index/:dictId',
+    component: './ruoyi/system/dict-data',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },

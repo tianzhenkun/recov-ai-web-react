@@ -1,3 +1,4 @@
+import { serializeRuoyiParams } from './params';
 import {
   type RuoyiRawRequestOptions,
   type RuoyiRequestOptions,
@@ -26,7 +27,11 @@ export const ruoyiDownload = async (
   const requestOptions: RuoyiRawRequestOptions = {
     ...options,
     method: 'post',
-    data,
+    data: serializeRuoyiParams(data),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...(options.headers || {}),
+    },
     responseType: 'blob',
   };
   const response = await ruoyiRequest<Blob>(url, requestOptions);

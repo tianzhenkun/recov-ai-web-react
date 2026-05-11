@@ -1,28 +1,9 @@
-import {
-  ApartmentOutlined,
-  ApiOutlined,
-  AppstoreOutlined,
-  BarChartOutlined,
-  BookOutlined,
-  ControlOutlined,
-  DashboardOutlined,
-  EditOutlined,
-  FileTextOutlined,
-  FormOutlined,
-  GlobalOutlined,
-  IdcardOutlined,
-  LoginOutlined,
-  MessageOutlined,
-  PartitionOutlined,
-  SettingOutlined,
-  TeamOutlined,
-  UnorderedListOutlined,
-  UploadOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
+import { AppstoreOutlined } from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
+import React from 'react';
 import type { RuoyiRoute } from '@/services/ruoyi/menu';
 import { getRouters } from '@/services/ruoyi/menu';
+import { toRuoyiMenuIcon } from '@/utils/ruoyiIcons';
 
 export type RuoyiMenuDataItem = MenuDataItem & {
   ruoyiComponent?: string;
@@ -33,38 +14,6 @@ export type RuoyiMenuDataItem = MenuDataItem & {
 const templateMenuPath = '/template';
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
 let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
-
-const iconMap = {
-  button: <ControlOutlined />,
-  chart: <BarChartOutlined />,
-  component: <AppstoreOutlined />,
-  dashboard: <DashboardOutlined />,
-  dict: <BookOutlined />,
-  edit: <EditOutlined />,
-  form: <FormOutlined />,
-  international: <GlobalOutlined />,
-  list: <UnorderedListOutlined />,
-  logininfor: <LoginOutlined />,
-  log: <FileTextOutlined />,
-  message: <MessageOutlined />,
-  peoples: <TeamOutlined />,
-  post: <IdcardOutlined />,
-  swagger: <ApiOutlined />,
-  system: <SettingOutlined />,
-  tree: <ApartmentOutlined />,
-  'tree-table': <PartitionOutlined />,
-  upload: <UploadOutlined />,
-  user: <UserOutlined />,
-} as const;
-
-const normalizeIconKey = (icon?: string) =>
-  (icon || '').trim().replace(/^#/, '').toLowerCase();
-
-const toMenuIcon = (icon?: string) => {
-  const key = normalizeIconKey(icon);
-  if (!key) return undefined;
-  return iconMap[key as keyof typeof iconMap] || <AppstoreOutlined />;
-};
 
 const isExternal = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
@@ -121,7 +70,7 @@ const toRuoyiMenuItem = (
     path,
     name: title,
     locale: false,
-    icon: toMenuIcon(route.meta?.icon),
+    icon: toRuoyiMenuIcon(route.meta?.icon),
     hideInMenu: Boolean(route.hidden),
     ruoyiComponent: route.component,
     ruoyiMeta: route.meta,

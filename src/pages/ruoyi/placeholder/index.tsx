@@ -15,11 +15,25 @@ import {
   loadRuoyiMenuData,
   type RuoyiMenuDataItem,
 } from '@/adapters/ruoyi/menu';
+import RoleAuthUserPage from '@/pages/ruoyi/system/role-auth-user';
+import AuthRolePage from '@/pages/ruoyi/system/user-auth-role';
 
 const { Text } = Typography;
 
+const getMigratedAuthRoleUserId = (pathname: string) => {
+  const match = pathname.match(/^\/system\/user-auth\/role\/([^/]+)$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+};
+
+const getMigratedRoleAuthRoleId = (pathname: string) => {
+  const match = pathname.match(/^\/system\/role-auth\/user\/([^/]+)$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+};
+
 const RuoyiPlaceholder = () => {
   const location = useLocation();
+  const migratedAuthRoleUserId = getMigratedAuthRoleUserId(location.pathname);
+  const migratedRoleAuthRoleId = getMigratedRoleAuthRoleId(location.pathname);
   const [loading, setLoading] = useState(false);
   const [menuItem, setMenuItem] = useState<RuoyiMenuDataItem | undefined>(() =>
     findRuoyiMenuByPath(location.pathname),
@@ -53,6 +67,14 @@ const RuoyiPlaceholder = () => {
       mounted = false;
     };
   }, [location.pathname]);
+
+  if (migratedAuthRoleUserId) {
+    return <AuthRolePage userId={migratedAuthRoleUserId} />;
+  }
+
+  if (migratedRoleAuthRoleId) {
+    return <RoleAuthUserPage roleId={migratedRoleAuthRoleId} />;
+  }
 
   if (loading) {
     return (

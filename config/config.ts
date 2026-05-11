@@ -248,6 +248,7 @@ export default defineConfig({
     exclude: ['mock/requestRecord.mock.js'],
   },
   utoopack: {
+    persistentCaching: false,
     module: {
       rules: {
         '*.md': {
