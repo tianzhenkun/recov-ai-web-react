@@ -1,6 +1,6 @@
 import { getIntl } from '@umijs/max';
 import { Alert } from 'antd';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const OfflineBanner: React.FC = () => {
   const isOnlineRef = useRef(true);

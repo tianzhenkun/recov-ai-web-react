@@ -33,6 +33,41 @@ const commitHash =
  */
 const PUBLIC_PATH: string = '/';
 
+const clientEnvKeys = [
+  'UMI_APP_TITLE',
+  'UMI_APP_LOGO_TITLE',
+  'UMI_APP_ENV',
+  'UMI_APP_BASE_API',
+  'UMI_APP_ADMIN_API',
+  'UMI_APP_CONTEXT_PATH',
+  'UMI_APP_ENCRYPT',
+  'UMI_APP_RSA_PUBLIC_KEY',
+  'UMI_APP_RSA_PRIVATE_KEY',
+  'UMI_APP_CLIENT_ID',
+  'UMI_APP_WEBSOCKET',
+  'UMI_APP_SSE',
+] as const;
+
+const normalizeEnvValue = (value?: string) => {
+  const trimmed = (value || '').trim();
+  const quote = trimmed[0];
+
+  if (
+    trimmed.length >= 2 &&
+    (quote === '"' || quote === "'") &&
+    trimmed[trimmed.length - 1] === quote
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+};
+
+const clientEnv: Record<string, string> = {};
+for (const key of clientEnvKeys) {
+  clientEnv[`process.env.${key}`] = normalizeEnvValue(process.env[key]);
+}
+
 export default defineConfig({
   alias: {
     '@root': join(__dirname, '..'),
@@ -227,6 +262,7 @@ export default defineConfig({
   define: {
     'process.env.CI': process.env.CI,
     'process.env.COMMIT_HASH': commitHash,
+    ...clientEnv,
     __APP_VERSION__: require('./../package.json').version,
     __UMI_VERSION__: require('@umijs/max/package.json').version,
     __UTOO_VERSION__: require('@utoo/pack/package.json').version,

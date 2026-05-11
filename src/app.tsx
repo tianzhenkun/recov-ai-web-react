@@ -19,29 +19,50 @@ import {
   OfflineBanner,
   VersionDropdown,
 } from '@/components';
-import { currentUser as queryCurrentUser } from '@/services/ant-design-pro/api';
+import { getInfo, type UserInfo } from '@/services/ruoyi/user';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
 
+export type RuoyiCurrentUser = API.CurrentUser & {
+  roles?: string[];
+  permissions?: string[];
+  rawUser?: UserInfo['user'];
+};
+
+const toCurrentUser = (info?: UserInfo): RuoyiCurrentUser | undefined => {
+  const user = info?.user;
+  if (!user) return undefined;
+  const roles = info?.roles || [];
+  return {
+    userid: String(user.userId || ''),
+    name: user.nickName || user.userName || '用户',
+    avatar: user.avatar,
+    email: user.email,
+    phone: user.phonenumber,
+    access: roles.includes('admin') ? 'admin' : 'user',
+    roles,
+    permissions: info?.permissions || [],
+    rawUser: user,
+  };
+};
+
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  * */
 export async function getInitialState(): Promise<{
   settings?: Partial<LayoutSettings>;
-  currentUser?: API.CurrentUser;
+  currentUser?: RuoyiCurrentUser;
   loading?: boolean;
-  fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
+  fetchUserInfo?: () => Promise<RuoyiCurrentUser | undefined>;
   settingDrawerOpen?: boolean;
 }> {
   const fetchUserInfo = async () => {
     try {
-      const msg = await queryCurrentUser({
-        skipErrorHandler: true,
-      });
-      return msg.data;
+      const response = await getInfo({ skipErrorHandler: true });
+      return toCurrentUser(response.data);
     } catch (_error) {
       const { pathname, search, hash } = history.location;
       history.replace(
@@ -95,7 +116,7 @@ export const layout: RunTimeLayoutConfig = ({
     ],
     avatarProps: {
       src: initialState?.currentUser?.avatar,
-      title: 'ProUser',
+      title: initialState?.currentUser?.name || '用户',
       render: (_, avatarChildren) => (
         <AvatarDropdown>{avatarChildren}</AvatarDropdown>
       ),
@@ -184,7 +205,6 @@ export const layout: RunTimeLayoutConfig = ({
  * @doc https://umijs.org/docs/max/request#配置
  */
 export const request: RequestConfig = {
-  baseURL: isDev ? '' : 'https://pro-api.ant-design-demo.workers.dev',
   ...errorConfig,
 };
 

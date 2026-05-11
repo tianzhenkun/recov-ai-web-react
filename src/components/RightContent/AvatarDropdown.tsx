@@ -7,27 +7,34 @@ import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
 import { Spin } from 'antd';
 import React, { startTransition } from 'react';
-import { outLogin } from '@/services/ant-design-pro/api';
+import { removeToken } from '@/adapters/ruoyi/token';
+import { logout } from '@/services/ruoyi/auth';
 import HeaderDropdown from '../HeaderDropdown';
 
 type GlobalHeaderRightProps = {
   children?: React.ReactNode;
 };
 
+const loginPath = '/user/login';
+
 export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   children,
 }) => {
   const loginOut = async () => {
-    await outLogin();
+    try {
+      await logout();
+    } finally {
+      removeToken();
+    }
     const { search, pathname } = window.location;
     const urlParams = new URL(window.location.href).searchParams;
     const searchParams = new URLSearchParams({
       redirect: pathname + search,
     });
     const redirect = urlParams.get('redirect');
-    if (window.location.pathname !== '/user/login' && !redirect) {
+    if (window.location.pathname !== loginPath && !redirect) {
       history.replace({
-        pathname: '/user/login',
+        pathname: loginPath,
         search: searchParams.toString(),
       });
     }
