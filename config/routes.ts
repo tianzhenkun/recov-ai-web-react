@@ -317,6 +317,21 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/system/log/operlog',
+    component: './ruoyi/monitor/operlog',
+    hideInMenu: true,
+  },
+  {
+    path: '/system/log/logininfor',
+    component: './ruoyi/monitor/logininfor',
+    hideInMenu: true,
+  },
+  {
+    path: '/system/notice',
+    component: './ruoyi/system/notice',
+    hideInMenu: true,
+  },
+  {
     path: '/sys-conf/menu',
     component: './ruoyi/system/menu',
     hideInMenu: true,
