@@ -327,6 +327,16 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/monitor/online',
+    component: './ruoyi/monitor/online',
+    hideInMenu: true,
+  },
+  {
+    path: '/monitor/cache',
+    component: './ruoyi/monitor/cache',
+    hideInMenu: true,
+  },
+  {
     path: '/system/notice',
     component: './ruoyi/system/notice',
     hideInMenu: true,
@@ -369,6 +379,11 @@ export default [
   {
     path: '/sys-conf/oss-config/index',
     component: './ruoyi/system/oss-config',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/client',
+    component: './ruoyi/system/client',
     hideInMenu: true,
   },
   {
