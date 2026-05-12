@@ -7,6 +7,7 @@ import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
 import { Spin } from 'antd';
 import React, { startTransition } from 'react';
+import { clearStoredDynamicTenantId } from '@/adapters/ruoyi/dynamicTenant';
 import { clearCachedRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { removeToken } from '@/adapters/ruoyi/token';
 import { logout } from '@/services/ruoyi/auth';
@@ -26,6 +27,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       await logout();
     } finally {
       removeToken();
+      clearStoredDynamicTenantId();
       clearCachedRuoyiMenuData();
     }
     const { search, pathname } = window.location;
@@ -64,17 +66,22 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   }
 
   const { currentUser } = initialState;
+  const isDynamicTenant = Boolean(initialState.dynamicTenantId);
 
   if (!currentUser) {
     return <Spin size="small" />;
   }
 
   const menuItems: MenuProps['items'] = [
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: '个人设置',
-    },
+    ...(isDynamicTenant
+      ? []
+      : [
+          {
+            key: 'settings',
+            icon: <SettingOutlined />,
+            label: '个人设置',
+          },
+        ]),
     {
       key: 'theme',
       icon: <SkinOutlined />,

@@ -166,3 +166,8 @@ export const updateAuthRole = (params: {
     method: 'put',
     params,
   });
+
+export const listUsersByDeptId = (deptId: number | string) =>
+  ruoyiRequest<RuoyiUser[]>(`/system/user/list/dept/${deptId}`, {
+    method: 'get',
+  });

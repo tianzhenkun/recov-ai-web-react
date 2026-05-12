@@ -17,6 +17,7 @@ export type TableActionItem = PermissionRequirement & {
   icon?: React.ReactNode;
   danger?: boolean;
   disabled?: boolean;
+  loading?: boolean;
   onClick: () => void;
 };
 
@@ -56,7 +57,7 @@ export const TableActions = ({
     label: action.label,
     icon: action.icon,
     danger: action.danger,
-    disabled: action.disabled,
+    disabled: action.disabled || action.loading,
   })) satisfies MenuProps['items'];
 
   return (
@@ -72,6 +73,7 @@ export const TableActions = ({
             danger={action.danger}
             disabled={action.disabled}
             icon={action.icon}
+            loading={action.loading}
             size="small"
             style={iconButtonStyle}
             type="link"
@@ -87,7 +89,7 @@ export const TableActions = ({
             items: menuItems,
             onClick: ({ key }) => {
               const action = overflowActions.find((item) => item.key === key);
-              if (!action || action.disabled) return;
+              if (!action || action.disabled || action.loading) return;
               action.onClick();
             },
           }}

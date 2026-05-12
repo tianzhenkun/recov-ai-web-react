@@ -292,6 +292,16 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/system/dept',
+    component: './ruoyi/system/dept',
+    hideInMenu: true,
+  },
+  {
+    path: '/system/post',
+    component: './ruoyi/system/post',
+    hideInMenu: true,
+  },
+  {
     path: '/system/user-auth/role/:userId',
     component: './ruoyi/system/user-auth-role',
     hideInMenu: true,
@@ -317,8 +327,33 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys-conf/tenant/tenant',
+    component: './ruoyi/system/tenant',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/tenant/tenantPackage',
+    component: './ruoyi/system/tenant-package',
+    hideInMenu: true,
+  },
+  {
     path: '/sys-conf/dict-data/index/:dictId',
     component: './ruoyi/system/dict-data',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/config',
+    component: './ruoyi/system/config',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/oss',
+    component: './ruoyi/system/oss',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/oss-config/index',
+    component: './ruoyi/system/oss-config',
     hideInMenu: true,
   },
   {

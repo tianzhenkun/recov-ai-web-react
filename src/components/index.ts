@@ -8,6 +8,7 @@
 import Footer from './Footer';
 import { DocLink, LangDropdown, VersionDropdown } from './RightContent';
 import { AvatarDropdown } from './RightContent/AvatarDropdown';
+import TenantSwitch from './TenantSwitch';
 
 /**
  * 业务组件
@@ -21,4 +22,11 @@ export { default as StandardFormRow } from './StandardFormRow';
 export { default as TableActions } from './TableActions';
 export { default as TagSelect } from './TagSelect';
 
-export { AvatarDropdown, DocLink, Footer, LangDropdown, VersionDropdown };
+export {
+  AvatarDropdown,
+  DocLink,
+  Footer,
+  LangDropdown,
+  TenantSwitch,
+  VersionDropdown,
+};

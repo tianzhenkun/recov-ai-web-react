@@ -14,6 +14,7 @@ import React from 'react';
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
 
+import { getStoredDynamicTenantId } from '@/adapters/ruoyi/dynamicTenant';
 import { buildLayoutMenuData, loadRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
 import {
@@ -23,6 +24,7 @@ import {
   Footer,
   LangDropdown,
   OfflineBanner,
+  TenantSwitch,
   VersionDropdown,
 } from '@/components';
 import { getInfo, type UserInfo } from '@/services/ruoyi/user';
@@ -76,6 +78,8 @@ export async function getInitialState(): Promise<{
   loading?: boolean;
   fetchUserInfo?: () => Promise<RuoyiCurrentUser | undefined>;
   settingDrawerOpen?: boolean;
+  dynamicTenantId?: string;
+  tenantSwitchVersion?: number;
 }> {
   const fetchUserInfo = async () => {
     try {
@@ -97,17 +101,22 @@ export async function getInitialState(): Promise<{
     )
   ) {
     const currentUser = await fetchUserInfo();
+    const dynamicTenantId = getStoredDynamicTenantId();
     return {
       fetchUserInfo,
       currentUser,
       settings: defaultSettings as Partial<LayoutSettings>,
       settingDrawerOpen: false,
+      dynamicTenantId,
+      tenantSwitchVersion: 0,
     };
   }
   return {
     fetchUserInfo,
     settings: defaultSettings as Partial<LayoutSettings>,
     settingDrawerOpen: false,
+    dynamicTenantId: getStoredDynamicTenantId(),
+    tenantSwitchVersion: 0,
   };
 }
 
@@ -141,6 +150,8 @@ export const layout: RunTimeLayoutConfig = ({
     menu: {
       params: {
         currentUserId: initialState?.currentUser?.userid,
+        dynamicTenantId: initialState?.dynamicTenantId,
+        tenantSwitchVersion: initialState?.tenantSwitchVersion,
       },
       request: async (_params, defaultMenuData: MenuDataItem[]) => {
         if (!initialState?.currentUser) {
@@ -156,6 +167,7 @@ export const layout: RunTimeLayoutConfig = ({
       },
     },
     actionsRender: () => [
+      <TenantSwitch key="tenant" />,
       <DocLink key="doc" />,
       <VersionDropdown key="version" />,
       <LangDropdown key="lang" />,
@@ -219,7 +231,11 @@ export const layout: RunTimeLayoutConfig = ({
       // if (initialState?.loading) return <PageLoading />;
       return (
         <>
-          {children}
+          <React.Fragment
+            key={`${initialState?.dynamicTenantId || 'default'}-${initialState?.tenantSwitchVersion || 0}`}
+          >
+            {children}
+          </React.Fragment>
           <SettingDrawer
             disableUrlParams
             enableDarkTheme
