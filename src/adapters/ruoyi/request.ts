@@ -9,7 +9,7 @@ import {
   rsaDecrypt,
   rsaEncrypt,
 } from './crypto';
-import { getBaseApi, getClientId } from './env';
+import { getAdminApi, getBaseApi, getClientId } from './env';
 import { showRuoyiError } from './message';
 import { normalizeRuoyiParams } from './params';
 import {
@@ -79,10 +79,10 @@ const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
 
 const isAbsoluteUrl = (url: string) => /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
 
-const withBaseApi = (url: string) => {
+const withBaseApi = (url: string, baseApi: string) => {
   if (isAbsoluteUrl(url)) return url;
 
-  const base = trimSlashes(getBaseApi());
+  const base = trimSlashes(baseApi);
   const normalizedBaseApi = base ? `/${base}` : '';
   const normalizedUrl = `/${trimSlashes(url)}`;
 
@@ -185,18 +185,11 @@ const redirectToLogin = () => {
   }
 };
 
-export async function ruoyiRequest<T = unknown>(
-  url: string,
-  options: RuoyiRawRequestOptions,
-): Promise<T>;
-export async function ruoyiRequest<T = unknown>(
-  url: string,
-  options?: RuoyiRequestOptions,
-): Promise<RuoyiResponse<T>>;
-export async function ruoyiRequest<T = unknown>(
+const requestWithBaseApi = async <T = unknown>(
+  baseApi: string,
   url: string,
   options: RuoyiRequestOptions = {},
-): Promise<RuoyiResponse<T> | T> {
+): Promise<RuoyiResponse<T> | T> => {
   const {
     headers: inputHeaders,
     isEncrypt: optionIsEncrypt,
@@ -259,7 +252,7 @@ export async function ruoyiRequest<T = unknown>(
   }
 
   const request = umiRequest as unknown as UmiRequest;
-  const response = await request(withBaseApi(url), requestOptions);
+  const response = await request(withBaseApi(url, baseApi), requestOptions);
   const encryptedKey = response.headers?.[encryptHeader];
   const responseType = response.request?.responseType;
   const rawData =
@@ -289,4 +282,36 @@ export async function ruoyiRequest<T = unknown>(
   }
 
   return rawData as RuoyiResponse<T>;
+};
+
+export async function ruoyiRequest<T = unknown>(
+  url: string,
+  options: RuoyiRawRequestOptions,
+): Promise<T>;
+export async function ruoyiRequest<T = unknown>(
+  url: string,
+  options?: RuoyiRequestOptions,
+): Promise<RuoyiResponse<T>>;
+export async function ruoyiRequest<T = unknown>(
+  url: string,
+  options: RuoyiRequestOptions = {},
+): Promise<RuoyiResponse<T> | T> {
+  return requestWithBaseApi<T>(getBaseApi(), url, options);
 }
+
+export async function adminRequest<T = unknown>(
+  url: string,
+  options: RuoyiRawRequestOptions,
+): Promise<T>;
+export async function adminRequest<T = unknown>(
+  url: string,
+  options?: RuoyiRequestOptions,
+): Promise<RuoyiResponse<T>>;
+export async function adminRequest<T = unknown>(
+  url: string,
+  options: RuoyiRequestOptions = {},
+): Promise<RuoyiResponse<T> | T> {
+  return requestWithBaseApi<T>(getAdminApi(), url, options);
+}
+
+export const ruoyiAdminRequest = adminRequest;

@@ -45,6 +45,7 @@ screenshot
 .firebase
 
 build
+deploy/artifacts/
 
 # worktrees
 .worktrees
