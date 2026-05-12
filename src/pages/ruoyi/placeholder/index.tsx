@@ -31,17 +31,18 @@ const getMigratedRoleAuthRoleId = (pathname: string) => {
 };
 
 const RuoyiPlaceholder = () => {
-  const location = useLocation();
-  const migratedAuthRoleUserId = getMigratedAuthRoleUserId(location.pathname);
-  const migratedRoleAuthRoleId = getMigratedRoleAuthRoleId(location.pathname);
+  const routeLocation = useLocation();
+  const pathname = routeLocation.pathname;
+  const migratedAuthRoleUserId = getMigratedAuthRoleUserId(pathname);
+  const migratedRoleAuthRoleId = getMigratedRoleAuthRoleId(pathname);
   const [loading, setLoading] = useState(false);
   const [menuItem, setMenuItem] = useState<RuoyiMenuDataItem | undefined>(() =>
-    findRuoyiMenuByPath(location.pathname),
+    findRuoyiMenuByPath(pathname),
   );
 
   useEffect(() => {
     let mounted = true;
-    const cachedItem = findRuoyiMenuByPath(location.pathname);
+    const cachedItem = findRuoyiMenuByPath(pathname);
 
     if (cachedItem) {
       setMenuItem(cachedItem);
@@ -54,7 +55,7 @@ const RuoyiPlaceholder = () => {
     loadRuoyiMenuData()
       .then((menuData) => {
         if (mounted) {
-          setMenuItem(findRuoyiMenuByPath(location.pathname, menuData));
+          setMenuItem(findRuoyiMenuByPath(pathname, menuData));
         }
       })
       .finally(() => {
@@ -66,7 +67,7 @@ const RuoyiPlaceholder = () => {
     return () => {
       mounted = false;
     };
-  }, [location.pathname]);
+  }, [pathname]);
 
   if (migratedAuthRoleUserId) {
     return <AuthRolePage userId={migratedAuthRoleUserId} />;
@@ -132,7 +133,7 @@ const RuoyiPlaceholder = () => {
         <Descriptions column={1} size="small" bordered>
           <Descriptions.Item label="菜单标题">{title}</Descriptions.Item>
           <Descriptions.Item label="当前路径">
-            <Text code>{location.pathname}</Text>
+            <Text code>{pathname}</Text>
           </Descriptions.Item>
           <Descriptions.Item label="Vue 组件">
             <Text code>{menuItem.ruoyiComponent || '-'}</Text>
