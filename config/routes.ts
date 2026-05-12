@@ -387,6 +387,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/persona',
+    component: './recov/persona',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },

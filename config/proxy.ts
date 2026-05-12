@@ -7,7 +7,8 @@
 
 const baseApi = process.env.UMI_APP_BASE_API || '/dev-api';
 const adminApi = process.env.UMI_APP_ADMIN_API || '/admin-api';
-const apiTarget = process.env.UMI_APP_API_TARGET || 'http://127.0.0.1:8080';
+const apiTarget =
+  process.env.UMI_APP_API_TARGET || 'http://111.229.146.182:19090';
 const adminTarget = process.env.UMI_APP_ADMIN_TARGET || apiTarget;
 
 const createProxy = () => ({
