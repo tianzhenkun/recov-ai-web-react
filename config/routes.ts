@@ -392,6 +392,16 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/collection-strategy',
+    component: './recov/collectionStrategy',
+    hideInMenu: true,
+  },
+  {
+    path: '/recov/collectionStrategy/flow',
+    component: './recov/collectionStrategy/flow',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
