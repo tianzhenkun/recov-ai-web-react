@@ -8,12 +8,8 @@ import { useMemo } from 'react';
 
 export type PersonaMdEditorProps = {
   value?: string;
-  onChange?: (
-    value?: string,
-    event?: React.ChangeEvent<HTMLTextAreaElement>,
-  ) => void;
+  onChange?: (value: string) => void;
   placeholder?: string;
-  /** Editor body height (Vue 使用约 200px) */
   height?: number;
 };
 
@@ -33,7 +29,7 @@ const PersonaMdEditor = ({
     >
       <MDEditor
         value={value ?? ''}
-        onChange={(v, ev) => onChange?.(v, ev)}
+        onChange={(next) => onChange?.(next ?? '')}
         height={height}
         preview="live"
         visibleDragbar

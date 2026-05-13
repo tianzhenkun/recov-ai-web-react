@@ -10,10 +10,6 @@ export type PersonaItem = {
   id?: number | string;
   personaName?: string;
   icon?: string;
-  motivation?: string;
-  overview?: string;
-  tags?: string[];
-  priority?: string;
   traits?: string;
   classification?: string;
   keyword?: string;
@@ -26,17 +22,12 @@ export type PersonaItem = {
 
 export type PersonaQuery = PageQuery & {
   personaName?: string;
-  priority?: string;
 };
 
 export type PersonaForm = {
   id?: number | string;
   personaName?: string;
   icon?: string;
-  motivation?: string;
-  overview?: string;
-  tags?: string[];
-  priority?: string;
   traits?: string;
   classification?: string;
   keyword?: string;
@@ -69,6 +60,12 @@ export const updatePersona = (data: PersonaForm) =>
 export const deletePersonas = (ids: number | string | (number | string)[]) =>
   ruoyiRequest(`/system/persona/${ids}`, {
     method: 'delete',
+  });
+
+export const importPersonaTemplate = () =>
+  ruoyiRequest<Blob>('/system/persona/importTemplate', {
+    method: 'post',
+    responseType: 'blob',
   });
 
 export const importPersona = (file: File) => {

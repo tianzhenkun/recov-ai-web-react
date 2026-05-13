@@ -1,59 +1,44 @@
 import {
   DeleteOutlined,
+  DownloadOutlined,
+  DownOutlined,
   EditOutlined,
   PlusOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import XMarkdown from '@ant-design/x-markdown';
-import '@ant-design/x-markdown/es/XMarkdown/index.css';
 import {
   Button,
-  Card,
+  Dropdown,
   Empty,
   Form,
   Input,
   Modal,
   message,
-  Popconfirm,
+  Space,
   Spin,
   Tabs,
+  Tooltip,
   Typography,
   Upload,
 } from 'antd';
-import type { Rule } from 'antd/es/form';
 import type { UploadProps } from 'antd/es/upload';
-import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addPersona,
   deletePersonas,
   getPersona,
   importPersona,
+  importPersonaTemplate,
   listPersona,
   type PersonaForm,
   type PersonaItem,
   updatePersona,
 } from '@/services/ruoyi/persona';
-import PersonaIconSelect, { personaProfileIconSrc } from './PersonaIconSelect';
 import PersonaMdEditor from './PersonaMdEditor';
 
-const { Title, Text } = Typography;
-
-const FILTER_TABS = [
-  { key: 'all', label: '全部画像' },
-  { key: '疏忽遗忘型', label: '疏忽遗忘型' },
-  { key: '暂时困难型', label: '暂时困难型' },
-  { key: '投诉挂碍型', label: '投诉挂碍型' },
-  { key: '习惯性拖延/博弃型', label: '习惯性拖延/博弃型' },
-  { key: '房屋空置型', label: '房屋空置型' },
-  { key: '产权纠纷型', label: '产权纠纷型' },
-  { key: '租赁希望型', label: '租赁希望型' },
-  { key: '历史遗留问题型', label: '历史遗留问题型' },
-  { key: '信息失联型', label: '信息失联型' },
-] as const;
-
-type FilterTabKey = (typeof FILTER_TABS)[number]['key'];
+const { Title } = Typography;
 
 type DetailTabKey = 'classification' | 'traits' | 'dialogue' | 'keyword';
 
@@ -67,61 +52,44 @@ const DETAIL_TAB_ITEMS: { key: DetailTabKey; label: string }[] = [
 const emptyForm: PersonaForm = {
   id: undefined,
   personaName: '',
-  icon: '',
   traits: '',
   classification: '',
   keyword: '',
   dialogue: '',
-  motivation: '',
-  overview: '',
-  tags: [],
-  priority: '',
 };
 
-const CardMarkdownPreview = ({ content }: { content: string }) => (
-  <div className="line-clamp-3 max-h-16 overflow-hidden text-zinc-500 [&_.markdown]:text-sm">
-    <XMarkdown>{content || ''}</XMarkdown>
-  </div>
-);
-
-const MarkdownFormField = ({
-  name,
-  label,
-  placeholder,
-  rules,
-  height = 220,
-}: {
-  name: keyof PersonaForm;
-  label: string;
-  placeholder: string;
-  rules: Rule[];
-  height?: number;
-}) => {
-  const isRequired = rules.some((r) => 'required' in r && r.required);
-  return (
-    <Form.Item label={label} required={isRequired}>
-      <Form.Item name={name} noStyle rules={rules}>
-        <PersonaMdEditor placeholder={placeholder} height={height} />
-      </Form.Item>
-    </Form.Item>
-  );
+const saveBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
 const PersonaPage = () => {
   const [form] = Form.useForm<PersonaForm>();
+  const [messageApi, messageContextHolder] = message.useMessage();
+  const [modalApi, modalContextHolder] = Modal.useModal();
+
   const [profileList, setProfileList] = useState<PersonaItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<FilterTabKey>('all');
-  const [selectedProfile, setSelectedProfile] = useState<PersonaItem | null>(
-    null,
-  );
+  const [activeTab, setActiveTab] = useState<string>('');
   const [activeDetailTab, setActiveDetailTab] =
     useState<DetailTabKey>('classification');
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalTitle, setModalTitle] = useState('新增画像');
   const [editingId, setEditingId] = useState<number | string | undefined>();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
+
+  const activeTabRef = useRef('');
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  const uploadTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -129,108 +97,140 @@ const PersonaPage = () => {
       const res = await listPersona({ pageNum: 1, pageSize: 1000 });
       const rows = res.rows ?? [];
       setProfileList(rows);
+      const exists = rows.some(
+        (item) => String(item.id ?? '') === activeTabRef.current,
+      );
+      if (!exists) {
+        const first = rows[0];
+        setActiveTab(first?.id == null ? '' : String(first.id));
+      }
     } catch {
-      message.error('获取画像列表失败');
+      messageApi.error('获取画像列表失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [messageApi]);
 
   useEffect(() => {
     void fetchList();
   }, [fetchList]);
 
-  const filteredList = useMemo(() => {
-    if (activeTab === 'all') return profileList;
-    return profileList.filter((p) =>
-      String(p.personaName ?? '').includes(activeTab),
+  const selectedProfile = useMemo(() => {
+    if (!activeTab) return null;
+    return (
+      profileList.find((item) => String(item.id ?? '') === activeTab) ?? null
     );
   }, [activeTab, profileList]);
 
+  const tabItems = useMemo(
+    () =>
+      profileList.map((profile) => ({
+        key: String(profile.id),
+        label: profile.personaName ?? '-',
+      })),
+    [profileList],
+  );
+
+  const handleTabChange = (key: string) => {
+    setActiveTab(key);
+    setActiveDetailTab('classification');
+  };
+
   const openCreate = () => {
-    setModalTitle('新增画像');
     setEditingId(undefined);
+    form.resetFields();
     form.setFieldsValue({ ...emptyForm });
     setModalOpen(true);
   };
 
   const openEdit = async (profile: PersonaItem) => {
     if (profile.id === undefined || profile.id === null) return;
-    setModalTitle('编辑画像');
-    setEditingId(profile.id);
     try {
       const res = await getPersona(profile.id);
-      const data = res.data;
+      const data = res.data ?? {};
+      setEditingId(profile.id);
+      form.resetFields();
       form.setFieldsValue({
-        id: data?.id,
-        personaName: data?.personaName ?? '',
-        icon: data?.icon ?? '',
-        traits: data?.traits ?? '',
-        classification: data?.classification ?? '',
-        keyword: data?.keyword ?? '',
-        dialogue: data?.dialogue ?? '',
-        motivation: data?.motivation ?? '',
-        overview: data?.overview ?? '',
-        tags: data?.tags ?? [],
-        priority: data?.priority ?? '',
+        id: data.id ?? profile.id,
+        personaName: data.personaName ?? '',
+        traits: data.traits ?? '',
+        classification: data.classification ?? '',
+        keyword: data.keyword ?? '',
+        dialogue: data.dialogue ?? '',
       });
       setModalOpen(true);
     } catch {
-      message.error('获取画像详情失败');
+      messageApi.error('获取画像详情失败');
     }
   };
 
   const handleSubmit = async () => {
+    let values: PersonaForm;
     try {
-      const values = await form.validateFields();
-      setSubmitLoading(true);
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
+    setSubmitLoading(true);
+    try {
       const payload: PersonaForm = {
-        ...emptyForm,
-        ...values,
-        tags: values.tags ?? [],
+        personaName: values.personaName?.trim() ?? '',
+        traits: values.traits ?? '',
+        classification: values.classification ?? '',
+        keyword: values.keyword ?? '',
+        dialogue: values.dialogue ?? '',
       };
       if (editingId !== undefined) {
         await updatePersona({ ...payload, id: editingId });
-        message.success('编辑成功');
+        messageApi.success('编辑成功');
       } else {
         await addPersona(payload);
-        message.success('新增成功');
+        messageApi.success('新增成功');
       }
       setModalOpen(false);
+      setEditingId(undefined);
+      form.resetFields();
       await fetchList();
-      if (
-        selectedProfile &&
-        editingId !== undefined &&
-        String(selectedProfile.id) === String(editingId)
-      ) {
-        try {
-          const detail = await getPersona(editingId);
-          if (detail.data) {
-            setSelectedProfile(detail.data);
-          }
-        } catch {
-          /* keep previous selection */
-        }
-      }
-    } catch (e: unknown) {
-      if (e && typeof e === 'object' && 'errorFields' in e) return;
-      message.error('操作失败');
+    } catch {
+      // request adapter 已统一弹错
     } finally {
       setSubmitLoading(false);
     }
   };
 
-  const handleDelete = async (profile: PersonaItem) => {
+  const performDelete = async (profile: PersonaItem) => {
     if (profile.id === undefined || profile.id === null) return;
     try {
       await deletePersonas([profile.id]);
-      message.success('删除成功');
-      await fetchList();
-      if (selectedProfile?.id === profile.id) {
-        setSelectedProfile(null);
+      messageApi.success('删除成功');
+      if (activeTabRef.current === String(profile.id)) {
+        setActiveTab('');
       }
+      await fetchList();
     } catch {
-      message.error('删除画像失败');
+      // request adapter 已统一弹错
+    }
+  };
+
+  const confirmDelete = (profile: PersonaItem) => {
+    modalApi.confirm({
+      title: '删除画像',
+      content: `确认删除画像「${profile.personaName ?? '-'}」吗？将删除画像编号 ${profile.id ?? '-'} 的数据，操作不可恢复。`,
+      okText: '确认删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      autoFocusButton: 'cancel',
+      onOk: () => performDelete(profile),
+    });
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await importPersonaTemplate();
+      saveBlob(blob, '用户画像配置导入模板.xlsx');
+      messageApi.success('模板下载成功');
+    } catch {
+      messageApi.error('下载模板失败');
     }
   };
 
@@ -241,11 +241,11 @@ const PersonaPage = () => {
       file.type === 'application/vnd.ms-excel';
     const okSize = file.size / 1024 / 1024 < 10;
     if (!okType) {
-      message.error('只能上传 Excel 文件!');
+      messageApi.error('只能上传 Excel 文件!');
       return Upload.LIST_IGNORE;
     }
     if (!okSize) {
-      message.error('文件大小不能超过 10MB!');
+      messageApi.error('文件大小不能超过 10MB!');
       return Upload.LIST_IGNORE;
     }
     setUploadLoading(true);
@@ -258,10 +258,8 @@ const PersonaPage = () => {
     onError,
   }) => {
     try {
-      const f = file as File;
-      await importPersona(f);
-      message.success('导入成功');
-      setSelectedProfile(null);
+      await importPersona(file as File);
+      messageApi.success('导入成功');
       await fetchList();
       onSuccess?.({}, new XMLHttpRequest());
     } catch (err) {
@@ -271,175 +269,128 @@ const PersonaPage = () => {
     }
   };
 
-  const handleModalClose = () => {
-    form.resetFields();
-    setEditingId(undefined);
-  };
-
-  const selectProfile = (profile: PersonaItem) => {
-    setSelectedProfile(profile);
-    setActiveDetailTab('classification');
-  };
-
   return (
     <PageContainer title="目标群体画像管理">
-      <div className="flex flex-col gap-5 pb-8">
+      {messageContextHolder}
+      {modalContextHolder}
+      <div className="flex flex-col gap-4 pb-4">
         <ProCard>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <Title level={3} className="!mb-1 !mt-0">
-                目标群体画像管理
-              </Title>
-              <Text type="secondary">
-                管理债务人画像类型，支持预置画像和自定义画像
-              </Text>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openCreate}
-              >
-                新增画像类型
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              新增画像类型
+            </Button>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'download',
+                    icon: <DownloadOutlined />,
+                    label: '下载模板',
+                  },
+                  {
+                    key: 'upload',
+                    icon: <UploadOutlined />,
+                    label: '上传画像文档',
+                  },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'download') {
+                    void handleDownloadTemplate();
+                  } else if (key === 'upload') {
+                    uploadTriggerRef.current?.click();
+                  }
+                },
+              }}
+            >
+              <Button type="primary" loading={uploadLoading}>
+                <Space size={4}>
+                  <UploadOutlined />
+                  导入
+                  <DownOutlined />
+                </Space>
               </Button>
-              <Upload
-                accept=".xlsx,.xls"
-                showUploadList={false}
-                beforeUpload={beforeUpload}
-                customRequest={customRequest}
-              >
-                <Button
-                  type="primary"
-                  icon={<UploadOutlined />}
-                  loading={uploadLoading}
-                >
-                  上传画像文档
-                </Button>
-              </Upload>
-            </div>
+            </Dropdown>
+            <Upload
+              accept=".xlsx,.xls"
+              showUploadList={false}
+              beforeUpload={beforeUpload}
+              customRequest={customRequest}
+              style={{ display: 'none' }}
+            >
+              <button
+                ref={uploadTriggerRef}
+                type="button"
+                aria-hidden
+                style={{ display: 'none' }}
+              />
+            </Upload>
           </div>
         </ProCard>
 
-        <ProCard className="[&_.ant-pro-card-body]:pt-2">
+        <ProCard>
           <Tabs
             activeKey={activeTab}
-            onChange={(key) => {
-              setActiveTab(key as FilterTabKey);
-              setSelectedProfile(null);
-            }}
-            items={FILTER_TABS.map((t) => ({ key: t.key, label: t.label }))}
+            onChange={handleTabChange}
+            items={tabItems}
+            tabBarStyle={{ marginBottom: 0 }}
           />
-        </ProCard>
-
-        {selectedProfile ? (
-          <ProCard
-            title={selectedProfile.personaName}
-            extra={
-              <Button
-                type="link"
-                onClick={() => void openEdit(selectedProfile)}
-              >
-                编辑
-              </Button>
-            }
-          >
-            <Tabs
-              activeKey={activeDetailTab}
-              onChange={(k) => setActiveDetailTab(k as DetailTabKey)}
-              items={DETAIL_TAB_ITEMS.map((tab) => {
-                const md =
-                  tab.key === 'classification'
-                    ? selectedProfile.classification
-                    : tab.key === 'traits'
-                      ? selectedProfile.traits
-                      : tab.key === 'dialogue'
-                        ? selectedProfile.dialogue
-                        : selectedProfile.keyword;
-                return {
-                  key: tab.key,
-                  label: tab.label,
-                  children: (
-                    <div className="min-h-[120px] pt-2">
-                      <XMarkdown>{String(md ?? '')}</XMarkdown>
-                    </div>
-                  ),
-                };
-              })}
-            />
-          </ProCard>
-        ) : null}
-
-        <ProCard>
           <Spin spinning={loading}>
-            {filteredList.length === 0 ? (
-              <Empty description="暂无画像数据" />
+            {selectedProfile ? (
+              <div className="pt-4">
+                <div className="mb-4 flex items-center justify-between border-0 border-b border-solid border-zinc-100 pb-3">
+                  <Title level={5} className="!mb-0">
+                    {selectedProfile.personaName}
+                  </Title>
+                  <Space size={4}>
+                    <Tooltip title="编辑">
+                      <Button
+                        type="text"
+                        shape="circle"
+                        aria-label="编辑"
+                        icon={<EditOutlined />}
+                        onClick={() => void openEdit(selectedProfile)}
+                      />
+                    </Tooltip>
+                    <Tooltip title="删除">
+                      <Button
+                        type="text"
+                        shape="circle"
+                        danger
+                        aria-label="删除"
+                        icon={<DeleteOutlined />}
+                        onClick={() => confirmDelete(selectedProfile)}
+                      />
+                    </Tooltip>
+                  </Space>
+                </div>
+                <Tabs
+                  activeKey={activeDetailTab}
+                  onChange={(k) => setActiveDetailTab(k as DetailTabKey)}
+                  items={DETAIL_TAB_ITEMS.map((tab) => {
+                    const md =
+                      tab.key === 'classification'
+                        ? selectedProfile.classification
+                        : tab.key === 'traits'
+                          ? selectedProfile.traits
+                          : tab.key === 'dialogue'
+                            ? selectedProfile.dialogue
+                            : selectedProfile.keyword;
+                    return {
+                      key: tab.key,
+                      label: tab.label,
+                      children: (
+                        <div className="min-h-[160px] pt-1 text-sm leading-relaxed text-zinc-700">
+                          <XMarkdown>{String(md ?? '')}</XMarkdown>
+                        </div>
+                      ),
+                    };
+                  })}
+                />
+              </div>
             ) : (
-              <div className="grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
-                {filteredList.map((profile) => {
-                  const isActive = selectedProfile?.id === profile.id;
-                  const iconName = String(profile.icon ?? '');
-                  return (
-                    <div key={String(profile.id)} className="relative">
-                      <Card
-                        hoverable
-                        className={clsx(
-                          'h-full cursor-pointer transition-all',
-                          isActive &&
-                            'border-primary ring-2 ring-primary/15 dark:ring-primary/25',
-                        )}
-                        styles={{ body: { padding: 0 } }}
-                        onClick={() => selectProfile(profile)}
-                      >
-                        <div className="px-5 pb-14 pt-5">
-                          <div className="mb-3 flex items-center gap-3">
-                            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-[#f0f7ff] dark:bg-blue-950/40">
-                              {iconName ? (
-                                <img
-                                  alt=""
-                                  src={personaProfileIconSrc(iconName)}
-                                  width={28}
-                                  height={28}
-                                />
-                              ) : null}
-                            </div>
-                            <Title level={5} ellipsis className="!mb-0 flex-1">
-                              {profile.personaName}
-                            </Title>
-                          </div>
-                          <CardMarkdownPreview
-                            content={String(profile.traits ?? '')}
-                          />
-                        </div>
-                        <div
-                          className="absolute bottom-0 left-0 right-0 flex justify-end gap-3 border-0 border-t border-solid border-zinc-100 bg-zinc-50 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/60"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          role="presentation"
-                        >
-                          <Button
-                            type="text"
-                            icon={<EditOutlined />}
-                            aria-label="编辑"
-                            onClick={() => void openEdit(profile)}
-                          />
-                          <Popconfirm
-                            title="确定要删除该画像吗？"
-                            okText="确定"
-                            cancelText="取消"
-                            onConfirm={() => void handleDelete(profile)}
-                          >
-                            <Button
-                              type="text"
-                              danger
-                              icon={<DeleteOutlined />}
-                              aria-label="删除"
-                            />
-                          </Popconfirm>
-                        </div>
-                      </Card>
-                    </div>
-                  );
-                })}
+              <div className="pb-4 pt-6">
+                <Empty description="暂无画像数据" />
               </div>
             )}
           </Spin>
@@ -447,31 +398,31 @@ const PersonaPage = () => {
       </div>
 
       <Modal
-        title={modalTitle}
-        width={1040}
-        destroyOnClose
-        maskClosable={false}
+        title={editingId !== undefined ? '编辑画像' : '新增画像'}
+        width="90%"
+        style={{ top: 24, maxWidth: 1200 }}
+        destroyOnHidden
+        mask={{ closable: false }}
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
-          handleModalClose();
+          setEditingId(undefined);
+          form.resetFields();
         }}
         onOk={() => void handleSubmit()}
         confirmLoading={submitLoading}
         okText="确定"
         cancelText="取消"
-        styles={{ body: { maxHeight: 'min(85vh, 900px)', overflowY: 'auto' } }}
+        styles={{
+          body: { maxHeight: 'calc(90vh - 110px)', overflowY: 'auto' },
+        }}
       >
         <Form
           form={form}
-          layout="horizontal"
-          labelCol={{ flex: '112px' }}
-          wrapperCol={{ flex: 1 }}
-          labelAlign="right"
-          colon={false}
+          layout="vertical"
           preserve={false}
-          className="pt-2"
           initialValues={emptyForm}
+          className="pt-2"
         >
           <Form.Item
             name="personaName"
@@ -484,39 +435,48 @@ const PersonaPage = () => {
             <Input placeholder="请输入画像名称" maxLength={20} showCount />
           </Form.Item>
 
-          <MarkdownFormField
-            name="traits"
-            label="核心特征"
-            placeholder="请输入核心特征"
-            rules={[
-              { required: true, message: '请输入核心特征' },
-              { max: 500, message: '长度不能超过 500 个字符' },
-            ]}
-          />
-
-          <MarkdownFormField
+          <Form.Item
             name="classification"
             label="核心区分规则"
-            placeholder="请输入核心区分规则"
-            rules={[]}
-          />
+            rules={[
+              { required: true, message: '请输入核心区分规则' },
+              { max: 1000, message: '长度不能超过 1000 个字符' },
+            ]}
+          >
+            <PersonaMdEditor placeholder="请输入核心区分规则" height={250} />
+          </Form.Item>
 
-          <MarkdownFormField
+          <Form.Item
+            name="traits"
+            label="核心特征"
+            rules={[
+              { required: true, message: '请输入核心特征' },
+              { max: 1000, message: '长度不能超过 1000 个字符' },
+            ]}
+          >
+            <PersonaMdEditor placeholder="请输入核心特征" height={250} />
+          </Form.Item>
+
+          <Form.Item
             name="keyword"
             label="关键词与话术"
-            placeholder="请输入关键词与话术"
-            rules={[]}
-          />
+            rules={[
+              { required: true, message: '请输入关键词与话术' },
+              { max: 1000, message: '长度不能超过 1000 个字符' },
+            ]}
+          >
+            <PersonaMdEditor placeholder="请输入关键词与话术" height={250} />
+          </Form.Item>
 
-          <MarkdownFormField
+          <Form.Item
             name="dialogue"
             label="沟通表现"
-            placeholder="请输入沟通表现"
-            rules={[]}
-          />
-
-          <Form.Item name="icon" label="图标标识">
-            <PersonaIconSelect />
+            rules={[
+              { required: true, message: '请输入沟通表现' },
+              { max: 1000, message: '长度不能超过 1000 个字符' },
+            ]}
+          >
+            <PersonaMdEditor placeholder="请输入沟通表现" height={250} />
           </Form.Item>
         </Form>
       </Modal>
