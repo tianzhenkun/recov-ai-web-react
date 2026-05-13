@@ -25,6 +25,7 @@ import {
 } from 'antd';
 import type { UploadProps } from 'antd/es/upload';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MarkdownEditor from '@/components/MarkdownEditor';
 import {
   addPersona,
   deletePersonas,
@@ -36,7 +37,6 @@ import {
   type PersonaItem,
   updatePersona,
 } from '@/services/ruoyi/persona';
-import PersonaMdEditor from './PersonaMdEditor';
 
 const { Title } = Typography;
 
@@ -443,7 +443,7 @@ const PersonaPage = () => {
               { max: 1000, message: '长度不能超过 1000 个字符' },
             ]}
           >
-            <PersonaMdEditor placeholder="请输入核心区分规则" height={250} />
+            <MarkdownEditor placeholder="请输入核心区分规则" height={250} />
           </Form.Item>
 
           <Form.Item
@@ -454,7 +454,7 @@ const PersonaPage = () => {
               { max: 1000, message: '长度不能超过 1000 个字符' },
             ]}
           >
-            <PersonaMdEditor placeholder="请输入核心特征" height={250} />
+            <MarkdownEditor placeholder="请输入核心特征" height={250} />
           </Form.Item>
 
           <Form.Item
@@ -465,7 +465,7 @@ const PersonaPage = () => {
               { max: 1000, message: '长度不能超过 1000 个字符' },
             ]}
           >
-            <PersonaMdEditor placeholder="请输入关键词与话术" height={250} />
+            <MarkdownEditor placeholder="请输入关键词与话术" height={250} />
           </Form.Item>
 
           <Form.Item
@@ -476,7 +476,7 @@ const PersonaPage = () => {
               { max: 1000, message: '长度不能超过 1000 个字符' },
             ]}
           >
-            <PersonaMdEditor placeholder="请输入沟通表现" height={250} />
+            <MarkdownEditor placeholder="请输入沟通表现" height={250} />
           </Form.Item>
         </Form>
       </Modal>
