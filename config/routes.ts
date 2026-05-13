@@ -402,6 +402,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/voice',
+    component: './recov/voice',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
