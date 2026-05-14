@@ -412,6 +412,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/delivery-strategy',
+    component: './recov/deliveryStrategy',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
