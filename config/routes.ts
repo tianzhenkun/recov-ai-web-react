@@ -407,6 +407,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/instrument-seal',
+    component: './recov/seal',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
