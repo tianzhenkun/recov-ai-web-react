@@ -417,6 +417,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/litigation',
+    component: './recov/litigationStrategy',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },

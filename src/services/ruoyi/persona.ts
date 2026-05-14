@@ -40,6 +40,17 @@ export const listPersona = (params: PersonaQuery) =>
     params,
   });
 
+export type PersonaSimple = {
+  id: number;
+  personaName: string;
+};
+
+/**
+ * 精简版画像列表，仅返回 id + personaName，用于下拉/多选场景。
+ */
+export const listPersonasSimple = () =>
+  ruoyiRequest<PersonaSimple[]>('/system/persona/list', { method: 'get' });
+
 export const getPersona = (id: number | string) =>
   ruoyiRequest<PersonaItem>(`/system/persona/${id}`, {
     method: 'get',
