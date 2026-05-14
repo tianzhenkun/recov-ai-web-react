@@ -10,6 +10,10 @@ export type PersonaItem = {
   id?: number | string;
   personaName?: string;
   icon?: string;
+  motivation?: string;
+  overview?: string;
+  tags?: string[] | string;
+  priority?: string | number;
   traits?: string;
   classification?: string;
   keyword?: string;

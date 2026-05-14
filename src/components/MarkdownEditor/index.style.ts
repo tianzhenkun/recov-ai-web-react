@@ -94,8 +94,27 @@ const useStyles = createStyles(({ token }) => ({
       margin: '8px 0',
       paddingLeft: 24,
     },
+    '.tiptap-prose ul': {
+      listStyleType: 'disc',
+    },
+    '.tiptap-prose ol': {
+      listStyleType: 'decimal',
+    },
+    '.tiptap-prose ul ul': {
+      listStyleType: 'circle',
+    },
+    '.tiptap-prose ul ul ul': {
+      listStyleType: 'square',
+    },
+    '.tiptap-prose ol ol': {
+      listStyleType: 'lower-alpha',
+    },
+    '.tiptap-prose ol ol ol': {
+      listStyleType: 'lower-roman',
+    },
     '.tiptap-prose li': {
       margin: '4px 0',
+      display: 'list-item',
     },
     '.tiptap-prose blockquote': {
       margin: '12px 0',

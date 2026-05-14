@@ -54,7 +54,15 @@ export const listOssByIds = (ossId: number | string) =>
     method: 'get',
   });
 
-export const uploadOssFile = (file: File) => {
+export type UploadProgressEvent = {
+  loaded?: number;
+  total?: number;
+};
+
+export const uploadOssFile = (
+  file: File,
+  onUploadProgress?: (event: UploadProgressEvent) => void,
+) => {
   const formData = new FormData();
   formData.append('file', file);
 
@@ -64,6 +72,7 @@ export const uploadOssFile = (file: File) => {
     headers: {
       repeatSubmit: false,
     },
+    onUploadProgress,
   });
 };
 

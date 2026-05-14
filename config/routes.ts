@@ -387,6 +387,21 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/index',
+    component: './recov/dashboard',
+    hideInMenu: true,
+  },
+  {
+    path: '/datelligence',
+    component: './recov/datelligence',
+    hideInMenu: true,
+  },
+  {
+    path: '/reconciliation',
+    component: './recov/reconciliation',
+    hideInMenu: true,
+  },
+  {
     path: '/sys/persona',
     component: './recov/persona',
     hideInMenu: true,
