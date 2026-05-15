@@ -14,6 +14,8 @@ export interface TemplateEditorFeatures {
   fontFamily?: boolean;
   /** 字号 px（依赖 TextStyle + FontSize） */
   fontSize?: boolean;
+  /** 背景色 / 高亮（依赖 TextStyle + BackgroundColor） */
+  backgroundColor?: boolean;
 }
 
 export interface TemplateSelectOption {

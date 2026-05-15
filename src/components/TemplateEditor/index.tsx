@@ -9,13 +9,18 @@ import {
 } from '@ant-design/icons';
 import { Color } from '@tiptap/extension-color';
 import { TextAlign } from '@tiptap/extension-text-align';
-import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style';
+import {
+  BackgroundColor,
+  FontFamily,
+  FontSize,
+  TextStyle,
+} from '@tiptap/extension-text-style';
 import { Underline } from '@tiptap/extension-underline';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Button, ColorPicker, Popover, Select, Tooltip } from 'antd';
 import clsx from 'clsx';
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import Variable, { buildVariableAttrs } from './extensions/Variable';
 import './templateEditor.css';
 import type {
@@ -45,29 +50,44 @@ export type TemplateEditorProps = {
 const DEFAULT_FEATURES: TemplateEditorFeatures = {
   textStyle: false,
   color: false,
+  backgroundColor: false,
   align: false,
   variable: true,
   fontFamily: false,
   fontSize: false,
 };
 
+/** 与 Vue 一致：无内联字体时视为宋体；下拉仅 7 种字体，无单独「默认」 */
+const DEFAULT_EMAIL_FONT_FAMILY = 'SimSun, "Songti SC", STSong, serif';
+const DEFAULT_EMAIL_FONT_SIZE = '16px';
+
 const FONT_SELECT_OPTIONS: { label: string; value: string }[] = [
-  { label: '默认', value: '' },
-  { label: '宋体', value: 'SimSun, "Songti SC", STSong, serif' },
+  { label: '宋体', value: DEFAULT_EMAIL_FONT_FAMILY },
   { label: '黑体', value: 'SimHei, "Heiti SC", STHeiti, sans-serif' },
   { label: '微软雅黑', value: '"Microsoft YaHei", sans-serif' },
+  { label: '仿宋', value: 'FangSong, "Fangsong SC", STFangsong, serif' },
+  { label: '楷体', value: 'KaiTi, "Kaiti SC", STKaiti, serif' },
   { label: 'Arial', value: 'Arial, sans-serif' },
+  {
+    label: 'Times New Roman',
+    value: '"Times New Roman", Times, serif',
+  },
 ];
 
 const SIZE_SELECT_OPTIONS: { label: string; value: string }[] = [
-  { label: '默认', value: '' },
   { label: '12px', value: '12px' },
   { label: '14px', value: '14px' },
   { label: '16px', value: '16px' },
   { label: '18px', value: '18px' },
   { label: '20px', value: '20px' },
+  { label: '22px', value: '22px' },
   { label: '24px', value: '24px' },
+  { label: '28px', value: '28px' },
 ];
+
+const FONT_PRESET_VALUES = new Set(FONT_SELECT_OPTIONS.map((o) => o.value));
+
+const SIZE_PRESET_VALUES = new Set(SIZE_SELECT_OPTIONS.map((o) => o.value));
 
 const TemplateEditor = ({
   value,
@@ -124,6 +144,7 @@ const TemplateEditor = ({
         FontFamily.configure({ types: ['textStyle'] }),
         FontSize.configure({ types: ['textStyle'] }),
         Color.configure({ types: ['textStyle'] }),
+        BackgroundColor.configure({ types: ['textStyle'] }),
         TextAlign.configure({ types: ['paragraph'] }),
         Variable,
       ],
@@ -148,8 +169,6 @@ const TemplateEditor = ({
     },
     [],
   );
-
-  const [currentColor, setCurrentColor] = useState<string>('#303133');
 
   useEffect(() => {
     if (!editor) return;
@@ -187,19 +206,23 @@ const TemplateEditor = ({
     editor?.chain().focus().setTextAlign(align).run();
   const applyColor = (hex: string) => {
     if (!editor) return;
-    setCurrentColor(hex);
     editor.chain().focus().setColor(hex).run();
+  };
+
+  const applyBackgroundColor = (hex: string) => {
+    if (!editor) return;
+    editor.chain().focus().setBackgroundColor(hex).run();
   };
 
   const textStyleAttrs = editor?.getAttributes('textStyle') ?? {};
   const currentFontFamily = (textStyleAttrs.fontFamily as string | null) ?? '';
   const currentFontSize = (textStyleAttrs.fontSize as string | null) ?? '';
 
+  const fontSelectValue = currentFontFamily || DEFAULT_EMAIL_FONT_FAMILY;
+  const sizeSelectValue = currentFontSize || DEFAULT_EMAIL_FONT_SIZE;
+
   const fontOptions = useMemo(() => {
-    if (
-      currentFontFamily &&
-      !FONT_SELECT_OPTIONS.some((o) => o.value === currentFontFamily)
-    ) {
+    if (currentFontFamily && !FONT_PRESET_VALUES.has(currentFontFamily)) {
       return [
         ...FONT_SELECT_OPTIONS,
         { label: currentFontFamily, value: currentFontFamily },
@@ -209,10 +232,7 @@ const TemplateEditor = ({
   }, [currentFontFamily]);
 
   const sizeOptions = useMemo(() => {
-    if (
-      currentFontSize &&
-      !SIZE_SELECT_OPTIONS.some((o) => o.value === currentFontSize)
-    ) {
+    if (currentFontSize && !SIZE_PRESET_VALUES.has(currentFontSize)) {
       return [
         ...SIZE_SELECT_OPTIONS,
         { label: currentFontSize, value: currentFontSize },
@@ -231,10 +251,19 @@ const TemplateEditor = ({
   const showToolbar =
     resolved.textStyle ||
     resolved.color ||
+    resolved.backgroundColor ||
     resolved.align ||
     resolved.variable ||
     resolved.fontFamily ||
     resolved.fontSize;
+
+  const textColorValue =
+    ((textStyleAttrs.color as string | undefined) || '').trim() || '#303133';
+  const backgroundColorValue = (() => {
+    const raw = textStyleAttrs.backgroundColor as string | null | undefined;
+    if (raw == null || String(raw).trim() === '') return undefined;
+    return String(raw).trim();
+  })();
 
   const variablePopover = (
     <div className="flex max-w-[280px] flex-wrap gap-2">
@@ -257,7 +286,10 @@ const TemplateEditor = ({
 
   const richEmailClass =
     outputType === 'html' &&
-    (resolved.fontFamily || resolved.fontSize || resolved.textStyle)
+    (resolved.fontFamily ||
+      resolved.fontSize ||
+      resolved.textStyle ||
+      resolved.backgroundColor)
       ? 'template-editor-rich'
       : '';
 
@@ -275,15 +307,14 @@ const TemplateEditor = ({
               size="small"
               className="template-editor-font-select"
               disabled={disabled}
-              value={currentFontFamily}
+              showSearch={false}
+              popupMatchSelectWidth={false}
+              styles={{ popup: { root: { minWidth: 168 } } }}
+              value={fontSelectValue}
               options={fontOptions}
               onChange={(v) => {
                 if (!editor) return;
-                if (!v) {
-                  editor.chain().focus().unsetFontFamily().run();
-                } else {
-                  editor.chain().focus().setFontFamily(v).run();
-                }
+                editor.chain().focus().setFontFamily(v).run();
               }}
             />
           ) : null}
@@ -293,15 +324,14 @@ const TemplateEditor = ({
               size="small"
               className="template-editor-size-select"
               disabled={disabled}
-              value={currentFontSize}
+              showSearch={false}
+              popupMatchSelectWidth={false}
+              styles={{ popup: { root: { minWidth: 100 } } }}
+              value={sizeSelectValue}
               options={sizeOptions}
               onChange={(v) => {
                 if (!editor) return;
-                if (!v) {
-                  editor.chain().focus().unsetFontSize().run();
-                } else {
-                  editor.chain().focus().setFontSize(v).run();
-                }
+                editor.chain().focus().setFontSize(v).run();
               }}
             />
           ) : null}
@@ -355,7 +385,7 @@ const TemplateEditor = ({
               <Tooltip title="字体颜色">
                 <ColorPicker
                   size="small"
-                  value={currentColor}
+                  value={textColorValue}
                   disabled={disabled}
                   onChange={(c) => applyColor(c.toHexString())}
                   presets={[
@@ -378,10 +408,49 @@ const TemplateEditor = ({
             </>
           ) : null}
 
+          {resolved.backgroundColor ? (
+            <>
+              {resolved.textStyle ||
+              resolved.fontFamily ||
+              resolved.fontSize ||
+              resolved.color ? (
+                <span className="template-editor-toolbar-divider" />
+              ) : null}
+              <Tooltip title="背景色">
+                <ColorPicker
+                  size="small"
+                  value={backgroundColorValue}
+                  disabled={disabled}
+                  allowClear
+                  onChange={(c) => applyBackgroundColor(c.toHexString())}
+                  onClear={() => {
+                    editor?.chain().focus().unsetBackgroundColor().run();
+                  }}
+                  presets={[
+                    {
+                      label: '推荐',
+                      colors: [
+                        '#fef0f0',
+                        '#fdf6ec',
+                        '#f0f9ff',
+                        '#f0fdf4',
+                        '#fefce8',
+                        '#f5f5f5',
+                        '#303133',
+                        '#409eff',
+                      ],
+                    },
+                  ]}
+                />
+              </Tooltip>
+            </>
+          ) : null}
+
           {resolved.align ? (
             <>
               {resolved.textStyle ||
               resolved.color ||
+              resolved.backgroundColor ||
               resolved.fontFamily ||
               resolved.fontSize ? (
                 <span className="template-editor-toolbar-divider" />
@@ -423,6 +492,7 @@ const TemplateEditor = ({
             <>
               {resolved.textStyle ||
               resolved.color ||
+              resolved.backgroundColor ||
               resolved.align ||
               resolved.fontFamily ||
               resolved.fontSize ? (

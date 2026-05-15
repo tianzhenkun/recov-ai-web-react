@@ -33,6 +33,7 @@ const PLAIN_FEATURES: TemplateEditorFeatures = {
 const EMAIL_FEATURES: TemplateEditorFeatures = {
   textStyle: true,
   color: true,
+  backgroundColor: true,
   align: true,
   variable: true,
   fontFamily: true,
