@@ -9,6 +9,8 @@ export interface TemplateEditorFeatures {
   textStyle?: boolean;
   color?: boolean;
   align?: boolean;
+  image?: boolean;
+  table?: boolean;
   variable?: boolean;
   /** 字体（依赖 TextStyle + FontFamily） */
   fontFamily?: boolean;

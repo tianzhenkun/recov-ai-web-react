@@ -1,48 +1,175 @@
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { Empty, Modal, message, Spin } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRuoyiDict } from '@/hooks/useRuoyiDict';
 import {
   type DeliveryStrategyRow,
   type DeliveryWayListRow,
+  getDeliveryWay,
   listDeliveryStrategy,
+  listDeliveryVariables,
   listDeliveryWay,
+  updateDeliveryWay,
 } from '@/services/ruoyi/delivery';
 import {
-  type DeliveryContentTemplates,
-  type DeliveryRetrySettings,
-  type DeliveryTemplateTabId,
-  getDeliveryTemplatesMock,
-  getDeliveryWayTemplateMock,
-  updateDeliveryTemplatesMock,
-} from './_mock';
-import {
   cloneTemplates,
-  EMAIL_VARS_FALLBACK,
   type FlowDrawerNode,
-  normalizeDictVariables,
+  normalizeVariables,
   normalizeWayId,
-  PHONE_VARS_FALLBACK,
-  SMS_VARS_FALLBACK,
 } from './_shared';
+import type { DeliveryContentTemplates, DeliveryTemplateTabId } from './_types';
 import FlowDrawer from './FlowDrawer';
 import StrategyCard from './StrategyCard';
 import TemplatePanel from './TemplatePanel';
 
 const DEFAULT_TEMPLATES: DeliveryContentTemplates = {
-  sms: { enabled: true, content: '' },
-  email: { enabled: true, subject: '', html: '', attachPdf: true },
-  express: { enabled: true, company: '', note: '' },
-  phone: { enabled: true, script: '' },
+  sms: {
+    enabled: false,
+    content: '',
+    providerTemplateId: '',
+    sortOrder: 10,
+    wayName: '智能短信',
+  },
+  email: {
+    enabled: false,
+    subject: '',
+    html: '',
+    providerTemplateId: '',
+    sortOrder: 20,
+    wayName: '智能邮件',
+  },
+  express: {
+    enabled: false,
+    content: '',
+    providerTemplateId: '',
+    sortOrder: 30,
+    wayName: '智能快递',
+  },
+  call: {
+    enabled: false,
+    script: '',
+    providerTemplateId: '',
+    sortOrder: 40,
+    wayName: '电话提醒',
+  },
 };
 
-const DEFAULT_RETRY: DeliveryRetrySettings = {
-  enabled: true,
-  waitHours: 24,
-  maxRetriesPerChannel: 3,
+const DELIVERY_DEFAULT_TABS: DeliveryTemplateTabId[] = [
+  'sms',
+  'email',
+  'express',
+  'call',
+];
+
+const statusToEnabled = (value: unknown) =>
+  value === 1 || value === '1' || value === true;
+
+const findWayByTab = (
+  wayRows: DeliveryWayListRow[],
+  tab: DeliveryTemplateTabId,
+) => wayRows.find((way) => normalizeWayId(way.nodeId) === tab);
+
+const mergeWayIntoTemplates = (
+  prev: DeliveryContentTemplates,
+  way: DeliveryWayListRow,
+): DeliveryContentTemplates => {
+  const tab = normalizeWayId(way.nodeId);
+  if (!tab) return prev;
+  const enabled = statusToEnabled(way.status ?? way.enabled);
+  const base = {
+    enabled,
+    providerTemplateId: way.providerTemplateId ?? '',
+    sortOrder: way.sortOrder ?? way.sort ?? null,
+    wayName: way.wayName ?? way.nodeName,
+  };
+  if (tab === 'sms') {
+    return {
+      ...prev,
+      sms: { ...prev.sms, ...base, content: way.contentTemplate ?? '' },
+    };
+  }
+  if (tab === 'email') {
+    return {
+      ...prev,
+      email: {
+        ...prev.email,
+        ...base,
+        subject: way.subjectTemplate ?? '',
+        html: way.contentTemplate ?? '',
+      },
+    };
+  }
+  if (tab === 'express') {
+    return {
+      ...prev,
+      express: { ...prev.express, ...base, content: way.contentTemplate ?? '' },
+    };
+  }
+  return {
+    ...prev,
+    call: { ...prev.call, ...base, script: way.contentTemplate ?? '' },
+  };
 };
 
-const DELIVERY_DEFAULT_TABS: DeliveryTemplateTabId[] = ['sms', 'email'];
+const buildTemplatesFromWays = (ways: DeliveryWayListRow[]) =>
+  ways.reduce(
+    (result, way) => mergeWayIntoTemplates(result, way),
+    cloneTemplates(DEFAULT_TEMPLATES),
+  );
+
+const getTemplateContent = (
+  templates: DeliveryContentTemplates,
+  tab: DeliveryTemplateTabId,
+) => {
+  if (tab === 'sms') return templates.sms.content;
+  if (tab === 'email') return templates.email.html;
+  if (tab === 'express') return templates.express.content;
+  return templates.call.script;
+};
+
+const getTemplateEnabled = (
+  templates: DeliveryContentTemplates,
+  tab: DeliveryTemplateTabId,
+) => templates[tab].enabled;
+
+const buildSavePayload = (
+  templates: DeliveryContentTemplates,
+  tab: DeliveryTemplateTabId,
+  way?: DeliveryWayListRow,
+) => {
+  const common = {
+    wayName: templates[tab].wayName || way?.wayName || way?.nodeName,
+    providerTemplateId:
+      templates[tab].providerTemplateId ?? way?.providerTemplateId ?? '',
+    sortOrder: templates[tab].sortOrder ?? way?.sortOrder ?? way?.sort ?? null,
+    status: getTemplateEnabled(templates, tab) ? 1 : 0,
+  };
+  if (tab === 'email') {
+    return {
+      ...common,
+      subjectTemplate: templates.email.subject,
+      contentTemplate: templates.email.html,
+    };
+  }
+  if (tab === 'sms') {
+    return {
+      ...common,
+      subjectTemplate: null,
+      contentTemplate: templates.sms.content,
+    };
+  }
+  if (tab === 'express') {
+    return {
+      ...common,
+      subjectTemplate: null,
+      contentTemplate: templates.express.content,
+    };
+  }
+  return {
+    ...common,
+    subjectTemplate: null,
+    contentTemplate: templates.call.script,
+  };
+};
 
 const DeliveryStrategyPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
@@ -57,8 +184,9 @@ const DeliveryStrategyPage = () => {
     useState<DeliveryContentTemplates>(DEFAULT_TEMPLATES);
   const [savedSnapshot, setSavedSnapshot] =
     useState<DeliveryContentTemplates | null>(null);
-  const [retrySettings, setRetrySettings] =
-    useState<DeliveryRetrySettings>(DEFAULT_RETRY);
+  const [variables, setVariables] = useState<
+    Array<{ key?: string; label?: string }>
+  >([]);
 
   const [activeTab, setActiveTab] = useState<DeliveryTemplateTabId>('sms');
 
@@ -69,21 +197,9 @@ const DeliveryStrategyPage = () => {
   const templatesRef = useRef(templates);
   templatesRef.current = templates;
 
-  const smsDict = useRuoyiDict('ai_delivery_sms_vars');
-  const emailDict = useRuoyiDict('ai_delivery_email_vars');
-  const phoneDict = useRuoyiDict('ai_delivery_phone_vars');
-
-  const smsVariables = useMemo(
-    () => normalizeDictVariables(smsDict.options, SMS_VARS_FALLBACK),
-    [smsDict.options],
-  );
-  const emailVariables = useMemo(
-    () => normalizeDictVariables(emailDict.options, EMAIL_VARS_FALLBACK),
-    [emailDict.options],
-  );
-  const phoneVariables = useMemo(
-    () => normalizeDictVariables(phoneDict.options, PHONE_VARS_FALLBACK),
-    [phoneDict.options],
+  const templateVariables = useMemo(
+    () => normalizeVariables(variables),
+    [variables],
   );
 
   const availableTabs = useMemo<DeliveryTemplateTabId[]>(() => {
@@ -95,25 +211,33 @@ const DeliveryStrategyPage = () => {
     return list.length > 0 ? list : DELIVERY_DEFAULT_TABS;
   }, [wayRows]);
 
+  const refreshWays = useCallback(async () => {
+    const wayRes = await listDeliveryWay();
+    const ways = Array.isArray(wayRes.rows) ? wayRes.rows : [];
+    setWayRows(ways);
+    const nextTemplates = buildTemplatesFromWays(ways);
+    setTemplates(nextTemplates);
+    setSavedSnapshot(cloneTemplates(nextTemplates));
+    return ways;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [mockRes, strategyRes, wayRes] = await Promise.all([
-          getDeliveryTemplatesMock(),
+        const [strategyRes, wayRes, variableRes] = await Promise.all([
           listDeliveryStrategy(),
           listDeliveryWay(),
+          listDeliveryVariables(),
         ]);
         if (cancelled) return;
 
-        setRetrySettings({ ...mockRes.retry });
-
         const rows = Array.isArray(strategyRes?.rows) ? strategyRes.rows : [];
-        setStrategyRows(rows);
-
         const ways = Array.isArray(wayRes?.rows) ? wayRes.rows : [];
+        setStrategyRows(rows);
         setWayRows(ways);
+        setVariables(variableRes.data ?? []);
 
         const enabledTabs: DeliveryTemplateTabId[] = [];
         for (const w of ways) {
@@ -122,20 +246,14 @@ const DeliveryStrategyPage = () => {
         }
         const tabsToUse =
           enabledTabs.length > 0 ? enabledTabs : DELIVERY_DEFAULT_TABS;
-        const initialTab = tabsToUse[0];
-        setActiveTab(initialTab);
+        setActiveTab(tabsToUse[0]);
 
-        const partial = await getDeliveryWayTemplateMock(initialTab);
-        if (cancelled) return;
-        const merged: DeliveryContentTemplates = {
-          ...mockRes.templates,
-          [initialTab]: partial,
-        };
-        setTemplates(merged);
-        setSavedSnapshot(cloneTemplates(merged));
+        const nextTemplates = buildTemplatesFromWays(ways);
+        setTemplates(nextTemplates);
+        setSavedSnapshot(cloneTemplates(nextTemplates));
       } catch {
         if (!cancelled) {
-          messageApi.error('数据加载失败，请稍后重试');
+          messageApi.error('送达配置加载失败，请稍后重试');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -147,54 +265,91 @@ const DeliveryStrategyPage = () => {
   }, [messageApi]);
 
   const handleSaveTemplates = useCallback(async () => {
+    const current = templatesRef.current;
+    const way = findWayByTab(wayRows, activeTab);
+    const content = getTemplateContent(current, activeTab).trim();
+    const enabled = getTemplateEnabled(current, activeTab);
+    const providerTemplateId = String(
+      current[activeTab].providerTemplateId ?? '',
+    ).trim();
+
+    if (!content) {
+      messageApi.warning('内容模板不能为空');
+      return false;
+    }
+    if (activeTab === 'email' && enabled && !current.email.subject.trim()) {
+      messageApi.warning('邮件启用时必须维护邮件主题');
+      return false;
+    }
+    if ((activeTab === 'sms' || activeTab === 'email') && enabled) {
+      if (!providerTemplateId) {
+        messageApi.warning('短信/邮件启用时必须维护服务商模板 ID');
+        return false;
+      }
+    }
+
     setSaving(true);
     try {
-      const snapshot = cloneTemplates(templatesRef.current);
-      await updateDeliveryTemplatesMock({
-        templates: snapshot,
-        retry: { ...retrySettings },
-      });
-      setSavedSnapshot(snapshot);
-      messageApi.success('配置已保存（mock）');
+      await updateDeliveryWay(
+        activeTab,
+        buildSavePayload(current, activeTab, way),
+      );
+      await refreshWays();
+      messageApi.success('送达模板已保存');
       return true;
     } catch {
-      messageApi.error('保存失败，请稍后重试（mock）');
+      messageApi.error('保存失败，请稍后重试');
       return false;
     } finally {
       setSaving(false);
     }
-  }, [messageApi, retrySettings]);
+  }, [activeTab, messageApi, refreshWays, wayRows]);
 
   const handleActiveTabChange = useCallback(
     async (next: DeliveryTemplateTabId) => {
       if (next === activeTab) return;
-      const partial = await getDeliveryWayTemplateMock(next);
-      const merged: DeliveryContentTemplates = {
-        ...templatesRef.current,
-        [next]: partial,
-      };
       setActiveTab(next);
-      setTemplates(merged);
-      setSavedSnapshot(cloneTemplates(merged));
+      try {
+        const detail = await getDeliveryWay(next);
+        const way = detail.data;
+        if (!way) return;
+        setWayRows((prev) => {
+          const exists = prev.some((item) => item.nodeId === way.nodeId);
+          return exists
+            ? prev.map((item) => (item.nodeId === way.nodeId ? way : item))
+            : [...prev, way];
+        });
+        setTemplates((prev) => {
+          const merged = mergeWayIntoTemplates(prev, way);
+          setSavedSnapshot(cloneTemplates(merged));
+          return merged;
+        });
+      } catch {
+        messageApi.error('渠道模板详情加载失败，请稍后重试');
+      }
     },
-    [activeTab],
+    [activeTab, messageApi],
   );
 
   const openFlowDrawer = (row: DeliveryStrategyRow) => {
-    setFlowStrategyId(String(row.id));
-    setFlowStrategyName(row.deliveryObj);
+    setFlowStrategyId(row.sceneCode || String(row.id));
+    setFlowStrategyName(row.sceneName || row.deliveryObj);
     setFlowOpen(true);
   };
 
   const handleFlowSaved = (strategyId: string, nodes: FlowDrawerNode[]) => {
     setStrategyRows((prev) =>
       prev.map((row) => {
-        if (String(row.id) !== strategyId) return row;
+        if (String(row.id) !== strategyId && row.sceneCode !== strategyId) {
+          return row;
+        }
         return {
           ...row,
           nodes: nodes.map((item) => ({
             nodeId: item.nodeId,
             nodeName: item.nodeName,
+            wayCode: item.nodeId,
+            wayName: item.nodeName,
             proceedOnSuccess: item.proceedOnSuccess,
           })),
         };
@@ -202,7 +357,7 @@ const DeliveryStrategyPage = () => {
     );
   };
 
-  const subTitle = `配置不同业务场景下的送达方式优先级，系统按顺序自动尝试送达 · 共 ${strategyRows.length} 个场景`;
+  const subTitle = `配置不同业务场景下的送达方式优先级，系统按顺序自动尝试送达，共 ${strategyRows.length} 个场景`;
 
   return (
     <PageContainer title="全域送达策略" subTitle={subTitle}>
@@ -218,7 +373,7 @@ const DeliveryStrategyPage = () => {
                   策略优先级配置
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  按业务对象维护送达节点顺序，配置按钮可打开右侧抽屉编排。
+                  按业务场景维护送达渠道顺序，配置按钮可打开右侧抽屉编排。
                 </div>
               </div>
               <span className="inline-flex h-7 items-center rounded-full bg-slate-100 px-3 text-xs font-semibold text-slate-600">
@@ -251,9 +406,7 @@ const DeliveryStrategyPage = () => {
           activeTab={activeTab}
           onActiveTabChange={handleActiveTabChange}
           availableTabs={availableTabs}
-          smsVariables={smsVariables}
-          emailVariables={emailVariables}
-          phoneVariables={phoneVariables}
+          variables={templateVariables}
           onSave={handleSaveTemplates}
           modalApi={modalApi}
           messageApi={messageApi}

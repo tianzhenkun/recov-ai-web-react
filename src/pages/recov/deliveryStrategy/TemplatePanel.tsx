@@ -1,9 +1,5 @@
-import {
-  CheckCircleOutlined,
-  DownloadOutlined,
-  PrinterOutlined,
-} from '@ant-design/icons';
-import { Button, Spin, Switch } from 'antd';
+import { CheckCircleOutlined } from '@ant-design/icons';
+import { Button, Input, Spin, Switch } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import type { HookAPI } from 'antd/es/modal/useModal';
 import clsx from 'clsx';
@@ -13,7 +9,6 @@ import type {
   TemplateEditorFeatures,
   TemplateVariable,
 } from '@/components/TemplateEditor/types';
-import type { DeliveryContentTemplates, DeliveryTemplateTabId } from './_mock';
 import {
   computePhoneSeconds,
   computeSmsBillCount,
@@ -22,11 +17,14 @@ import {
   TEMPLATE_TAB_ICON,
   TEMPLATE_TAB_LABEL,
 } from './_shared';
+import type { DeliveryContentTemplates, DeliveryTemplateTabId } from './_types';
 
 const PLAIN_FEATURES: TemplateEditorFeatures = {
   textStyle: false,
   color: false,
   align: false,
+  image: false,
+  table: false,
   variable: true,
 };
 
@@ -35,6 +33,8 @@ const EMAIL_FEATURES: TemplateEditorFeatures = {
   color: true,
   backgroundColor: true,
   align: true,
+  image: false,
+  table: false,
   variable: true,
   fontFamily: true,
   fontSize: true,
@@ -51,9 +51,7 @@ export type TemplatePanelProps = {
   activeTab: DeliveryTemplateTabId;
   onActiveTabChange: (tab: DeliveryTemplateTabId) => void;
   availableTabs: DeliveryTemplateTabId[];
-  smsVariables: TemplateVariable[];
-  emailVariables: TemplateVariable[];
-  phoneVariables: TemplateVariable[];
+  variables: TemplateVariable[];
   onSave: () => Promise<boolean>;
   modalApi: HookAPI;
   messageApi: MessageInstance;
@@ -68,25 +66,34 @@ const TemplatePanel = ({
   activeTab,
   onActiveTabChange,
   availableTabs,
-  smsVariables,
-  emailVariables,
-  phoneVariables,
+  variables,
   onSave,
   modalApi,
-  messageApi,
 }: TemplatePanelProps) => {
   const ActiveIcon = TEMPLATE_TAB_ICON[activeTab];
   const dirty = isTabDirty(savedSnapshot, templates, activeTab);
   const pendingTabRef = useRef<DeliveryTemplateTabId | null>(null);
 
   const smsCharCount = useMemo(
-    () => renderTemplateForDisplay(templates.sms.content, smsVariables).length,
-    [templates.sms.content, smsVariables],
+    () => renderTemplateForDisplay(templates.sms.content, variables).length,
+    [templates.sms.content, variables],
   );
-  const phoneSeconds = useMemo(
-    () => computePhoneSeconds(templates.phone.script, phoneVariables),
-    [templates.phone.script, phoneVariables],
+  const callSeconds = useMemo(
+    () => computePhoneSeconds(templates.call.script, variables),
+    [templates.call.script, variables],
   );
+
+  const updateActiveMeta = (
+    patch: Partial<DeliveryContentTemplates[DeliveryTemplateTabId]>,
+  ) => {
+    setTemplates(
+      (prev) =>
+        ({
+          ...prev,
+          [activeTab]: { ...prev[activeTab], ...patch },
+        }) as DeliveryContentTemplates,
+    );
+  };
 
   const handleTabClick = (nextTab: DeliveryTemplateTabId) => {
     if (nextTab === activeTab || saving) return;
@@ -96,7 +103,7 @@ const TemplatePanel = ({
     }
     pendingTabRef.current = nextTab;
     modalApi.confirm({
-      title: '未保存提醒',
+      title: '未保存提示',
       content: '当前渠道内容已修改但未保存，是否先保存再切换？',
       okText: '保存并切换',
       cancelText: '不保存切换',
@@ -138,44 +145,53 @@ const TemplatePanel = ({
       email: { ...prev.email, html: value },
     }));
 
-  const handleEmailAttachToggle = (checked: boolean) =>
+  const handleExpressContentChange = (value: string) =>
     setTemplates((prev) => ({
       ...prev,
-      email: { ...prev.email, attachPdf: checked },
+      express: { ...prev.express, content: value },
     }));
 
-  const handlePhoneScriptChange = (value: string) =>
+  const handleCallScriptChange = (value: string) =>
     setTemplates((prev) => ({
       ...prev,
-      phone: { ...prev.phone, script: value },
+      call: { ...prev.call, script: value },
     }));
 
-  const triggerExpressExport = () => {
-    modalApi.confirm({
-      title: '导出收件人信息',
-      content: '确认导出收件人信息（CSV）吗？（mock）',
-      okText: '确定',
-      cancelText: '取消',
-      onOk: () => {
-        messageApi.success('导出任务已创建（mock）');
-      },
-    });
-  };
-
-  const triggerExpressPrint = () => {
-    modalApi.confirm({
-      title: '批量打印面单',
-      content: '确认批量打印面单吗？（mock）',
-      okText: '确定',
-      cancelText: '取消',
-      onOk: () => {
-        messageApi.success('打印任务已创建（mock）');
-      },
-    });
+  const renderMeta = () => {
+    const template = templates[activeTab];
+    const needProvider = activeTab === 'sms' || activeTab === 'email';
+    return (
+      <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 md:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="flex items-center justify-between gap-3 text-sm text-slate-700 md:justify-start">
+          <span className="font-semibold">启用状态</span>
+          <Switch
+            aria-label={`${TEMPLATE_TAB_LABEL[activeTab]}启用状态`}
+            checked={template.enabled}
+            onChange={(checked) => updateActiveMeta({ enabled: checked })}
+          />
+        </div>
+        {needProvider ? (
+          <Input
+            allowClear
+            value={template.providerTemplateId ?? ''}
+            addonBefore="服务商模板 ID"
+            placeholder="启用短信/邮件时必填"
+            onChange={(event) =>
+              updateActiveMeta({ providerTemplateId: event.target.value })
+            }
+          />
+        ) : (
+          <div className="flex items-center text-xs text-slate-500">
+            非短信/邮件渠道仅需维护内容模板。
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderSms = () => (
     <div className="flex flex-col gap-4">
+      {renderMeta()}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-semibold text-slate-900">短信内容</span>
@@ -189,7 +205,7 @@ const TemplatePanel = ({
           onChange={handleSmsContentChange}
           outputType="text"
           placeholder="请输入短信模板"
-          variables={smsVariables}
+          variables={variables}
           features={PLAIN_FEATURES}
           height={260}
         />
@@ -199,6 +215,7 @@ const TemplatePanel = ({
 
   const renderEmail = () => (
     <div className="flex flex-col gap-4">
+      {renderMeta()}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-semibold text-slate-900">邮件主题</span>
@@ -208,7 +225,7 @@ const TemplatePanel = ({
           onChange={handleEmailSubjectChange}
           outputType="text"
           placeholder="请输入邮件主题"
-          variables={emailVariables}
+          variables={variables}
           features={PLAIN_FEATURES}
           height={72}
         />
@@ -216,22 +233,13 @@ const TemplatePanel = ({
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-semibold text-slate-900">邮件正文</span>
-          <span className="inline-flex items-center gap-2 text-xs text-slate-500">
-            <span id="delivery-email-attach-pdf">附带 PDF 附件</span>
-            <Switch
-              size="small"
-              aria-labelledby="delivery-email-attach-pdf"
-              checked={templates.email.attachPdf}
-              onChange={handleEmailAttachToggle}
-            />
-          </span>
         </div>
         <TemplateEditor
           value={templates.email.html}
           onChange={handleEmailHtmlChange}
           outputType="html"
-          placeholder="请输入邮件内容（可用变量占位）"
-          variables={emailVariables}
+          placeholder="请输入邮件内容，可插入变量占位"
+          variables={variables}
           features={EMAIL_FEATURES}
           height={320}
         />
@@ -240,52 +248,45 @@ const TemplatePanel = ({
   );
 
   const renderExpress = () => (
-    <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-1 gap-4 rounded-2xl border border-amber-100 bg-amber-50/60 p-4 md:grid-cols-[64px_minmax(0,1fr)] md:items-center">
-        <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm">
-          <ActiveIcon style={{ fontSize: 28, color: '#f59e0b' }} />
-        </span>
-        <div>
-          <div className="text-base font-bold text-slate-900">快递履约触达</div>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            根据收件人信息生成面单与寄件备注，支持顺丰、京东、EMS 等渠道配置。
-          </p>
+    <div className="flex flex-col gap-4">
+      {renderMeta()}
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-slate-900">
+            快递内容模板
+          </span>
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="primary"
-          icon={<DownloadOutlined />}
-          onClick={triggerExpressExport}
-        >
-          导出收件人信息
-        </Button>
-        <Button icon={<PrinterOutlined />} onClick={triggerExpressPrint}>
-          批量打印面单
-        </Button>
+        <TemplateEditor
+          value={templates.express.content}
+          onChange={handleExpressContentChange}
+          outputType="text"
+          placeholder="请输入快递送达内容模板"
+          variables={variables}
+          features={PLAIN_FEATURES}
+          height={260}
+        />
       </div>
     </div>
   );
 
-  const renderPhone = () => (
+  const renderCall = () => (
     <div className="flex flex-col gap-4">
+      {renderMeta()}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-semibold text-slate-900">
-            语音提醒脚本
+            电话提醒话术
           </span>
           <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>预计时长: {phoneSeconds} 秒</span>
-            <span>语音引擎: 标准女声</span>
+            <span>预计时长: {callSeconds} 秒</span>
           </div>
         </div>
         <TemplateEditor
-          value={templates.phone.script}
-          onChange={handlePhoneScriptChange}
+          value={templates.call.script}
+          onChange={handleCallScriptChange}
           outputType="text"
           placeholder="请输入电话提醒话术"
-          variables={phoneVariables}
+          variables={variables}
           features={PLAIN_FEATURES}
           height={260}
         />
@@ -302,7 +303,7 @@ const TemplatePanel = ({
       case 'express':
         return renderExpress();
       default:
-        return renderPhone();
+        return renderCall();
     }
   };
 
@@ -315,7 +316,7 @@ const TemplatePanel = ({
               送达内容模板
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              按送达渠道维护触达文案，变量由字典统一提供。
+              按渠道维护公共送达文案，变量来自后端配置接口。
             </div>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600">
@@ -357,7 +358,7 @@ const TemplatePanel = ({
           <div className="flex items-center gap-2 text-sm">
             <ActiveIcon style={{ color: '#4f46e5' }} />
             <span className="font-semibold text-slate-900">内容编辑器</span>
-            <span className="text-xs text-slate-400">·</span>
+            <span className="text-xs text-slate-400">/</span>
             <span className="text-xs text-slate-500">
               {TEMPLATE_TAB_LABEL[activeTab]}
             </span>

@@ -3,7 +3,6 @@ import {
   EditOutlined,
   PlusOutlined,
   TeamOutlined,
-  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
@@ -61,7 +60,7 @@ import {
 } from './_shared';
 import IdentityConfigCard from './IdentityConfigCard';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type VoiceDialogMode = 'add' | 'edit';
 
@@ -432,34 +431,9 @@ const VoiceEngineConfigPage = () => {
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
-        <ProCard>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <Title level={4} className="!mb-1">
-                语音引擎配置
-              </Title>
-              <Text type="secondary" className="text-sm">
-                管理外呼并发、重拨策略与音色资产
-              </Text>
-            </div>
-            {isConcurrencyDirty ? (
-              <Tag color="warning">有未保存变更</Tag>
-            ) : null}
-          </div>
-        </ProCard>
-
         <ProCard
-          title={
-            <span className="flex items-center gap-2">
-              <span className="inline-block h-4 w-1 rounded bg-blue-500" />
-              <Text strong>并发、重拨策略</Text>
-            </span>
-          }
-          subTitle={
-            <Text type="secondary" className="text-xs">
-              控制外呼吞吐与未接通后的重拨节奏
-            </Text>
-          }
+          title="并发、重拨策略"
+          subTitle="控制外呼吞吐与未接通后的重拨节奏"
           extra={
             <Space size={8}>
               {isConcurrencyDirty ? <Tag color="warning">未保存</Tag> : null}
@@ -524,17 +498,8 @@ const VoiceEngineConfigPage = () => {
         </ProCard>
 
         <ProCard
-          title={
-            <span className="flex items-center gap-2">
-              <span className="inline-block h-4 w-1 rounded bg-cyan-500" />
-              <Text strong>音色资产库</Text>
-            </span>
-          }
-          subTitle={
-            <Text type="secondary" className="text-xs">
-              按系统内置与自定义类型管理可用于外呼的音色
-            </Text>
-          }
+          title="音色资产库"
+          subTitle="按系统内置与自定义类型管理可用于外呼的音色"
           extra={
             <Button
               type="primary"
@@ -561,12 +526,6 @@ const VoiceEngineConfigPage = () => {
                 当前 {voiceListTitle}，共 {voiceTotal} 个
               </Text>
             </div>
-            <Space size={8}>
-              <UnorderedListOutlined className="text-cyan-500" />
-              <Text strong type="secondary" className="text-xs">
-                {voiceListTitle}音色列表
-              </Text>
-            </Space>
             <Spin spinning={loadingVoice}>
               <div className="min-h-[180px]">
                 {!loadingVoice && voiceList.length === 0 ? (
@@ -596,19 +555,8 @@ const VoiceEngineConfigPage = () => {
         </ProCard>
 
         <ProCard
-          title={
-            <span className="flex items-center gap-2">
-              <span className="inline-block h-5 w-[3px] rounded bg-emerald-500" />
-              <span>
-                <Text strong className="text-base">
-                  数字员工身份配置
-                </Text>
-                <div className="text-xs text-zinc-500">
-                  为不同身份配置默认音色、性别匹配和员工称谓
-                </div>
-              </span>
-            </span>
-          }
+          title="数字员工身份配置"
+          subTitle="为不同身份配置默认音色、性别匹配和员工称谓"
           extra={
             <Tag color="success" icon={<TeamOutlined />}>
               {identityList.length} 类身份

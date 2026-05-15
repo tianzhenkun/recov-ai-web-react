@@ -397,6 +397,16 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/delivery',
+    component: './recov/delivery',
+    hideInMenu: true,
+  },
+  {
+    path: '/instrument-list',
+    component: './recov/instrument',
+    hideInMenu: true,
+  },
+  {
     path: '/reconciliation',
     component: './recov/reconciliation',
     hideInMenu: true,

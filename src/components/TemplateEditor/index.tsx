@@ -52,6 +52,8 @@ const DEFAULT_FEATURES: TemplateEditorFeatures = {
   color: false,
   backgroundColor: false,
   align: false,
+  image: false,
+  table: false,
   variable: true,
   fontFamily: false,
   fontSize: false,
@@ -266,20 +268,24 @@ const TemplateEditor = ({
   })();
 
   const variablePopover = (
-    <div className="flex max-w-[280px] flex-wrap gap-2">
+    <div className="template-editor-variable-popover">
+      <div className="template-editor-variable-title">插入变量</div>
       {variables.length === 0 ? (
-        <span className="text-xs text-gray-500">暂无可用变量</span>
+        <span className="template-editor-variable-empty">暂无可用变量</span>
       ) : (
-        variables.map((item) => (
-          <Button
-            key={`${item.value}-${item.label}`}
-            size="small"
-            type="default"
-            onClick={() => insertVariable(item)}
-          >
-            {item.label}
-          </Button>
-        ))
+        <div className="template-editor-variable-list">
+          {variables.map((item) => (
+            <button
+              key={`${item.value}-${item.label}`}
+              type="button"
+              className="template-editor-variable-chip"
+              title={item.value}
+              onClick={() => insertVariable(item)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -345,7 +351,10 @@ const TemplateEditor = ({
               <Tooltip title="加粗">
                 <Button
                   size="small"
-                  type={isBold ? 'primary' : 'text'}
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isBold,
+                  })}
                   icon={<BoldOutlined />}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={toggleBold}
@@ -355,7 +364,10 @@ const TemplateEditor = ({
               <Tooltip title="斜体">
                 <Button
                   size="small"
-                  type={isItalic ? 'primary' : 'text'}
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isItalic,
+                  })}
                   icon={<ItalicOutlined />}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={toggleItalic}
@@ -365,7 +377,10 @@ const TemplateEditor = ({
               <Tooltip title="下划线">
                 <Button
                   size="small"
-                  type={isUnderline ? 'primary' : 'text'}
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isUnderline,
+                  })}
                   icon={<UnderlineOutlined />}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={toggleUnderline}
@@ -458,7 +473,10 @@ const TemplateEditor = ({
               <Tooltip title="左对齐">
                 <Button
                   size="small"
-                  type={isAlignLeft ? 'primary' : 'text'}
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isAlignLeft,
+                  })}
                   icon={<AlignLeftOutlined />}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setAlign('left')}
@@ -468,7 +486,10 @@ const TemplateEditor = ({
               <Tooltip title="居中">
                 <Button
                   size="small"
-                  type={isAlignCenter ? 'primary' : 'text'}
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isAlignCenter,
+                  })}
                   icon={<AlignCenterOutlined />}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setAlign('center')}
@@ -478,7 +499,10 @@ const TemplateEditor = ({
               <Tooltip title="右对齐">
                 <Button
                   size="small"
-                  type={isAlignRight ? 'primary' : 'text'}
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isAlignRight,
+                  })}
                   icon={<AlignRightOutlined />}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setAlign('right')}
@@ -505,12 +529,12 @@ const TemplateEditor = ({
               >
                 <Button
                   size="small"
-                  type="dashed"
+                  type="text"
+                  className="template-editor-icon-btn"
                   icon={<TagOutlined />}
                   disabled={disabled}
-                >
-                  插入变量
-                </Button>
+                  aria-label="插入变量"
+                />
               </Popover>
             </>
           ) : null}
