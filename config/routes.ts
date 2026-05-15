@@ -457,6 +457,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/settle',
+    component: './recov/settle',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
