@@ -437,6 +437,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/runtime',
+    component: './recov/runtime',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
