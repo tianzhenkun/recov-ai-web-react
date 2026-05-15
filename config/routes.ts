@@ -442,6 +442,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/fee',
+    component: './recov/fee',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
