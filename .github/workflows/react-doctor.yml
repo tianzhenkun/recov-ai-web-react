@@ -17,4 +17,3 @@ jobs:
       - uses: millionco/react-doctor@main
         with:
           diff: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
