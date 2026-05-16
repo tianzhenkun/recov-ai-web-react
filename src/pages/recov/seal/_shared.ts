@@ -15,9 +15,6 @@ import type {
 export type SealColumnDef = {
   code: SealCode;
   label: string;
-  tagColor: string;
-  iconBg: string;
-  iconColor: string;
   icon: typeof BankOutlined;
 };
 
@@ -25,25 +22,16 @@ export const SEAL_COLUMNS: SealColumnDef[] = [
   {
     code: 'company_seal',
     label: '企业章',
-    tagColor: 'blue',
-    iconBg: '#ecf5ff',
-    iconColor: '#409eff',
     icon: BankOutlined,
   },
   {
     code: 'lawyer_seal',
     label: '律师章',
-    tagColor: 'orange',
-    iconBg: '#fdf6ec',
-    iconColor: '#e6a23c',
     icon: AuditOutlined,
   },
   {
     code: 'law_firm_seal',
     label: '律所章',
-    tagColor: 'red',
-    iconBg: '#fef0f0',
-    iconColor: '#f56c6c',
     icon: SafetyCertificateOutlined,
   },
 ];

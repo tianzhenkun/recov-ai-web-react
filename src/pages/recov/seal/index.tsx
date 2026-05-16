@@ -1,6 +1,6 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Empty, Modal, message, Spin, Tag, Typography } from 'antd';
+import { Button, Empty, Modal, message, Spin, Tabs } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import { listOssByIds } from '@/services/ruoyi/oss';
@@ -22,8 +22,6 @@ import {
 import LawyerAccountModal from './LawyerAccountModal';
 import SealCard from './SealCard';
 import SealFormDrawer from './SealFormDrawer';
-
-const { Title, Paragraph } = Typography;
 
 type SealMap = Record<string, SealVO[]>;
 
@@ -56,6 +54,8 @@ const SmartSealConfigPage = () => {
   const [sealTypeList, setSealTypeList] = useState<SealTypeVO[]>([]);
   const [sealDataMap, setSealDataMap] = useState<SealMap>(emptySealMap());
   const [switchingId, setSwitchingId] = useState<number | string | null>(null);
+  const [activeSealCode, setActiveSealCode] =
+    useState<SealCode>('company_seal');
 
   const [drawerState, setDrawerState] = useState<DrawerState>({
     open: false,
@@ -246,88 +246,70 @@ const SmartSealConfigPage = () => {
     );
   }, [drawerState, sealDataMap]);
 
+  const activeSealList = sealDataMap[activeSealCode] ?? [];
+
+  const sealTabItems = useMemo(
+    () =>
+      SEAL_COLUMNS.map((col) => {
+        const Icon = col.icon;
+        return {
+          key: col.code,
+          icon: <Icon />,
+          label: `${col.label} ${sealDataMap[col.code]?.length ?? 0}`,
+        };
+      }),
+    [sealDataMap],
+  );
+
   return (
     <PageContainer breadcrumbRender={false} title="智能盖章配置">
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
         <ProCard>
-          <Title level={4} style={{ marginBottom: 4 }}>
-            智能盖章配置
-          </Title>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            管理各类电子印章及其与法律文书的自动关联规则
-          </Paragraph>
-        </ProCard>
-
-        <ProCard>
           <Spin spinning={loading}>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {SEAL_COLUMNS.map((col) => {
-                const list = sealDataMap[col.code] ?? [];
-                const Icon = col.icon;
-                return (
-                  <div
-                    key={col.code}
-                    className="flex flex-col rounded-lg border border-gray-100 bg-white"
-                    style={{ minHeight: 400 }}
-                  >
-                    <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg"
-                          style={{ background: col.iconBg }}
-                        >
-                          <Icon
-                            style={{ fontSize: 18, color: col.iconColor }}
-                          />
-                        </span>
-                        <span className="text-base font-semibold text-gray-900">
-                          {col.label}
-                        </span>
-                        <Tag color={col.tagColor} variant="filled">
-                          {list.length}
-                        </Tag>
-                      </div>
-                      <Button
-                        type="primary"
-                        size="small"
-                        icon={<PlusOutlined />}
-                        onClick={() => handleAdd(col.code)}
-                      >
-                        新增
-                      </Button>
-                    </div>
-                    <div className="flex flex-1 flex-col gap-3 p-4">
-                      {list.length === 0 ? (
-                        <div className="flex flex-1 items-center justify-center">
-                          <Empty
-                            description="暂无印章"
-                            styles={{ image: { height: 60 } }}
-                          />
-                        </div>
-                      ) : (
-                        list.map((item) => (
-                          <SealCard
-                            key={item.id}
-                            item={item}
-                            isLawyerSeal={col.code === 'lawyer_seal'}
-                            sealTypeList={sealTypeList}
-                            switching={switchingId === item.id}
-                            onEdit={handleEdit}
-                            onDelete={handleDelete}
-                            onToggleStatus={handleToggleStatus}
-                            onAddLawyer={handleAddLawyer}
-                            onEditLawyer={handleEditLawyer}
-                            onDeleteLawyer={handleDeleteLawyer}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <Tabs
+              activeKey={activeSealCode}
+              items={sealTabItems}
+              tabBarGutter={28}
+              tabBarExtraContent={
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => handleAdd(activeSealCode)}
+                >
+                  新增印章
+                </Button>
+              }
+              className="[&_.ant-tabs-nav]:!mb-4"
+              onChange={(key) => setActiveSealCode(key as SealCode)}
+            />
+            {activeSealList.length === 0 ? (
+              <div className="flex min-h-[320px] items-center justify-center">
+                <Empty
+                  description="暂无印章"
+                  styles={{ image: { height: 72 } }}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+                {activeSealList.map((item) => (
+                  <SealCard
+                    key={item.id}
+                    item={item}
+                    isLawyerSeal={activeSealCode === 'lawyer_seal'}
+                    sealTypeList={sealTypeList}
+                    switching={switchingId === item.id}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onToggleStatus={handleToggleStatus}
+                    onAddLawyer={handleAddLawyer}
+                    onEditLawyer={handleEditLawyer}
+                    onDeleteLawyer={handleDeleteLawyer}
+                  />
+                ))}
+              </div>
+            )}
           </Spin>
         </ProCard>
       </div>

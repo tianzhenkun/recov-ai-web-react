@@ -1,8 +1,8 @@
 import { PictureOutlined, PlusOutlined } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
-import { Image, Spin, Upload } from 'antd';
+import { Image, Spin, theme, Upload } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { listOssByIds, uploadOssFile } from '@/services/ruoyi/oss';
 
 type SealImageUploadProps = {
@@ -24,6 +24,7 @@ const SealImageUpload = ({
   size = 120,
   showTip = true,
 }: SealImageUploadProps) => {
+  const { token } = theme.useToken();
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const requestedOssIdRef = useRef<string | undefined>(undefined);
@@ -134,8 +135,14 @@ const SealImageUpload = ({
         ) : (
           <button
             type="button"
-            className="flex flex-col items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-gray-500 transition-colors hover:border-blue-400 hover:text-blue-500"
-            style={{ width: size, height: size }}
+            className="flex flex-col items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-gray-500 transition-colors hover:border-[var(--seal-upload-hover-color)] hover:text-[var(--seal-upload-hover-color)]"
+            style={
+              {
+                width: size,
+                height: size,
+                '--seal-upload-hover-color': token.colorPrimary,
+              } as CSSProperties
+            }
           >
             <Spin spinning={uploading} size="small">
               <div className="flex flex-col items-center justify-center gap-1">

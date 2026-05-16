@@ -79,22 +79,33 @@ const LawyerAccountModal = ({
   return (
     <Modal
       open={open}
-      title={isEdit ? '修改律师账号' : '新增律师账号'}
-      width={480}
+      title={
+        <span className="text-base font-semibold text-zinc-900">
+          {isEdit ? '修改律师账号' : '新增律师账号'}
+        </span>
+      }
+      width={440}
+      centered
       destroyOnHidden
       mask={{ closable: false }}
-      okText="确定"
+      okText={isEdit ? '保存账号' : '新增账号'}
       cancelText="取消"
       confirmLoading={submitting}
+      styles={{
+        body: { paddingTop: 4 },
+        footer: { marginTop: 24 },
+        header: { marginBottom: 16 },
+      }}
       onOk={handleOk}
       onCancel={handleCancel}
     >
       <Form
         form={form}
-        layout="horizontal"
-        labelCol={{ span: 6 }}
-        wrapperCol={{ span: 18 }}
+        layout="vertical"
+        requiredMark={false}
+        variant="outlined"
         preserve={false}
+        className="[&_.ant-form-item-label>label]:!font-medium [&_.ant-form-item-label>label]:!text-zinc-800"
       >
         <Form.Item label="印章名称">
           <Text>{sealName}</Text>

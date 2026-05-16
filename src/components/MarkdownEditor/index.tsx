@@ -64,7 +64,7 @@ const MarkdownEditor = ({
   disabled = false,
 }: MarkdownEditorProps) => {
   const { styles } = useStyles();
-  const lastEmittedRef = useRef('');
+  const lastEmittedRef = useRef(value);
 
   const editor = useEditor({
     content: markdownToHtml(value),
@@ -85,6 +85,7 @@ const MarkdownEditor = ({
     onUpdate: ({ editor: instance }) => {
       const html = instance.getHTML();
       const markdown = htmlToMarkdown(html);
+      if (markdown === lastEmittedRef.current) return;
       lastEmittedRef.current = markdown;
       onChange?.(markdown);
     },

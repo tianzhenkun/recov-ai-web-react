@@ -221,11 +221,8 @@ const IdentityConfigCard = ({
     <div className="flex flex-col rounded-xl border border-solid border-zinc-100 bg-white p-5">
       <div className="mb-5 flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
-          <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
-            style={{ backgroundColor: `${meta.color}14` }}
-          >
-            <Icon style={{ color: meta.color, fontSize: 22 }} />
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-solid border-zinc-200 bg-zinc-50 text-zinc-500">
+            <Icon className="text-[22px]" />
           </div>
           <div className="min-w-0">
             <Text strong className="block text-base text-zinc-900">

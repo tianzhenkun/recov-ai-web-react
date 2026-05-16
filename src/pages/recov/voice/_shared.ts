@@ -18,36 +18,30 @@ type AntdIcon = ComponentType<{
 export type IdentityMeta = {
   icon: AntdIcon;
   description: string;
-  color: string;
 };
 
 export const IDENTITY_META: Record<string, IdentityMeta> = {
   项目员工: {
     icon: UserOutlined,
     description: '亲切自然，侧重于服务满意度调查、物业关怀与日常提醒',
-    color: '#06b6d4',
   },
   企业客服: {
     icon: CustomerServiceOutlined,
     description: '温和从容，侧重于理解与沟通',
-    color: '#8b5cf6',
   },
   企业法务: {
     icon: SolutionOutlined,
     description: '专业严谨，侧重于企业管理规范与法律风险',
-    color: '#f59e0b',
   },
   律师: {
     icon: AuditOutlined,
     description: '第二方中立与权威，侧重于事件还原与法律告知',
-    color: '#ef4444',
   },
 };
 
 export const FALLBACK_IDENTITY_META: IdentityMeta = {
   icon: UserOutlined,
   description: '',
-  color: '#6366f1',
 };
 
 export const getIdentityMeta = (identityName: string): IdentityMeta =>

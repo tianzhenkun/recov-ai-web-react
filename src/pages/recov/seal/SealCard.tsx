@@ -4,7 +4,7 @@ import {
   PictureOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import { Button, Image, Space, Switch, Tag, Tooltip } from 'antd';
+import { Button, Image, Space, Switch, Tag, Tooltip, theme } from 'antd';
 import type { SealTypeVO, SealVO } from '@/services/ruoyi/seal';
 import { pickInstrumentTypeName } from './_shared';
 
@@ -33,129 +33,153 @@ const SealCard = ({
   onEditLawyer,
   onDeleteLawyer,
 }: SealCardProps) => {
+  const { token } = theme.useToken();
   const docs = item.instrumentTypeCodeList ?? item.instrumentTypeCodes ?? [];
   const rangeLabel =
     item.startNum != null && item.endNum != null
       ? `${item.startNum} - ${item.endNum}`
       : '全部资产';
+  const sealId = String(item.id);
+  const shortSealId =
+    sealId.length > 12 ? `${sealId.slice(0, 8)}...${sealId.slice(-4)}` : sealId;
+  const enabled = item.status === '1';
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 transition-shadow hover:shadow-sm">
-      <div className="flex gap-3">
-        <div className="flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-          {item.sealUrl ? (
-            <Image
-              src={item.sealUrl}
-              alt={item.sealName}
-              width={72}
-              height={72}
-              style={{ objectFit: 'contain' }}
-              preview={{ src: item.sealUrl }}
-            />
-          ) : (
-            <PictureOutlined style={{ fontSize: 24, color: '#bfbfbf' }} />
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
-          <div
-            className="truncate text-[15px] font-semibold text-gray-900"
-            title={item.sealName}
-          >
-            {item.sealName}
+    <div className="rounded-xl border border-solid border-zinc-100 bg-white p-4 transition-shadow hover:shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-solid border-zinc-100 bg-zinc-50">
+            {item.sealUrl ? (
+              <Image
+                src={item.sealUrl}
+                alt={item.sealName}
+                width={64}
+                height={64}
+                style={{ objectFit: 'contain' }}
+                preview={{ src: item.sealUrl }}
+              />
+            ) : (
+              <PictureOutlined style={{ fontSize: 24, color: '#bfbfbf' }} />
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-[13px]">
-            <span className="flex-shrink-0 text-gray-500">印章编号</span>
-            <span className="truncate font-mono text-xs text-gray-500">
-              {item.id}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[13px]">
-            <span className="flex-shrink-0 text-gray-500">关联资产</span>
-            <span className="truncate font-medium text-blue-600">
-              {rangeLabel}
-            </span>
-          </div>
-          {docs.length > 0 ? (
-            <div className="flex items-start gap-1.5 text-[13px]">
-              <span className="flex-shrink-0 leading-6 text-gray-500">
-                关联文书
+          <div className="min-w-0 pt-0.5">
+            <div className="mb-1 flex min-w-0 items-center gap-2">
+              <span
+                className="truncate text-base font-semibold text-zinc-900"
+                title={item.sealName}
+              >
+                {item.sealName}
               </span>
-              <Space size={[4, 4]} wrap>
-                {docs.map((code) => (
-                  <Tag key={code} color="processing">
-                    {pickInstrumentTypeName(sealTypeList, code)}
-                  </Tag>
-                ))}
-              </Space>
             </div>
-          ) : null}
-          {isLawyerSeal ? (
-            <div className="flex items-center gap-1.5 text-[13px]">
-              <span className="flex-shrink-0 text-gray-500">律师账号</span>
-              {item.lawyerUsername ? (
-                <span className="flex items-center gap-1">
-                  <span className="text-gray-800">{item.lawyerUsername}</span>
-                  <Tooltip title="编辑律师账号">
-                    <Button
-                      type="link"
-                      size="small"
-                      icon={<EditOutlined />}
-                      onClick={() => onEditLawyer(item)}
-                    />
-                  </Tooltip>
-                  <Tooltip title="删除律师账号">
-                    <Button
-                      type="link"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => onDeleteLawyer(item)}
-                    />
-                  </Tooltip>
-                </span>
-              ) : (
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => onAddLawyer(item)}
-                >
-                  添加律师账号
-                </Button>
-              )}
-            </div>
-          ) : null}
+            <Tooltip title={sealId}>
+              <span className="font-mono text-xs text-zinc-400">
+                编号 {shortSealId}
+              </span>
+            </Tooltip>
+          </div>
         </div>
+        <Tooltip title={enabled ? '停用印章' : '启用印章'}>
+          <Switch
+            size="small"
+            checked={enabled}
+            loading={switching}
+            onChange={(checked) => onToggleStatus(item, checked ? '1' : '0')}
+          />
+        </Tooltip>
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
-        <Switch
-          size="small"
-          checked={item.status === '1'}
-          loading={switching}
-          checkedChildren="启用"
-          unCheckedChildren="停用"
-          onChange={(checked) => onToggleStatus(item, checked ? '1' : '0')}
-        />
-        <Space size={4}>
+      <div className="mt-4 space-y-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-xs font-medium text-zinc-400">资产范围</span>
+          <span className="font-medium text-zinc-900">{rangeLabel}</span>
+        </div>
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+          <span className="flex-shrink-0 text-xs font-medium leading-6 text-zinc-400">
+            适用文书
+          </span>
+          {docs.length > 0 ? (
+            <Space size={[4, 4]} wrap>
+              {docs.map((code) => (
+                <Tag
+                  key={code}
+                  variant="filled"
+                  className="!mr-0"
+                  style={{
+                    backgroundColor: token.colorPrimaryBg,
+                    borderColor: token.colorPrimaryBorder,
+                    color: token.colorPrimaryText,
+                  }}
+                >
+                  {pickInstrumentTypeName(sealTypeList, code)}
+                </Tag>
+              ))}
+            </Space>
+          ) : (
+            <span className="text-zinc-400">未配置</span>
+          )}
+        </div>
+        {isLawyerSeal ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-zinc-500">律师账号</span>
+            {item.lawyerUsername ? (
+              <span className="flex min-w-0 items-center gap-1">
+                <span className="truncate text-zinc-900">
+                  {item.lawyerUsername}
+                </span>
+                <Tooltip title="编辑律师账号">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => onEditLawyer(item)}
+                  />
+                </Tooltip>
+                <Tooltip title="删除律师账号">
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => onDeleteLawyer(item)}
+                  />
+                </Tooltip>
+              </span>
+            ) : (
+              <Button
+                type="link"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => onAddLawyer(item)}
+              >
+                添加律师账号
+              </Button>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="-mx-4 -mb-4 mt-4 grid grid-cols-2 overflow-hidden rounded-b-xl border-t border-solid border-zinc-100 bg-zinc-50/50">
+        <div className="flex h-12 items-center justify-center">
           <Tooltip title="编辑">
             <Button
-              type="link"
-              size="small"
+              type="text"
               icon={<EditOutlined />}
+              className="!h-8 !w-8"
               onClick={() => onEdit(item)}
             />
           </Tooltip>
+        </div>
+        <div className="flex h-12 items-center justify-center border-l border-y-0 border-r-0 border-solid border-zinc-100">
           <Tooltip title="删除">
             <Button
-              type="link"
-              size="small"
+              type="text"
               danger
               icon={<DeleteOutlined />}
+              className="!h-8 !w-8"
               onClick={() => onDelete(item)}
             />
           </Tooltip>
-        </Space>
+        </div>
       </div>
     </div>
   );

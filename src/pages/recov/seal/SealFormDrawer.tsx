@@ -215,27 +215,36 @@ const SealFormDrawer = ({
   return (
     <Modal
       open={open}
-      title={mode === 'edit' ? '编辑印章' : '新增印章'}
-      width={560}
+      title={
+        <span className="text-base font-semibold text-zinc-900">
+          {mode === 'edit' ? '编辑印章' : '新增印章'}
+        </span>
+      }
+      width={520}
+      centered
       mask={{ closable: false }}
       destroyOnHidden
-      okText="确定"
+      okText={mode === 'edit' ? '保存印章' : '新增印章'}
       cancelText="取消"
       okButtonProps={{ disabled: confirmDisabled }}
       confirmLoading={submitting}
+      styles={{
+        body: { paddingTop: 4 },
+        footer: { marginTop: 24 },
+        header: { marginBottom: 16 },
+      }}
       onOk={handleSubmit}
       onCancel={() => (submitting ? undefined : onClose())}
     >
       <Spin spinning={loading}>
         <Form<FormShape>
           form={form}
-          layout="horizontal"
-          labelCol={{ span: 5 }}
-          wrapperCol={{ span: 18 }}
-          labelAlign="right"
+          layout="vertical"
+          requiredMark={false}
+          variant="outlined"
           onValuesChange={handleValuesChange}
           preserve={false}
-          className="mt-2"
+          className="[&_.ant-form-item-label>label]:!font-medium [&_.ant-form-item-label>label]:!text-zinc-800"
         >
           <Form.Item
             label="印章名称"
@@ -266,6 +275,7 @@ const SealFormDrawer = ({
             <Select
               mode="multiple"
               placeholder="请选择关联文书"
+              showSearch={{ optionFilterProp: 'label' }}
               options={sealTypeList.map((item) => ({
                 label: item.name,
                 value: item.code,
@@ -275,7 +285,7 @@ const SealFormDrawer = ({
           </Form.Item>
 
           <Form.Item label="资产编号范围">
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
               <Form.Item name="startNum" noStyle>
                 <InputNumber
                   placeholder="起始编号"
@@ -283,7 +293,7 @@ const SealFormDrawer = ({
                   min={rangeInfo.minAvailable}
                   max={rangeInfo.maxAvailable}
                   controls={false}
-                  style={{ width: '45%' }}
+                  style={{ width: '100%' }}
                 />
               </Form.Item>
               <span className="text-gray-500">至</span>
@@ -294,7 +304,7 @@ const SealFormDrawer = ({
                   min={rangeInfo.minAvailable}
                   max={rangeInfo.maxAvailable}
                   controls={false}
-                  style={{ width: '45%' }}
+                  style={{ width: '100%' }}
                 />
               </Form.Item>
             </div>
