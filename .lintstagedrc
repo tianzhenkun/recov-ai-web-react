@@ -1,6 +1,9 @@
 {
-  "**/*.{js,jsx,tsx,ts,css,less}": [
+  "**/*.{js,jsx,tsx,ts,css}": [
     "npx @biomejs/biome check --write"
+  ],
+  "**/*.less": [
+    "git diff --cached --check --"
   ],
   "src/**/*.md": [
     "npx @biomejs/biome check --write"
