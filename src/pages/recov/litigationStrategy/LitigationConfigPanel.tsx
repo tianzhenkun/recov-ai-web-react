@@ -59,54 +59,34 @@ const LitigationConfigPanel = ({
 
   return (
     <Spin spinning={loading}>
-      <div className="grid grid-cols-1 gap-x-12 gap-y-6 lg:grid-cols-2">
-        <div className="flex flex-col gap-5">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="h-4 w-1.5 rounded-full bg-indigo-500" />
-            <h4 className="text-sm font-extrabold text-gray-800">
-              立案和起诉配置
-            </h4>
-          </div>
-
-          <Form layout="vertical">
-            <Form.Item
-              label="同时起诉法院数量"
-              extra={<span className="text-[11px] text-gray-400">个/法院</span>}
-            >
+      <div className="flex flex-col gap-6">
+        <Form layout="vertical" className="max-w-4xl">
+          <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
+            <Form.Item label="同时起诉法院数量">
               <InputNumber
                 style={{ width: '100%' }}
-                size="large"
                 min={0}
+                suffix="个法院"
                 value={form.litigationThreshold}
                 onChange={handleThresholdChange}
               />
             </Form.Item>
 
-            <Form.Item
-              label="单法院申请立案数限制"
-              extra={
-                <span className="text-[11px] text-gray-400">
-                  个/案件 / 每天
-                </span>
-              }
-            >
+            <Form.Item label="单法院申请立案数限制">
               <InputNumber
                 style={{ width: '100%' }}
-                size="large"
                 min={0}
+                suffix="个案件 / 每天"
                 value={form.litigationFrequency}
                 onChange={handleFrequencyChange}
               />
             </Form.Item>
-          </Form>
-        </div>
+          </div>
+        </Form>
 
-        <div className="flex flex-col gap-5">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="h-4 w-1.5 rounded-full bg-indigo-500" />
-            <h4 className="text-sm font-extrabold text-gray-800">
-              起诉条件配置
-            </h4>
+        <div>
+          <div className="mb-3 text-sm font-semibold text-slate-900">
+            起诉条件配置
           </div>
 
           <RuleTreeEditor
@@ -117,19 +97,13 @@ const LitigationConfigPanel = ({
             messageApi={messageApi}
           />
         </div>
-      </div>
 
-      <div className="mt-8 flex justify-end">
         {dirty ? (
-          <Button
-            type="primary"
-            size="large"
-            className="!rounded-xl !px-8 shadow-md shadow-indigo-200/50"
-            loading={saving}
-            onClick={onSave}
-          >
-            保存配置
-          </Button>
+          <div className="flex justify-end">
+            <Button type="primary" loading={saving} onClick={onSave}>
+              保存配置
+            </Button>
+          </div>
         ) : null}
       </div>
     </Spin>

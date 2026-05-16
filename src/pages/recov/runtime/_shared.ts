@@ -1,7 +1,6 @@
 import type { TimeConfigVo } from '@/services/ruoyi/runtime';
 
 export const PAGE_TITLE = '运营时间设置';
-export const PAGE_SUB_TITLE = '配置智能体外呼工作时间段与假日策略';
 
 export const DEFAULT_TIME_FORM: TimeConfigVo = {
   timeEnabled: '1',
@@ -36,16 +35,6 @@ export const isTimeConfigDirty = (
     current.holidayPolicy !== saved.holidayPolicy
   );
 };
-
-const STATUS_COLORS: Record<string, string> = {
-  正常运行: '#22c55e',
-  非运营时间: '#f59e0b',
-  停止所有: '#ef4444',
-  仅停止外呼: '#f97316',
-};
-
-export const getRunningStatusColor = (status: string): string =>
-  STATUS_COLORS[status] ?? 'inherit';
 
 export const HOLIDAY_POLICY_OPTIONS = [
   { label: '正常运行', value: '0' },

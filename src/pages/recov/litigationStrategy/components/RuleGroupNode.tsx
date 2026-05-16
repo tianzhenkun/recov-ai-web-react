@@ -3,7 +3,7 @@ import {
   FolderAddOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import { Button, Radio } from 'antd';
+import { Button, Segmented } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import clsx from 'clsx';
 import type {
@@ -78,27 +78,16 @@ const RuleGroupNode = ({
   return (
     <div
       className={clsx(
-        'rounded-xl border-2 transition-all',
-        isRoot
-          ? 'border-indigo-200 bg-indigo-50/30'
-          : 'border-gray-200 bg-gray-50/50',
+        'rounded-lg border border-solid border-zinc-200 bg-white',
+        !isRoot && 'ml-4',
       )}
     >
-      <div
-        className={clsx(
-          'flex items-center justify-between border-b px-4 py-2',
-          isRoot
-            ? 'border-indigo-100 bg-indigo-50/50'
-            : 'border-gray-100 bg-white/50',
-        )}
-      >
+      <div className="flex items-center justify-between border-b border-solid border-zinc-100 px-3 py-2">
         <div className="flex items-center gap-3">
-          <Radio.Group
+          <Segmented
             value={node.logic}
             size="small"
-            optionType="button"
-            buttonStyle="solid"
-            onChange={(e) => handleLogicChange(e.target.value as RuleLogic)}
+            onChange={(value) => handleLogicChange(value as RuleLogic)}
             options={[
               { label: 'AND', value: 'AND' },
               { label: 'OR', value: 'OR' },
@@ -110,7 +99,7 @@ const RuleGroupNode = ({
         </div>
         {!isRoot && onDelete ? (
           <Button
-            type="primary"
+            type="text"
             danger
             size="small"
             shape="circle"
@@ -121,21 +110,14 @@ const RuleGroupNode = ({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-3 p-3">
         {node.children.map((child, index) => {
           const childKey = `${index}-${child.type}`;
           return (
             <div key={childKey} className="flex flex-col gap-3">
               {index > 0 ? (
                 <div className="flex items-center justify-center">
-                  <span
-                    className={clsx(
-                      'rounded-full px-3 py-0.5 text-xs font-bold',
-                      node.logic === 'AND'
-                        ? 'bg-indigo-100 text-indigo-600'
-                        : 'bg-emerald-100 text-emerald-600',
-                    )}
-                  >
+                  <span className="text-xs font-medium text-zinc-400">
                     {node.logic}
                   </span>
                 </div>
@@ -165,11 +147,11 @@ const RuleGroupNode = ({
           );
         })}
 
-        <div className="flex items-center gap-2 pt-2">
-          <Button size="small" icon={<PlusOutlined />} onClick={addCondition}>
+        <div className="flex items-center gap-2">
+          <Button icon={<PlusOutlined />} onClick={addCondition}>
             添加条件
           </Button>
-          <Button size="small" icon={<FolderAddOutlined />} onClick={addGroup}>
+          <Button icon={<FolderAddOutlined />} onClick={addGroup}>
             添加条件组
           </Button>
         </div>

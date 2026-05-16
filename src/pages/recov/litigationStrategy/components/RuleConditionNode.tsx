@@ -204,7 +204,6 @@ const RuleConditionNode = ({
             >
               <Button
                 size="small"
-                type="primary"
                 icon={<UploadOutlined />}
                 loading={uploading}
               >
@@ -230,9 +229,9 @@ const RuleConditionNode = ({
   };
 
   return (
-    <div className="group flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2">
+    <div className="grid grid-cols-1 gap-2 rounded-lg border border-solid border-zinc-200 bg-white p-3 md:grid-cols-[160px_160px_minmax(0,1fr)_32px] md:items-start">
       <Select
-        className="!w-28 flex-none"
+        className="w-full"
         placeholder="选择字段"
         value={node.field}
         onChange={handleFieldChange}
@@ -242,7 +241,7 @@ const RuleConditionNode = ({
         }))}
       />
       <Select
-        className="!w-28 flex-none"
+        className="w-full"
         placeholder="选择操作"
         value={node.op}
         onChange={handleOpChange}
@@ -251,15 +250,14 @@ const RuleConditionNode = ({
           label: OPERATOR_LABELS[op],
         }))}
       />
-      <div className="min-w-0 flex-1">{renderValueControl()}</div>
+      <div className="min-w-0">{renderValueControl()}</div>
       <Button
         type="text"
         danger
-        size="small"
         shape="circle"
         aria-label="删除条件"
         icon={<DeleteOutlined />}
-        className="opacity-0 transition-opacity group-hover:opacity-100"
+        className="justify-self-end"
         onClick={onDelete}
       />
     </div>

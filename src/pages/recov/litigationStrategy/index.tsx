@@ -21,7 +21,6 @@ import {
   getLitigationSnapshot,
   type LitigationConfigSnapshot,
   type LitigationTabKey,
-  PAGE_SUB_TITLE,
   PAGE_TITLE,
   TAB_AUTO_COLLECTION,
   TAB_LITIGATION,
@@ -153,26 +152,17 @@ const LitigationStrategyPage = () => {
   }, [autoForm, messageApi]);
 
   return (
-    <PageContainer
-      breadcrumbRender={false}
-      title={PAGE_TITLE}
-      subTitle={PAGE_SUB_TITLE}
-    >
+    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
 
-      <ProCard className="!rounded-2xl">
+      <ProCard>
         <Tabs
           activeKey={activeTab}
           onChange={(key) => setActiveTab(key as LitigationTabKey)}
           items={[
             {
               key: TAB_LITIGATION,
-              label: (
-                <span className="flex items-center gap-1.5 text-sm font-bold">
-                  <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
-                  立案和起诉
-                </span>
-              ),
+              label: '立案和起诉',
               children: (
                 <LitigationConfigPanel
                   form={litigationForm}
@@ -189,12 +179,7 @@ const LitigationStrategyPage = () => {
             },
             {
               key: TAB_AUTO_COLLECTION,
-              label: (
-                <span className="flex items-center gap-1.5 text-sm font-bold">
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                  自动撤诉
-                </span>
-              ),
+              label: '自动撤诉',
               children: (
                 <AutoCollectionPanel
                   form={autoForm}

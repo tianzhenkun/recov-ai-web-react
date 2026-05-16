@@ -13,6 +13,7 @@ import {
 import {
   cloneTemplates,
   type FlowDrawerNode,
+  isDeliveryWayEnabled,
   normalizeVariables,
   normalizeWayId,
 } from './_shared';
@@ -53,20 +54,21 @@ const DEFAULT_TEMPLATES: DeliveryContentTemplates = {
   },
 };
 
-const DELIVERY_DEFAULT_TABS: DeliveryTemplateTabId[] = [
-  'sms',
-  'email',
-  'express',
-  'call',
-];
-
-const statusToEnabled = (value: unknown) =>
-  value === 1 || value === '1' || value === true;
-
 const findWayByTab = (
   wayRows: DeliveryWayListRow[],
   tab: DeliveryTemplateTabId,
 ) => wayRows.find((way) => normalizeWayId(way.nodeId) === tab);
+
+const getEnabledTemplateTabs = (ways: DeliveryWayListRow[]) => {
+  const list: DeliveryTemplateTabId[] = [];
+  for (const way of ways) {
+    const id = normalizeWayId(way.nodeId);
+    if (id && isDeliveryWayEnabled(way) && !list.includes(id)) {
+      list.push(id);
+    }
+  }
+  return list;
+};
 
 const mergeWayIntoTemplates = (
   prev: DeliveryContentTemplates,
@@ -74,7 +76,7 @@ const mergeWayIntoTemplates = (
 ): DeliveryContentTemplates => {
   const tab = normalizeWayId(way.nodeId);
   if (!tab) return prev;
-  const enabled = statusToEnabled(way.status ?? way.enabled);
+  const enabled = isDeliveryWayEnabled(way);
   const base = {
     enabled,
     providerTemplateId: way.providerTemplateId ?? '',
@@ -126,11 +128,6 @@ const getTemplateContent = (
   return templates.call.script;
 };
 
-const getTemplateEnabled = (
-  templates: DeliveryContentTemplates,
-  tab: DeliveryTemplateTabId,
-) => templates[tab].enabled;
-
 const buildSavePayload = (
   templates: DeliveryContentTemplates,
   tab: DeliveryTemplateTabId,
@@ -138,10 +135,7 @@ const buildSavePayload = (
 ) => {
   const common = {
     wayName: templates[tab].wayName || way?.wayName || way?.nodeName,
-    providerTemplateId:
-      templates[tab].providerTemplateId ?? way?.providerTemplateId ?? '',
     sortOrder: templates[tab].sortOrder ?? way?.sortOrder ?? way?.sort ?? null,
-    status: getTemplateEnabled(templates, tab) ? 1 : 0,
   };
   if (tab === 'email') {
     return {
@@ -203,13 +197,14 @@ const DeliveryStrategyPage = () => {
   );
 
   const availableTabs = useMemo<DeliveryTemplateTabId[]>(() => {
-    const list: DeliveryTemplateTabId[] = [];
-    for (const w of wayRows) {
-      const id = normalizeWayId(w.nodeId);
-      if (id && !list.includes(id)) list.push(id);
-    }
-    return list.length > 0 ? list : DELIVERY_DEFAULT_TABS;
+    return getEnabledTemplateTabs(wayRows);
   }, [wayRows]);
+
+  useEffect(() => {
+    if (availableTabs.length > 0 && !availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0]);
+    }
+  }, [activeTab, availableTabs]);
 
   const refreshWays = useCallback(async () => {
     const wayRes = await listDeliveryWay();
@@ -239,14 +234,10 @@ const DeliveryStrategyPage = () => {
         setWayRows(ways);
         setVariables(variableRes.data ?? []);
 
-        const enabledTabs: DeliveryTemplateTabId[] = [];
-        for (const w of ways) {
-          const id = normalizeWayId(w.nodeId);
-          if (id && !enabledTabs.includes(id)) enabledTabs.push(id);
+        const enabledTabs = getEnabledTemplateTabs(ways);
+        if (enabledTabs.length > 0) {
+          setActiveTab(enabledTabs[0]);
         }
-        const tabsToUse =
-          enabledTabs.length > 0 ? enabledTabs : DELIVERY_DEFAULT_TABS;
-        setActiveTab(tabsToUse[0]);
 
         const nextTemplates = buildTemplatesFromWays(ways);
         setTemplates(nextTemplates);
@@ -268,24 +259,14 @@ const DeliveryStrategyPage = () => {
     const current = templatesRef.current;
     const way = findWayByTab(wayRows, activeTab);
     const content = getTemplateContent(current, activeTab).trim();
-    const enabled = getTemplateEnabled(current, activeTab);
-    const providerTemplateId = String(
-      current[activeTab].providerTemplateId ?? '',
-    ).trim();
 
     if (!content) {
       messageApi.warning('内容模板不能为空');
       return false;
     }
-    if (activeTab === 'email' && enabled && !current.email.subject.trim()) {
-      messageApi.warning('邮件启用时必须维护邮件主题');
+    if (activeTab === 'email' && !current.email.subject.trim()) {
+      messageApi.warning('邮件主题不能为空');
       return false;
-    }
-    if ((activeTab === 'sms' || activeTab === 'email') && enabled) {
-      if (!providerTemplateId) {
-        messageApi.warning('短信/邮件启用时必须维护服务商模板 ID');
-        return false;
-      }
     }
 
     setSaving(true);
@@ -357,34 +338,14 @@ const DeliveryStrategyPage = () => {
     );
   };
 
-  const subTitle = `配置不同业务场景下的送达方式优先级，系统按顺序自动尝试送达，共 ${strategyRows.length} 个场景`;
-
   return (
-    <PageContainer
-      breadcrumbRender={false}
-      title="全域送达策略"
-      subTitle={subTitle}
-    >
+    <PageContainer breadcrumbRender={false} title="全域送达策略">
       {messageContextHolder}
       {modalContextHolder}
 
       <div className="flex flex-col gap-4 pb-4">
-        <ProCard>
+        <ProCard title="策略优先级配置">
           <Spin spinning={loading}>
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="text-base font-bold text-slate-900">
-                  策略优先级配置
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  按业务场景维护送达渠道顺序，配置按钮可打开右侧抽屉编排。
-                </div>
-              </div>
-              <span className="inline-flex h-7 items-center rounded-full bg-slate-100 px-3 text-xs font-semibold text-slate-600">
-                {strategyRows.length} 个场景
-              </span>
-            </div>
-
             {strategyRows.length === 0 ? (
               <Empty description="暂无策略数据" />
             ) : (
@@ -413,7 +374,6 @@ const DeliveryStrategyPage = () => {
           variables={templateVariables}
           onSave={handleSaveTemplates}
           modalApi={modalApi}
-          messageApi={messageApi}
         />
       </div>
 

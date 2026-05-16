@@ -1,7 +1,7 @@
 import { SettingOutlined } from '@ant-design/icons';
-import { Button, Tooltip } from 'antd';
+import { Button, Tag, Tooltip } from 'antd';
 import type { DeliveryStrategyRow } from '@/services/ruoyi/delivery';
-import { channelColor, channelIcon, docIcon } from './_shared';
+import { channelIcon, docIcon } from './_shared';
 
 export type StrategyCardProps = {
   row: DeliveryStrategyRow;
@@ -13,26 +13,26 @@ const StrategyCard = ({ row, onConfigure }: StrategyCardProps) => {
   const nodes = row.nodes ?? [];
 
   return (
-    <article className="flex min-h-[152px] w-full min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md">
+    <article className="flex min-h-[152px] w-full min-w-0 flex-col gap-4 rounded-xl border border-solid border-zinc-100 bg-white p-4 transition-shadow hover:shadow-sm">
       <div className="flex items-start gap-3">
-        <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50">
-          <DocIcon style={{ fontSize: 20, color: '#4f46e5' }} />
+        <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-solid border-zinc-200 bg-zinc-50 text-zinc-500">
+          <DocIcon className="text-xl" />
         </span>
         <div className="min-w-0 flex-1">
           <div
-            className="truncate text-base font-bold text-slate-900"
+            className="truncate text-base font-semibold text-zinc-900"
             title={row.deliveryObj}
           >
             {row.deliveryObj}
           </div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-zinc-500">
             {nodes.length} 个节点
           </div>
         </div>
         <Tooltip title="配置流程">
           <Button
             aria-label="配置流程"
-            type="default"
+            type="text"
             shape="circle"
             className="flex-shrink-0"
             icon={<SettingOutlined />}
@@ -50,24 +50,22 @@ const StrategyCard = ({ row, onConfigure }: StrategyCardProps) => {
                 key={`${row.id}-${node.nodeId}`}
                 className="inline-flex items-center"
               >
-                <span className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-[13px] font-semibold text-slate-700">
-                  <ChannelIcon
-                    style={{
-                      fontSize: 14,
-                      color: channelColor(node.nodeName),
-                    }}
-                  />
+                <Tag
+                  variant="outlined"
+                  icon={<ChannelIcon />}
+                  className="!mr-0 !inline-flex !h-8 !items-center !rounded-md !border-zinc-200 !px-2.5 !text-zinc-700"
+                >
                   {node.nodeName}
-                </span>
+                </Tag>
                 {idx < nodes.length - 1 ? (
-                  <span className="mx-1 text-xs text-slate-400">→</span>
+                  <span className="mx-1 text-xs text-zinc-400">→</span>
                 ) : null}
               </span>
             );
           })}
         </div>
       ) : (
-        <div className="flex min-h-[40px] items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 text-[13px] text-slate-500">
+        <div className="flex min-h-[40px] items-center rounded-lg border border-dashed border-zinc-200 px-3 text-[13px] text-zinc-500">
           暂未配置节点
         </div>
       )}

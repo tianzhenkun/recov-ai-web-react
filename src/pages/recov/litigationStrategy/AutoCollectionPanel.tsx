@@ -63,85 +63,57 @@ const AutoCollectionPanel = ({
 
   return (
     <Spin spinning={loading}>
-      <div className="mb-6 flex items-center gap-2">
-        <span className="h-4 w-1.5 rounded-full bg-emerald-500" />
-        <h4 className="text-sm font-extrabold text-gray-800">自动撤诉策略</h4>
-      </div>
-
       <Form
         form={antdForm}
         layout="vertical"
         initialValues={form}
         onValuesChange={handleValuesChange}
-        className="max-w-2xl"
+        className="max-w-4xl"
       >
-        <Form.Item
-          name="collectionAmountLimit"
-          label={
-            <>
-              催收金额 <span className="ml-1 text-gray-500">≤</span>
-            </>
-          }
-          rules={[{ required: true, message: '请输入催收金额上限' }]}
-          extra={<span className="text-[11px] text-gray-400">元</span>}
-        >
-          <InputNumber
-            style={{ width: '100%' }}
-            size="large"
-            min={0}
-            precision={2}
-          />
-        </Form.Item>
+        <div className="grid grid-cols-1 gap-x-6 md:grid-cols-3">
+          <Form.Item
+            name="collectionAmountLimit"
+            label="催收金额 ≤"
+            rules={[{ required: true, message: '请输入催收金额上限' }]}
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              precision={2}
+              suffix="元"
+            />
+          </Form.Item>
 
-        <Form.Item
-          name="returnPrincipalRate"
-          label={
-            <>
-              已归还本金 <span className="ml-1 text-gray-500">≥</span>
-            </>
-          }
-          rules={[{ required: true, message: '请输入日回款本金比例' }]}
-          extra={<span className="text-[11px] text-gray-400">%</span>}
-        >
-          <InputNumber
-            style={{ width: '100%' }}
-            size="large"
-            min={0}
-            max={100}
-          />
-        </Form.Item>
+          <Form.Item
+            name="returnPrincipalRate"
+            label="已归还本金 ≥"
+            rules={[{ required: true, message: '请输入日回款本金比例' }]}
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              max={100}
+              suffix="%"
+            />
+          </Form.Item>
 
-        <Form.Item
-          name="recallDays"
-          label={
-            <>
-              距开庭剩余天数 <span className="ml-1 text-gray-500">≤</span>
-            </>
-          }
-          rules={[{ required: true, message: '请输入距打回账天数' }]}
-          extra={
-            <span className="text-[11px] text-gray-400">
-              天，仍未达到则开庭提诉。
-            </span>
-          }
-        >
-          <InputNumber style={{ width: '100%' }} size="large" min={0} />
-        </Form.Item>
+          <Form.Item
+            name="recallDays"
+            label="距开庭剩余天数 ≤"
+            rules={[{ required: true, message: '请输入距打回账天数' }]}
+          >
+            <InputNumber style={{ width: '100%' }} min={0} suffix="天" />
+          </Form.Item>
+        </div>
       </Form>
 
-      <div className="mt-8 flex justify-end">
-        {dirty ? (
-          <Button
-            type="primary"
-            size="large"
-            className="!rounded-xl !px-8 shadow-md shadow-emerald-200/50"
-            loading={saving}
-            onClick={handleSave}
-          >
+      {dirty ? (
+        <div className="mt-2 flex justify-end">
+          <Button type="primary" loading={saving} onClick={handleSave}>
             保存配置
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </Spin>
   );
 };

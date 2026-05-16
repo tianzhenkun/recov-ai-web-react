@@ -71,9 +71,9 @@
 
 .template-editor-icon-btn-active.ant-btn,
 .template-editor-icon-btn-active.ant-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
-  box-shadow: inset 0 0 0 1px #91caff;
+  background: var(--template-editor-variable-bg, #e6f4ff);
+  color: var(--template-editor-variable-color, #1677ff);
+  box-shadow: inset 0 0 0 1px var(--template-editor-variable-border, #91caff);
 }
 
 .template-editor-body {
@@ -112,10 +112,10 @@
   display: inline-block;
   margin: 0 2px;
   padding: 2px 8px;
-  border: 1px solid #b3d8ff;
+  border: 1px solid var(--template-editor-variable-border, #b3d8ff);
   border-radius: 4px;
-  background: #ecf5ff;
-  color: #1677ff;
+  background: var(--template-editor-variable-bg, #ecf5ff);
+  color: var(--template-editor-variable-color, #1677ff);
   font-size: 13px;
   font-weight: 500;
   user-select: none;
@@ -196,6 +196,6 @@
 }
 
 .template-editor-variable-chip:hover {
-  background: #f5f7fa;
-  color: #1677ff;
+  background: var(--template-editor-variable-bg, #f5f7fa);
+  color: var(--template-editor-variable-color, #1677ff);
 }

@@ -123,13 +123,16 @@ const normalizeWay = (row: Partial<DeliveryWayListRow>): DeliveryWayListRow => {
     normalizeDeliveryWayCode(row.wayCode ?? row.nodeId) ??
     String(row.wayCode ?? row.nodeId ?? '');
   const name = String(row.wayName ?? row.nodeName ?? code);
+  const enabled =
+    toStatus(row.status, row.enabled === false ? 0 : 1) !== 0 &&
+    row.enabled !== false;
   return {
     ...row,
     wayCode: code,
     wayName: name,
     nodeId: code,
     nodeName: name,
-    enabled: row.status !== 0 && row.enabled !== false,
+    enabled,
     sort: row.sortOrder ?? row.sort ?? null,
   };
 };

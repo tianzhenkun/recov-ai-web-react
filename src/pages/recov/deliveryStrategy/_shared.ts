@@ -63,22 +63,17 @@ const CHANNEL_ICON_MAP: Record<string, AntdIcon> = {
 export const channelIcon = (channel: string): AntdIcon =>
   CHANNEL_ICON_MAP[channel] ?? ToolOutlined;
 
-const CHANNEL_COLOR_MAP: Record<string, string> = {
-  sms: '#3b82f6',
-  email: '#8b5cf6',
-  express: '#f59e0b',
-  call: '#10b981',
-  智能短信: '#3b82f6',
-  智能邮件: '#8b5cf6',
-  智能快递: '#f59e0b',
-  电话提醒: '#10b981',
-};
-
-export const channelColor = (channel: string) =>
-  CHANNEL_COLOR_MAP[channel] ?? '#6b7280';
-
 export const normalizeWayId = (id: string): DeliveryTemplateTabId | null =>
   normalizeDeliveryWayCode(id);
+
+export const isDeliveryWayEnabled = (
+  way: Pick<DeliveryWayListRow, 'enabled' | 'status'>,
+) => {
+  const status = (way as { status?: unknown }).status;
+  return (
+    way.enabled !== false && status !== 0 && status !== '0' && status !== false
+  );
+};
 
 export const TEMPLATE_VARS_FALLBACK: TemplateVariable[] = [
   { label: '客户名称', value: 'name' },
@@ -87,36 +82,6 @@ export const TEMPLATE_VARS_FALLBACK: TemplateVariable[] = [
   { label: '企业名称', value: 'organization' },
   { label: '文书链接清单', value: 'documentLinks' },
 ];
-
-export const renderTemplateForDisplay = (
-  content: string,
-  variables: TemplateVariable[],
-) => {
-  const labelMap = new Map(
-    variables.map((item) => [String(item.value).trim(), item.label]),
-  );
-  return String(content ?? '').replace(
-    /\{\{\s*([^{}]+?)\s*\}\}/g,
-    (full, key) => {
-      const label = labelMap.get(String(key).trim());
-      return label ? `{{${label}}}` : full;
-    },
-  );
-};
-
-export const computeSmsBillCount = (charCount: number) => {
-  if (charCount <= 0) return 0;
-  return Math.max(1, Math.ceil(charCount / 70));
-};
-
-export const computePhoneSeconds = (
-  script: string,
-  variables: TemplateVariable[],
-) => {
-  const t = renderTemplateForDisplay(script, variables).trim();
-  if (!t) return 0;
-  return Math.max(1, Math.ceil(t.length / 4));
-};
 
 export const cloneTemplates = (t: DeliveryContentTemplates) =>
   JSON.parse(JSON.stringify(t)) as DeliveryContentTemplates;

@@ -19,13 +19,11 @@ import { buildLayoutMenuData, loadRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
 import {
   AvatarDropdown,
-  DocLink,
   ErrorBoundary,
   Footer,
   LangDropdown,
   OfflineBanner,
   TenantSwitch,
-  VersionDropdown,
 } from '@/components';
 import { getInfo, type UserInfo } from '@/services/ruoyi/user';
 import defaultSettings from '../config/defaultSettings';
@@ -167,8 +165,10 @@ export const layout: RunTimeLayoutConfig = ({
     },
     actionsRender: () => [
       <TenantSwitch key="tenant" />,
-      <DocLink key="doc" />,
-      <VersionDropdown key="version" />,
+      // 使用文档入口暂时隐藏。
+      // <DocLink key="doc" />,
+      // 历史版本入口暂时隐藏。
+      // <VersionDropdown key="version" />,
       <LangDropdown key="lang" />,
     ],
     avatarProps: {

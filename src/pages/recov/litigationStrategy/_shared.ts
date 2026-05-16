@@ -8,7 +8,6 @@ import {
 } from '@/services/ruoyi/litigation';
 
 export const PAGE_TITLE = '诉讼策略配置';
-export const PAGE_SUB_TITLE = '立案起诉与自动撤诉策略配置';
 
 export const TAB_LITIGATION = 'litigation';
 export const TAB_AUTO_COLLECTION = 'autoCollection';

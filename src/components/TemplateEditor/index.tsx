@@ -18,9 +18,15 @@ import {
 import { Underline } from '@tiptap/extension-underline';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
-import { Button, ColorPicker, Popover, Select, Tooltip } from 'antd';
+import { Button, ColorPicker, Popover, Select, Tooltip, theme } from 'antd';
 import clsx from 'clsx';
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+} from 'react';
 import Variable, { buildVariableAttrs } from './extensions/Variable';
 import './templateEditor.css';
 import type {
@@ -102,6 +108,7 @@ const TemplateEditor = ({
   disabled = false,
   className,
 }: TemplateEditorProps) => {
+  const { token } = theme.useToken();
   const resolved: TemplateEditorFeatures = useMemo(
     () => ({ ...DEFAULT_FEATURES, ...(features ?? {}) }),
     [features],
@@ -268,7 +275,16 @@ const TemplateEditor = ({
   })();
 
   const variablePopover = (
-    <div className="template-editor-variable-popover">
+    <div
+      className="template-editor-variable-popover"
+      style={
+        {
+          '--template-editor-variable-bg': token.colorPrimaryBg,
+          '--template-editor-variable-border': token.colorPrimaryBorder,
+          '--template-editor-variable-color': token.colorPrimaryText,
+        } as CSSProperties
+      }
+    >
       <div className="template-editor-variable-title">插入变量</div>
       {variables.length === 0 ? (
         <span className="template-editor-variable-empty">暂无可用变量</span>
@@ -304,7 +320,14 @@ const TemplateEditor = ({
       className={clsx('template-editor', richEmailClass, className, {
         'template-editor-disabled': disabled,
       })}
-      style={{ ['--editor-min-height' as string]: `${height}px` }}
+      style={
+        {
+          '--editor-min-height': `${height}px`,
+          '--template-editor-variable-bg': token.colorPrimaryBg,
+          '--template-editor-variable-border': token.colorPrimaryBorder,
+          '--template-editor-variable-color': token.colorPrimaryText,
+        } as CSSProperties
+      }
     >
       {showToolbar ? (
         <div className="template-editor-toolbar">

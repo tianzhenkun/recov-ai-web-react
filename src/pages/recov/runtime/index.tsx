@@ -1,5 +1,14 @@
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Form, message, Radio, Spin, Switch, TimePicker } from 'antd';
+import {
+  Button,
+  Form,
+  message,
+  Radio,
+  Spin,
+  Switch,
+  Tag,
+  TimePicker,
+} from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -12,11 +21,9 @@ import {
 } from '@/services/ruoyi/runtime';
 import {
   DEFAULT_TIME_FORM,
-  getRunningStatusColor,
   getTimeConfigSnapshot,
   HOLIDAY_POLICY_OPTIONS,
   isTimeConfigDirty,
-  PAGE_SUB_TITLE,
   PAGE_TITLE,
   type TimeConfigSnapshot,
 } from './_shared';
@@ -35,6 +42,13 @@ const timeFieldProps = {
   }),
   getValueFromEvent: (_time: Dayjs | null, timeString: string) =>
     timeString || '',
+};
+
+const statusTagColor = (status: string) => {
+  if (status === '正常运行') return 'green';
+  if (status === '停止所有') return 'red';
+  if (status === '仅停止外呼') return 'volcano';
+  return 'orange';
 };
 
 const RuntimeSettingsPage = () => {
@@ -125,37 +139,34 @@ const RuntimeSettingsPage = () => {
   };
 
   return (
-    <PageContainer
-      breadcrumbRender={false}
-      title={PAGE_TITLE}
-      subTitle={PAGE_SUB_TITLE}
-      extra={
-        runningStatus ? (
-          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2">
-            <span className="text-sm text-gray-500">运行状态：</span>
-            <span
-              className="text-sm font-medium"
-              style={{ color: getRunningStatusColor(runningStatus) }}
-            >
-              {runningStatus}
-            </span>
-          </div>
-        ) : undefined
-      }
-    >
+    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
 
-      <ProCard className="!rounded-2xl">
-        <Spin spinning={loading}>
-          <div className="mb-5 flex items-center gap-2">
-            <span className="h-4 w-1.5 rounded-full bg-indigo-500" />
-            <h3 className="text-base font-bold text-gray-800">
-              AI 智能体工作时间
-            </h3>
+      <ProCard
+        title="AI 智能体工作时间"
+        extra={
+          <div className="flex items-center gap-2">
+            {runningStatus ? (
+              <Tag color={statusTagColor(runningStatus)} variant="filled">
+                {runningStatus}
+              </Tag>
+            ) : null}
+            {dirty ? (
+              <Button type="primary" loading={saving} onClick={handleSave}>
+                保存配置
+              </Button>
+            ) : null}
           </div>
-
-          <Form form={form} layout="vertical" initialValues={DEFAULT_TIME_FORM}>
-            <div className="grid max-w-3xl grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
+        }
+      >
+        <Spin spinning={loading}>
+          <Form
+            form={form}
+            layout="vertical"
+            initialValues={DEFAULT_TIME_FORM}
+            className="max-w-3xl"
+          >
+            <div className="grid grid-cols-1 gap-x-8 gap-y-2 md:grid-cols-2">
               <Form.Item
                 label="外呼运营时段"
                 name="timeEnabled"
@@ -163,7 +174,7 @@ const RuntimeSettingsPage = () => {
                 getValueProps={(value) => ({ checked: value === '1' })}
                 getValueFromEvent={(checked: boolean) => (checked ? '1' : '0')}
               >
-                <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+                <Switch />
               </Form.Item>
 
               {timeEnabled ? (
@@ -207,20 +218,6 @@ const RuntimeSettingsPage = () => {
               </Form.Item>
             </div>
           </Form>
-
-          {dirty ? (
-            <div className="mt-6 flex justify-end">
-              <Button
-                type="primary"
-                size="large"
-                className="!rounded-xl !px-8 shadow-md shadow-indigo-200/50"
-                loading={saving}
-                onClick={handleSave}
-              >
-                保存配置
-              </Button>
-            </div>
-          ) : null}
         </Spin>
       </ProCard>
     </PageContainer>
