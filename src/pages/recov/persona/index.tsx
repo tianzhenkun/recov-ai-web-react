@@ -20,7 +20,6 @@ import {
   Spin,
   Tabs,
   Tooltip,
-  Typography,
   Upload,
 } from 'antd';
 import type { UploadProps } from 'antd/es/upload';
@@ -37,8 +36,6 @@ import {
   type PersonaItem,
   updatePersona,
 } from '@/services/ruoyi/persona';
-
-const { Text, Title } = Typography;
 
 type DetailTabKey = 'classification' | 'traits' | 'dialogue' | 'keyword';
 
@@ -121,6 +118,22 @@ const PersonaPage = () => {
       profileList.find((item) => String(item.id ?? '') === activeTab) ?? null
     );
   }, [activeTab, profileList]);
+
+  const profileTabItems = useMemo(
+    () =>
+      profileList.map((profile) => {
+        const key = String(profile.id ?? '');
+        return {
+          key,
+          label: (
+            <span className="inline-block max-w-[160px] truncate align-bottom">
+              {profile.personaName ?? '-'}
+            </span>
+          ),
+        };
+      }),
+    [profileList],
+  );
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
@@ -261,13 +274,12 @@ const PersonaPage = () => {
   };
 
   return (
-    <PageContainer title="目标群体画像管理">
+    <PageContainer breadcrumbRender={false} title="目标群体画像管理">
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
-        <ProCard
-          title="画像名称"
-          extra={
+        <ProCard className="min-w-0 overflow-hidden">
+          <div className="mb-4 flex justify-end">
             <Space wrap size={8}>
               <Button
                 type="primary"
@@ -323,108 +335,17 @@ const PersonaPage = () => {
                 />
               </Upload>
             </Space>
-          }
-        >
+          </div>
           <Spin spinning={loading}>
             {profileList.length > 0 ? (
-              <div className="flex min-h-[520px] flex-col gap-5 lg:flex-row">
-                <aside className="w-full shrink-0 border-0 border-b border-solid border-zinc-100 pb-4 lg:w-64 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4">
-                  <div
-                    className="flex max-h-[500px] flex-col gap-2 overflow-y-auto pr-1"
-                    style={{
-                      scrollbarWidth: 'thin',
-                      scrollbarColor: 'rgba(0, 0, 0, 0.22) transparent',
-                    }}
-                  >
-                    {profileList.map((profile) => {
-                      const key = String(profile.id ?? '');
-                      const active = key === activeTab;
-                      return (
-                        <button
-                          key={key || profile.personaName}
-                          type="button"
-                          className={`w-full cursor-pointer rounded-md border border-solid px-3 py-2 text-left transition ${
-                            active
-                              ? 'border-blue-200 bg-blue-50 text-blue-600'
-                              : 'border-transparent bg-transparent text-zinc-700 hover:bg-zinc-50'
-                          }`}
-                          onClick={() => handleTabChange(key)}
-                        >
-                          <Text
-                            strong={active}
-                            ellipsis
-                            style={{ color: active ? '#1677ff' : undefined }}
-                          >
-                            {profile.personaName ?? '-'}
-                          </Text>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </aside>
-
-                <section className="min-w-0 flex-1">
-                  {selectedProfile ? (
-                    <div>
-                      <div className="mb-4 flex items-center justify-between border-0 border-b border-solid border-zinc-100 pb-3">
-                        <div className="min-w-0">
-                          <Title level={5} className="!mb-0">
-                            画像配置详情
-                          </Title>
-                        </div>
-                        <Space size={4}>
-                          <Tooltip title="编辑">
-                            <Button
-                              type="text"
-                              shape="circle"
-                              aria-label="编辑"
-                              icon={<EditOutlined />}
-                              onClick={() => void openEdit(selectedProfile)}
-                            />
-                          </Tooltip>
-                          <Tooltip title="删除">
-                            <Button
-                              type="text"
-                              shape="circle"
-                              danger
-                              aria-label="删除"
-                              icon={<DeleteOutlined />}
-                              onClick={() => confirmDelete(selectedProfile)}
-                            />
-                          </Tooltip>
-                        </Space>
-                      </div>
-                      <Tabs
-                        activeKey={activeDetailTab}
-                        onChange={(k) => setActiveDetailTab(k as DetailTabKey)}
-                        items={DETAIL_TAB_ITEMS.map((tab) => {
-                          const md =
-                            tab.key === 'classification'
-                              ? selectedProfile.classification
-                              : tab.key === 'traits'
-                                ? selectedProfile.traits
-                                : tab.key === 'dialogue'
-                                  ? selectedProfile.dialogue
-                                  : selectedProfile.keyword;
-                          return {
-                            key: tab.key,
-                            label: tab.label,
-                            children: (
-                              <div className="min-h-[360px] rounded-md bg-zinc-50 p-4 text-sm leading-relaxed text-zinc-700">
-                                <XMarkdown>{String(md ?? '')}</XMarkdown>
-                              </div>
-                            ),
-                          };
-                        })}
-                      />
-                    </div>
-                  ) : (
-                    <div className="pb-4 pt-6">
-                      <Empty description="请选择画像类型" />
-                    </div>
-                  )}
-                </section>
-              </div>
+              <Tabs
+                activeKey={activeTab}
+                items={profileTabItems}
+                more={{ trigger: 'click' }}
+                onChange={handleTabChange}
+                tabBarStyle={{ marginBottom: 0 }}
+                style={{ maxWidth: '100%' }}
+              />
             ) : (
               <div className="pb-4 pt-6">
                 <Empty description="暂无画像数据" />
@@ -432,6 +353,70 @@ const PersonaPage = () => {
             )}
           </Spin>
         </ProCard>
+
+        {profileList.length > 0 ? (
+          <ProCard
+            className="min-w-0"
+            title="画像配置详情"
+            extra={
+              selectedProfile ? (
+                <Space size={4}>
+                  <Tooltip title="编辑">
+                    <Button
+                      type="text"
+                      shape="circle"
+                      aria-label="编辑"
+                      icon={<EditOutlined />}
+                      onClick={() => void openEdit(selectedProfile)}
+                    />
+                  </Tooltip>
+                  <Tooltip title="删除">
+                    <Button
+                      type="text"
+                      shape="circle"
+                      danger
+                      aria-label="删除"
+                      icon={<DeleteOutlined />}
+                      onClick={() => confirmDelete(selectedProfile)}
+                    />
+                  </Tooltip>
+                </Space>
+              ) : null
+            }
+          >
+            <Spin spinning={loading}>
+              {selectedProfile ? (
+                <Tabs
+                  activeKey={activeDetailTab}
+                  onChange={(k) => setActiveDetailTab(k as DetailTabKey)}
+                  items={DETAIL_TAB_ITEMS.map((tab) => {
+                    const md =
+                      tab.key === 'classification'
+                        ? selectedProfile.classification
+                        : tab.key === 'traits'
+                          ? selectedProfile.traits
+                          : tab.key === 'dialogue'
+                            ? selectedProfile.dialogue
+                            : selectedProfile.keyword;
+                    return {
+                      key: tab.key,
+                      label: tab.label,
+                      children: (
+                        <div className="min-h-[360px] rounded-md bg-zinc-50 p-4 text-sm leading-relaxed text-zinc-700">
+                          <XMarkdown>{String(md ?? '')}</XMarkdown>
+                        </div>
+                      ),
+                    };
+                  })}
+                />
+              ) : (
+                <div className="pb-4 pt-6">
+                  <Empty description="请选择画像类型" />
+                </div>
+              )}
+            </Spin>
+          </ProCard>
+        ) : null}
       </div>
 
       <Modal

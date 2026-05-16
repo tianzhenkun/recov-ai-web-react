@@ -195,7 +195,11 @@ const FeeConfigPage = () => {
   }, [currentAmountRangeType]);
 
   return (
-    <PageContainer title={PAGE_TITLE} subTitle={PAGE_SUB_TITLE}>
+    <PageContainer
+      breadcrumbRender={false}
+      title={PAGE_TITLE}
+      subTitle={PAGE_SUB_TITLE}
+    >
       {messageContextHolder}
       {modalContextHolder}
 

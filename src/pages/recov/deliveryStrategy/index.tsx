@@ -360,7 +360,11 @@ const DeliveryStrategyPage = () => {
   const subTitle = `配置不同业务场景下的送达方式优先级，系统按顺序自动尝试送达，共 ${strategyRows.length} 个场景`;
 
   return (
-    <PageContainer title="全域送达策略" subTitle={subTitle}>
+    <PageContainer
+      breadcrumbRender={false}
+      title="全域送达策略"
+      subTitle={subTitle}
+    >
       {messageContextHolder}
       {modalContextHolder}
 

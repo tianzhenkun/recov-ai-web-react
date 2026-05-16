@@ -247,7 +247,7 @@ const SmartSealConfigPage = () => {
   }, [drawerState, sealDataMap]);
 
   return (
-    <PageContainer title="智能盖章配置">
+    <PageContainer breadcrumbRender={false} title="智能盖章配置">
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">

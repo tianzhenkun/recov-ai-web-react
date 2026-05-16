@@ -427,7 +427,7 @@ const VoiceEngineConfigPage = () => {
   };
 
   return (
-    <PageContainer title="语音引擎配置">
+    <PageContainer breadcrumbRender={false} title="语音引擎配置">
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">

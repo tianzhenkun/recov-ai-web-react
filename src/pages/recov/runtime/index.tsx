@@ -126,6 +126,7 @@ const RuntimeSettingsPage = () => {
 
   return (
     <PageContainer
+      breadcrumbRender={false}
       title={PAGE_TITLE}
       subTitle={PAGE_SUB_TITLE}
       extra={
