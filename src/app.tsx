@@ -1,4 +1,4 @@
-import { LinkOutlined } from '@ant-design/icons';
+import { GlobalOutlined } from '@ant-design/icons';
 import type {
   Settings as LayoutSettings,
   MenuDataItem,
@@ -31,7 +31,6 @@ import { getInfo, type UserInfo } from '@/services/ruoyi/user';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
-const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
@@ -212,14 +211,17 @@ export const layout: RunTimeLayoutConfig = ({
         width: '331px',
       },
     ],
-    links: isDev
-      ? [
-          <Link key="openapi" to="/umi/plugin/openapi" target="_blank">
-            <LinkOutlined />
-            <span>OpenAPI 文档</span>
-          </Link>,
-        ]
-      : [],
+    links: [
+      <a
+        href="https://lingchen-ai.com/"
+        key="lingchen-website"
+        rel="noreferrer"
+        target="_blank"
+      >
+        <GlobalOutlined />
+        <span>灵宸官网</span>
+      </a>,
+    ],
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
     // so chunk load errors show friendly messages instead of "Something went wrong."
     ErrorBoundary,

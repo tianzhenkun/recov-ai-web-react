@@ -192,7 +192,7 @@ const LoginMessage: React.FC<{
       style={{
         marginBottom: 24,
       }}
-      message={content}
+      title={content}
       type="error"
       showIcon
     />
@@ -379,10 +379,11 @@ const Login: React.FC = () => {
           contentStyle={{
             minWidth: 280,
             maxWidth: '75vw',
+            marginTop: 72,
           }}
-          logo={<img alt="logo" src="/logo.svg" />}
-          title={Settings.title || 'Recov AI'}
-          subTitle="请输入账号信息登录系统"
+          logo={<img alt="灵宸智能" src="/brand/lingchen-icon.png" />}
+          title={Settings.title || 'Recov Agent'}
+          subTitle={false}
           initialValues={getInitialLoginValues()}
           onFinish={handleSubmit}
         >
