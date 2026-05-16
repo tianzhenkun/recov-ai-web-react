@@ -3,8 +3,11 @@ import {
   FieldTimeOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
+import { ProCard } from '@ant-design/pro-components';
+import { Space, Tooltip, Typography, theme } from 'antd';
+import type { ReactNode } from 'react';
 import type { ServiceFeeStatistics } from '@/services/ruoyi/settle';
-import { formatCurrencyDisplay } from './_shared';
+import { formatCompactCurrencyDisplay, formatCurrencyDisplay } from './_shared';
 
 export type StatisticsCardType = 'unpaid' | 'currentWeek' | 'difference';
 
@@ -13,114 +16,120 @@ export type StatisticsCardsProps = {
   onCardClick: (type: StatisticsCardType) => void;
 };
 
+type MetricCard = {
+  type: StatisticsCardType;
+  label: string;
+  value: unknown;
+  icon: ReactNode;
+  color: string;
+  extra?: {
+    label: string;
+    value: unknown;
+  }[];
+};
+
+const { Text } = Typography;
+
+const cardStyles = {
+  body: {
+    padding: 14,
+  },
+};
+
 const StatisticsCards = ({ statistics, onCardClick }: StatisticsCardsProps) => {
+  const { token } = theme.useToken();
+
+  const cards: MetricCard[] = [
+    {
+      type: 'unpaid',
+      label: '未支付服务费',
+      value: statistics.unpaidServiceFeeTotal,
+      icon: <WalletOutlined />,
+      color: token.colorPrimary,
+    },
+    {
+      type: 'currentWeek',
+      label: '本周服务费',
+      value: statistics.currentWeekServiceFee,
+      icon: <BarChartOutlined />,
+      color: token.colorSuccess,
+      extra: [
+        {
+          label: '本周回款',
+          value: statistics.currentWeekRepayment,
+        },
+      ],
+    },
+    {
+      type: 'difference',
+      label: '对账差异',
+      value: statistics.processedDifferenceAmount,
+      icon: <FieldTimeOutlined />,
+      color: token.colorWarning,
+      extra: [
+        {
+          label: '服务费',
+          value: statistics.processedDifferenceServiceFee,
+        },
+      ],
+    },
+  ];
+
   return (
-    <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-3">
-      <button
-        type="button"
-        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-        onClick={() => onCardClick('unpaid')}
-      >
-        <div className="relative z-10 flex items-center justify-between">
-          <div>
-            <div className="mb-1 text-xs font-medium tracking-wider text-gray-500">
-              未支付服务费总计
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {cards.map((card) => (
+        <ProCard key={card.type} size="small" styles={cardStyles}>
+          <button
+            type="button"
+            className="flex min-h-[88px] w-full cursor-pointer flex-col justify-between gap-3 text-left"
+            onClick={() => onCardClick(card.type)}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Space align="center" size={8}>
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
+                  style={{
+                    color: card.color,
+                    backgroundColor: `${card.color}14`,
+                  }}
+                  aria-hidden
+                >
+                  {card.icon}
+                </span>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, lineHeight: 1.3 }}
+                >
+                  {card.label}
+                </Text>
+              </Space>
             </div>
-            <div className="text-3xl font-extrabold tracking-tight text-gray-900">
-              {formatCurrencyDisplay(statistics.unpaidServiceFeeTotal)}
-            </div>
-          </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 transition-transform group-hover:scale-110">
-            <WalletOutlined className="text-2xl text-indigo-600" />
-          </div>
-        </div>
-        <div className="relative z-10 mt-4 flex items-center gap-1.5 text-[11px] font-medium text-indigo-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-          点击查看详情
-        </div>
-        <div
-          className="absolute -bottom-6 -right-6 h-32 w-32 rounded-full opacity-10 transition-transform duration-500 group-hover:scale-150"
-          style={{
-            background: 'radial-gradient(circle, #4F46E5 0%, transparent 70%)',
-          }}
-          aria-hidden
-        />
-      </button>
 
-      <button
-        type="button"
-        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-        onClick={() => onCardClick('currentWeek')}
-      >
-        <div className="relative z-10 flex items-center justify-between">
-          <div>
-            <div className="mb-1 text-xs font-medium tracking-wider text-gray-500">
-              本周已产生服务费
-            </div>
-            <div className="text-3xl font-extrabold tracking-tight text-gray-900">
-              {formatCurrencyDisplay(statistics.currentWeekServiceFee)}
-            </div>
-          </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 transition-transform group-hover:scale-110">
-            <BarChartOutlined className="text-2xl text-emerald-500" />
-          </div>
-        </div>
-        <div className="relative z-10 mt-4 flex items-center justify-between">
-          <span className="text-[11px] font-medium text-gray-500">
-            本周回款
-          </span>
-          <span className="text-[11px] font-bold text-gray-900">
-            {formatCurrencyDisplay(statistics.currentWeekRepayment)}
-          </span>
-        </div>
-        <div
-          className="absolute -bottom-6 -right-6 h-32 w-32 rounded-full opacity-10 transition-transform duration-500 group-hover:scale-150"
-          style={{
-            background: 'radial-gradient(circle, #10B981 0%, transparent 70%)',
-          }}
-          aria-hidden
-        />
-      </button>
+            <Tooltip title={formatCurrencyDisplay(card.value)}>
+              <Text strong style={{ fontSize: 22, lineHeight: 1.2 }}>
+                {formatCompactCurrencyDisplay(card.value)}
+              </Text>
+            </Tooltip>
 
-      <button
-        type="button"
-        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-        onClick={() => onCardClick('difference')}
-      >
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="text-xs font-medium tracking-wider text-gray-500">
-            已处理对账差异汇总
-          </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 transition-transform group-hover:scale-110">
-            <FieldTimeOutlined className="text-2xl text-amber-500" />
-          </div>
-        </div>
-        <div className="relative z-10 mt-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-gray-500">
-              差异金额
-            </span>
-            <span className="text-sm font-bold text-gray-900">
-              {formatCurrencyDisplay(statistics.processedDifferenceAmount)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-gray-500">
-              服务费
-            </span>
-            <span className="text-sm font-bold text-gray-900">
-              {formatCurrencyDisplay(statistics.processedDifferenceServiceFee)}
-            </span>
-          </div>
-        </div>
-        <div
-          className="absolute -bottom-6 -right-6 h-32 w-32 rounded-full opacity-10 transition-transform duration-500 group-hover:scale-150"
-          style={{
-            background: 'radial-gradient(circle, #F59E0B 0%, transparent 70%)',
-          }}
-          aria-hidden
-        />
-      </button>
+            {card.extra?.length ? (
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {card.extra.map((item) => (
+                  <Space key={item.label} size={4}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {item.label}
+                    </Text>
+                    <Tooltip title={formatCurrencyDisplay(item.value)}>
+                      <Text strong style={{ fontSize: 12 }}>
+                        {formatCompactCurrencyDisplay(item.value)}
+                      </Text>
+                    </Tooltip>
+                  </Space>
+                ))}
+              </div>
+            ) : null}
+          </button>
+        </ProCard>
+      ))}
     </div>
   );
 };

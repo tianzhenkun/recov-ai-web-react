@@ -1,8 +1,9 @@
-import { ClockCircleOutlined, TeamOutlined } from '@ant-design/icons';
+import { EditOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Modal, message, Spin, Switch, Table } from 'antd';
+import { Modal, message, Segmented, Table, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import TableActions from '@/components/TableActions';
 import {
   type AmountRangeType,
   batchUpdateFeeRates,
@@ -15,15 +16,16 @@ import {
   AMOUNT_RANGES,
   type FeeTableRow,
   flattenFeeMatrix,
+  formatFeeRate,
   getCurrentRangeLabel,
   getFeeRate,
   getRowKey,
-  PAGE_SUB_TITLE,
   PAGE_TITLE,
 } from './_shared';
 import FeeEditModal, { type FeeEditFormState } from './FeeEditModal';
 
 const FeeConfigPage = () => {
+  const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
 
@@ -41,6 +43,29 @@ const FeeConfigPage = () => {
   const tableData = useMemo(
     () => flattenFeeMatrix(matrixData?.matrix ?? []),
     [matrixData],
+  );
+
+  const amountRangeOptions = useMemo(
+    () =>
+      AMOUNT_RANGES.map((range) => ({
+        label: (
+          <span
+            className="inline-flex min-w-[88px] justify-center px-1"
+            style={{
+              color:
+                currentAmountRangeType === range.type
+                  ? token.colorPrimary
+                  : undefined,
+              fontWeight: currentAmountRangeType === range.type ? 600 : 400,
+            }}
+          >
+            {range.switchLabel}
+          </span>
+        ),
+        tooltip: range.label,
+        value: range.type,
+      })),
+    [currentAmountRangeType, token.colorPrimary],
   );
 
   const fetchMatrix = useCallback(async () => {
@@ -138,17 +163,19 @@ const FeeConfigPage = () => {
       title: range.label,
       key: range.type,
       width: 140,
-      align: 'center' as const,
+      align: 'right' as const,
       render: (_: unknown, row: FeeTableRow) => (
-        <span
-          className={
+        <Typography.Text
+          strong={currentAmountRangeType === range.type}
+          style={
             currentAmountRangeType === range.type
-              ? 'text-lg font-semibold text-indigo-600'
-              : 'text-lg font-semibold text-gray-300'
+              ? { color: token.colorPrimary }
+              : undefined
           }
+          type={currentAmountRangeType === range.type ? undefined : 'secondary'}
         >
-          {getFeeRate(row, range.type)}%
-        </span>
+          {formatFeeRate(getFeeRate(row, range.type))}
+        </Typography.Text>
       ),
     }));
 
@@ -156,94 +183,83 @@ const FeeConfigPage = () => {
       {
         title: '对应城市层级',
         dataIndex: 'tierName',
-        width: 120,
+        width: 150,
         fixed: 'left',
-        align: 'center',
         render: (tierName: string) => (
-          <span className="inline-flex items-center justify-center gap-2 font-medium">
-            <TeamOutlined className="text-indigo-500" />
-            {tierName}
-          </span>
+          <Typography.Text>{tierName}</Typography.Text>
         ),
       },
       {
         title: '逾期账龄',
         dataIndex: 'periodName',
-        minWidth: 150,
-        align: 'center',
+        minWidth: 180,
         render: (periodName: string) => (
-          <span className="inline-flex items-center gap-2">
-            <ClockCircleOutlined className="text-gray-400" />
-            {periodName}
-          </span>
+          <Typography.Text>{periodName}</Typography.Text>
         ),
       },
       ...rangeColumns,
       {
         title: '操作',
         key: 'action',
-        width: 100,
+        width: 88,
         fixed: 'right',
         align: 'center',
         render: (_: unknown, row: FeeTableRow) => (
-          <Button type="link" onClick={() => openEditDialog(row)}>
-            修改规则
-          </Button>
+          <TableActions
+            maxVisible={1}
+            actions={[
+              {
+                key: 'edit',
+                label: '修改规则',
+                icon: <EditOutlined />,
+                onClick: () => openEditDialog(row),
+              },
+            ]}
+          />
         ),
       },
     ];
-  }, [currentAmountRangeType]);
+  }, [currentAmountRangeType, token.colorPrimary]);
 
   return (
-    <PageContainer
-      breadcrumbRender={false}
-      title={PAGE_TITLE}
-      subTitle={PAGE_SUB_TITLE}
-    >
+    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
       {modalContextHolder}
 
-      <ProCard className="!rounded-2xl">
-        <Spin spinning={loading}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-            <span className="text-sm font-medium text-gray-700">逾期账龄</span>
-            <div className="flex flex-wrap items-center gap-8">
-              {AMOUNT_RANGES.map((range) => (
-                <div
-                  key={range.type}
-                  className="flex cursor-pointer items-center gap-2"
-                >
-                  <Switch
-                    checked={currentAmountRangeType === range.type}
-                    onChange={(checked) => {
-                      if (checked) handleRangeSwitch(range);
-                    }}
-                    aria-label={range.label}
-                  />
-                  <span
-                    className={
-                      currentAmountRangeType === range.type
-                        ? 'text-sm font-medium text-indigo-600'
-                        : 'text-sm text-gray-400'
-                    }
-                  >
-                    {range.label}
-                  </span>
-                </div>
-              ))}
-              <span className="w-12 text-sm text-gray-500">操作</span>
-            </div>
+      <ProCard title="服务费费率矩阵">
+        <div
+          className="mb-4 flex flex-col gap-3 rounded-lg border border-solid px-4 py-3 md:flex-row md:items-center md:justify-between"
+          style={{
+            backgroundColor: token.colorFillAlter,
+            borderColor: token.colorBorderSecondary,
+          }}
+        >
+          <Typography.Text strong>金额区间</Typography.Text>
+          <div className="w-full md:w-auto">
+            <Segmented
+              block
+              shape="round"
+              size="large"
+              value={currentAmountRangeType}
+              options={amountRangeOptions}
+              onChange={(value) => {
+                const next = AMOUNT_RANGES.find(
+                  (range) => range.type === value,
+                );
+                if (next) handleRangeSwitch(next);
+              }}
+            />
           </div>
-
-          <Table<FeeTableRow>
-            rowKey={getRowKey}
-            bordered
-            pagination={false}
-            scroll={{ x: 900 }}
-            dataSource={tableData}
-            columns={columns}
-          />
-        </Spin>
+        </div>
+        <Table<FeeTableRow>
+          rowKey={getRowKey}
+          loading={loading}
+          pagination={false}
+          scroll={{ x: 900 }}
+          size="middle"
+          dataSource={tableData}
+          columns={columns}
+        />
       </ProCard>
 
       <FeeEditModal

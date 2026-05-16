@@ -49,7 +49,7 @@ const PaySettlementModal = ({
       open={open}
       width={500}
       destroyOnHidden
-      maskClosable={false}
+      mask={{ closable: false }}
       onCancel={onCancel}
       footer={
         <div className="flex justify-end gap-3 px-4 pb-4">

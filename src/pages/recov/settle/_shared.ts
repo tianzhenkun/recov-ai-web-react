@@ -1,5 +1,4 @@
 export const PAGE_TITLE = '服务费结算';
-export const PAGE_SUB_TITLE = '服务费周期性结算和缴费管理';
 
 export const DEFAULT_PAGE_SIZE = 10;
 
@@ -20,6 +19,10 @@ const currencyFormatter = new Intl.NumberFormat('zh-CN', {
   maximumFractionDigits: 2,
 });
 
+const compactCurrencyFormatter = new Intl.NumberFormat('zh-CN', {
+  maximumFractionDigits: 2,
+});
+
 export const toNumber = (value: unknown): number => {
   if (value === null || value === undefined || value === '') return 0;
   const parsed = Number(value);
@@ -31,6 +34,21 @@ export const formatAmount = (value: unknown): string =>
 
 export const formatCurrencyDisplay = (value: unknown): string =>
   `¥${formatAmount(value)}`;
+
+export const formatCompactCurrencyDisplay = (value: unknown): string => {
+  const amount = toNumber(value);
+  const absAmount = Math.abs(amount);
+
+  if (absAmount >= 100000000) {
+    return `¥${compactCurrencyFormatter.format(amount / 100000000)}亿`;
+  }
+
+  if (absAmount >= 10000) {
+    return `¥${compactCurrencyFormatter.format(amount / 10000)}万`;
+  }
+
+  return formatCurrencyDisplay(amount);
+};
 
 export const getSettlementStatusTag = (status: string): SettlementStatusTag => {
   switch (status) {
@@ -56,12 +74,36 @@ export const buildRangeText = (
   return `显示 ${start} 到 ${end} 条，共 ${total} 条`;
 };
 
+const withDateTimeBoundary = (
+  value: string,
+  boundary: 'start' | 'end',
+): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  if (/\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed}:00`;
+  }
+
+  return `${trimmed} ${boundary === 'start' ? '00:00:00' : '23:59:59'}`;
+};
+
 export const parsePeriodRange = (
   period: string,
 ): { startTime: string; endTime: string } => {
-  const parts = period.split('~').map((s) => s.trim());
+  const parts = period.split(/[~～]/).map((s) => s.trim());
   if (parts.length === 2) {
-    return { startTime: parts[0], endTime: parts[1] };
+    return {
+      startTime: withDateTimeBoundary(parts[0], 'start'),
+      endTime: withDateTimeBoundary(parts[1], 'end'),
+    };
   }
-  return { startTime: period, endTime: period };
+  return {
+    startTime: withDateTimeBoundary(period, 'start'),
+    endTime: withDateTimeBoundary(period, 'end'),
+  };
 };

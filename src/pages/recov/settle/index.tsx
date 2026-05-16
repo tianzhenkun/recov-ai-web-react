@@ -1,4 +1,4 @@
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { PageContainer } from '@ant-design/pro-components';
 import { message } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -18,7 +18,6 @@ import {
 import {
   buildRangeText,
   DEFAULT_PAGE_SIZE,
-  PAGE_SUB_TITLE,
   PAGE_TITLE,
   parsePeriodRange,
   type SettleActiveView,
@@ -200,16 +199,6 @@ const ServiceFeeSettlePage = () => {
     }
   }, [activeView, fetchDifferenceDetails]);
 
-  const settlementRangeText = useMemo(
-    () =>
-      buildRangeText(
-        settlementQuery.pageNum ?? 1,
-        settlementQuery.pageSize ?? DEFAULT_PAGE_SIZE,
-        settlementTotal,
-      ),
-    [settlementQuery, settlementTotal],
-  );
-
   const currentWeekRangeText = useMemo(
     () =>
       buildRangeText(
@@ -369,23 +358,18 @@ const ServiceFeeSettlePage = () => {
   };
 
   return (
-    <PageContainer
-      breadcrumbRender={false}
-      title={PAGE_TITLE}
-      subTitle={PAGE_SUB_TITLE}
-    >
+    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
 
       <StatisticsCards statistics={statistics} onCardClick={handleCardClick} />
 
-      <ProCard className="overflow-hidden !rounded-2xl !p-0">
+      <div className="mt-4">
         {activeView === 'settlement' ? (
           <SettlementTableView
             loading={loadingSettlements}
             list={settlementList}
             total={settlementTotal}
             query={settlementQuery}
-            rangeText={settlementRangeText}
             onQueryChange={setSettlementQuery}
             onSearch={querySettlements}
             onReset={resetSettlementQuery}
@@ -423,7 +407,7 @@ const ServiceFeeSettlePage = () => {
             onReset={resetDifferenceQuery}
           />
         ) : null}
-      </ProCard>
+      </div>
 
       <SettlementDetailModal
         open={detailOpen}

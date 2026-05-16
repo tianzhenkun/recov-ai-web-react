@@ -48,7 +48,7 @@ const FeeEditModal = ({
         open={open}
         width={480}
         destroyOnHidden
-        maskClosable={false}
+        mask={{ closable: false }}
         onCancel={onCancel}
         footer={null}
       />
@@ -61,7 +61,7 @@ const FeeEditModal = ({
       open={open}
       width={480}
       destroyOnHidden
-      maskClosable={false}
+      mask={{ closable: false }}
       onCancel={onCancel}
       footer={
         <div className="flex justify-end gap-3">
