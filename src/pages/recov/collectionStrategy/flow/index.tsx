@@ -1,13 +1,17 @@
 import {
+  CheckOutlined,
   DeleteOutlined,
   HolderOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import {
   Button,
+  Collapse,
+  Drawer,
   Empty,
   Form,
   InputNumber,
@@ -53,9 +57,11 @@ import {
   validateStrategySteps,
 } from '../_shared';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type PersonaId = string | number;
+
+const mockStandardTemplateNodeCodes = ['ai_call', 'corp_letter', 'law_letter'];
 
 type SelectedNodeForm = {
   aiRole: AiCallRole | '';
@@ -81,6 +87,8 @@ const CollectionStrategyFlowEditor = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [nodeDrawerOpen, setNodeDrawerOpen] = useState(false);
+  const [selectedNodeCodes, setSelectedNodeCodes] = useState<string[]>([]);
   const [personaList, setPersonaList] = useState<PersonaItem[]>([]);
   const [activePersonaId, setActivePersonaId] = useState<PersonaId | null>(
     null,
@@ -314,10 +322,57 @@ const CollectionStrategyFlowEditor = () => {
     applySelectedNodeData({ params: { sealId } });
   };
 
-  const addNode = (nodeCode: string) => {
-    const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
+  const openNodeDrawer = () => {
+    setSelectedNodeCodes([]);
+    setNodeDrawerOpen(true);
+  };
+
+  const closeNodeDrawer = () => {
+    setNodeDrawerOpen(false);
+    setSelectedNodeCodes([]);
+  };
+
+  const toggleSelectedNodeCode = (nodeCode: string, checked: boolean) => {
+    setSelectedNodeCodes((prev) => {
+      if (checked) {
+        return prev.includes(nodeCode) ? prev : [...prev, nodeCode];
+      }
+      return prev.filter((item) => item !== nodeCode);
+    });
+  };
+
+  const addSelectedNodes = () => {
+    if (selectedNodeCodes.length === 0) return;
     setDraftSteps((prev) => {
-      const newStep = normalizeStep(
+      const next = [...prev];
+      let lastStepId: string | null = null;
+      selectedNodeCodes.forEach((nodeCode, offset) => {
+        const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
+        const newStep = normalizeStep(
+          flowModuleMap,
+          {
+            id: createStepId(),
+            nodeCode,
+            identity: meta.defaultIdentity,
+            config: defaultStepConfig,
+            params: buildDefaultNodeParams(nodeCode, meta.defaultIdentity),
+          },
+          prev.length + offset,
+        );
+        next.push(newStep);
+        lastStepId = newStep.id;
+      });
+      setSelectedNodeId(lastStepId);
+      return next;
+    });
+    markDirty();
+    closeNodeDrawer();
+  };
+
+  const buildMockStandardTemplateSteps = () =>
+    mockStandardTemplateNodeCodes.map((nodeCode, idx) => {
+      const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
+      return normalizeStep(
         flowModuleMap,
         {
           id: createStepId(),
@@ -326,13 +381,23 @@ const CollectionStrategyFlowEditor = () => {
           config: defaultStepConfig,
           params: buildDefaultNodeParams(nodeCode, meta.defaultIdentity),
         },
-        prev.length,
+        idx,
       );
-      const next = [...prev, newStep];
-      setSelectedNodeId(newStep.id);
-      return next;
     });
-    markDirty();
+
+  const applyMockStandardTemplate = () => {
+    modalApi.confirm({
+      title: '使用标准模板',
+      content: '当前流程草稿会被标准模板替换，保存后才会生效。',
+      okText: '使用模板',
+      cancelText: '取消',
+      onOk: () => {
+        const nextSteps = buildMockStandardTemplateSteps();
+        setDraftSteps(nextSteps);
+        setSelectedNodeId(nextSteps[0]?.id ?? null);
+        markDirty();
+      },
+    });
   };
 
   const removeNode = (idx: number) => {
@@ -504,90 +569,118 @@ const CollectionStrategyFlowEditor = () => {
       <div className="h-0.5 w-full" />
     );
 
+  const renderNodeLibrary = () => (
+    <div className="grid grid-cols-1 gap-2">
+      {availableModules.map((module) => {
+        const IconCmp = getFlowIconComponent(module.icon);
+        const checked = selectedNodeCodes.includes(module.code);
+        return (
+          <button
+            key={module.code}
+            type="button"
+            aria-pressed={checked}
+            className={`flex w-full items-center gap-4 rounded-lg border border-solid p-3.5 text-left transition-colors ${
+              checked
+                ? 'border-blue-300 bg-blue-50/60'
+                : 'border-zinc-100 bg-white hover:border-blue-200 hover:bg-blue-50/30'
+            }`}
+            onClick={() => toggleSelectedNodeCode(module.code, !checked)}
+          >
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
+              style={{ backgroundColor: module.bgColor }}
+            >
+              <IconCmp
+                style={
+                  {
+                    color: module.iconColor,
+                    fontSize: 20,
+                  } as React.CSSProperties
+                }
+              />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-800">
+              {module.label}
+            </span>
+            <span
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-solid text-xs transition-colors ${
+                checked
+                  ? 'border-blue-500 bg-blue-500 text-white'
+                  : 'border-zinc-200 bg-white text-transparent'
+              }`}
+            >
+              <CheckOutlined />
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <PageContainer
-      title="催收流程编排"
-      onBack={exitEditor}
-      extra={[
-        <Button
-          key="save"
-          type="primary"
-          loading={saving}
-          onClick={() => void saveFlowEditor()}
-        >
-          保存策略
-        </Button>,
-      ]}
-    >
+    <PageContainer title="流程编排" onBack={exitEditor}>
       {messageContextHolder}
       {modalContextHolder}
+      <Drawer
+        destroyOnHidden
+        title="添加节点"
+        open={nodeDrawerOpen}
+        size={360}
+        onClose={closeNodeDrawer}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button onClick={closeNodeDrawer}>取消</Button>
+            <Button
+              type="primary"
+              disabled={selectedNodeCodes.length === 0}
+              onClick={addSelectedNodes}
+            >
+              {selectedNodeCodes.length > 0
+                ? `添加 ${selectedNodeCodes.length} 个节点`
+                : '添加节点'}
+            </Button>
+          </div>
+        }
+      >
+        {renderNodeLibrary()}
+      </Drawer>
       <Spin spinning={loading}>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_340px]">
-          <ProCard
-            title={
-              <div>
-                <div className="text-sm font-semibold">节点库</div>
-                <div className="text-xs text-zinc-500">
-                  点击后追加到流程末尾
-                </div>
-              </div>
-            }
-            extra={
-              <span className="inline-flex h-6 min-w-[28px] items-center justify-center rounded-full bg-blue-50 px-2 text-xs font-semibold text-blue-600">
-                {availableModules.length}
-              </span>
-            }
-          >
-            <div className="flex flex-col gap-2">
-              {availableModules.map((module) => {
-                const IconCmp = getFlowIconComponent(module.icon);
-                return (
-                  <button
-                    key={module.code}
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-xl border border-solid border-zinc-100 bg-white p-2.5 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/30"
-                    onClick={() => addNode(module.code)}
-                  >
-                    <span
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                      style={{ backgroundColor: module.bgColor }}
-                    >
-                      <IconCmp
-                        style={
-                          {
-                            color: module.iconColor,
-                            fontSize: 18,
-                          } as React.CSSProperties
-                        }
-                      />
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-semibold text-zinc-800">
-                        {module.label}
-                      </span>
-                      <span className="truncate text-xs text-zinc-400">
-                        {module.code}
-                      </span>
-                    </span>
-                    <PlusOutlined className="text-zinc-400" />
-                  </button>
-                );
-              })}
-            </div>
-          </ProCard>
+        <div className="mb-3 min-w-0 text-sm text-zinc-500">
+          当前画像：
+          <span className="font-semibold text-zinc-700">
+            {activePersonaName}
+          </span>
+        </div>
 
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <ProCard
-            title={
-              <div>
-                <div className="text-sm font-semibold">执行顺序</div>
-                <div className="text-xs text-zinc-500">
-                  数组顺序即真实执行顺序，适合十几个节点的轻量编排。
-                </div>
+            className="min-w-0"
+            title="执行顺序"
+            extra={
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={applyMockStandardTemplate}
+                >
+                  使用标准模板
+                </Button>
+                <Button icon={<PlusOutlined />} onClick={openNodeDrawer}>
+                  添加节点
+                </Button>
+                {dirty ? (
+                  <Button
+                    type="primary"
+                    loading={saving}
+                    onClick={() => void saveFlowEditor()}
+                  >
+                    保存策略
+                  </Button>
+                ) : null}
               </div>
             }
           >
             {draftSteps.length > 0 ? (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
                 {draftSteps.map((node, idx) => {
                   const meta = getFlowModuleMeta(flowModuleMap, node.nodeCode);
                   const IconCmp = getFlowIconComponent(meta.icon);
@@ -621,7 +714,7 @@ const CollectionStrategyFlowEditor = () => {
                         <button
                           type="button"
                           aria-pressed={isSelected}
-                          className={`flex flex-1 items-center gap-3 rounded-xl border border-solid p-2.5 text-left transition-colors ${
+                          className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-solid p-2.5 text-left transition-colors ${
                             isSelected
                               ? 'border-blue-500 bg-blue-50/40 shadow-sm'
                               : 'border-zinc-100 bg-white hover:border-blue-200'
@@ -646,8 +739,7 @@ const CollectionStrategyFlowEditor = () => {
                               {meta.label}
                             </span>
                             <span className="truncate text-xs text-zinc-500">
-                              {getNodeIdentityDisplayText(flowModuleMap, node)}{' '}
-                              · {node.config.waitMinutes} 分钟后继续
+                              {getNodeIdentityDisplayText(flowModuleMap, node)}
                             </span>
                           </span>
                         </button>
@@ -663,79 +755,55 @@ const CollectionStrategyFlowEditor = () => {
                       </div>
                       {renderDropIndicator(node.id, 'after')}
                       {idx < draftSteps.length - 1 ? (
-                        <div className="my-1 flex items-center gap-2 pl-10">
-                          <div className="h-3 w-px bg-zinc-200" />
-                          <span className="text-xs text-zinc-400">下一步</span>
-                        </div>
+                        <div className="ml-[13px] my-1 h-4 w-px bg-zinc-200" />
                       ) : null}
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <Empty description="请从左侧节点库添加流程节点" />
+              <Empty description={false} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </ProCard>
 
           <ProCard
-            title={
-              <div>
-                <div className="text-sm font-semibold">节点配置</div>
-                <div className="text-xs text-zinc-500">
-                  选中流程节点后编辑参数
-                </div>
-              </div>
-            }
+            className="min-w-0"
+            title="节点配置"
             extra={<SettingOutlined className="text-zinc-400" />}
           >
             {selectedNode ? (
               <div>
-                <div className="mb-3 flex items-center justify-between border-0 border-b border-solid border-zinc-100 pb-3">
-                  <Text strong>
-                    {
-                      getFlowModuleMeta(flowModuleMap, selectedNode.nodeCode)
-                        .label
-                    }
-                  </Text>
-                  <Text type="secondary" className="text-xs">
-                    #{selectedNode.id.slice(-6)}
-                  </Text>
+                <div className="mb-3 flex items-center gap-3 border-0 border-b border-solid border-zinc-100 pb-3">
+                  {(() => {
+                    const meta = getFlowModuleMeta(
+                      flowModuleMap,
+                      selectedNode.nodeCode,
+                    );
+                    const IconCmp = getFlowIconComponent(meta.icon);
+                    return (
+                      <>
+                        <span
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                          style={{ backgroundColor: meta.bgColor }}
+                        >
+                          <IconCmp
+                            style={
+                              {
+                                color: meta.iconColor,
+                                fontSize: 18,
+                              } as React.CSSProperties
+                            }
+                          />
+                        </span>
+                        <Text strong className="min-w-0 truncate">
+                          {meta.label}
+                        </Text>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <Form layout="vertical">
-                  <Form.Item label="步骤完成后等待时间（分钟）" required>
-                    <InputNumber
-                      value={selectedNodeForm.waitMinutes}
-                      min={0}
-                      step={1}
-                      precision={0}
-                      style={{ width: '100%' }}
-                      onChange={(value) =>
-                        handleStepConfigChange({
-                          waitMinutes: Number(value) || 0,
-                        })
-                      }
-                    />
-                  </Form.Item>
-                  <Form.Item label="失败策略" required>
-                    <Select<StepFailStrategy>
-                      value={selectedNodeForm.failStrategy}
-                      options={failStrategyOptions}
-                      onChange={(value) =>
-                        handleStepConfigChange({ failStrategy: value })
-                      }
-                    />
-                  </Form.Item>
-                  <Form.Item label="跳过策略" required>
-                    <Select<StepSkipStrategy>
-                      value={selectedNodeForm.skipStrategy}
-                      options={skipStrategyOptions}
-                      onChange={(value) =>
-                        handleStepConfigChange({ skipStrategy: value })
-                      }
-                    />
-                  </Form.Item>
-
                   {selectedNode.nodeCode === 'ai_call' ? (
                     <Form.Item label="催收角色" required>
                       <Select<AiCallRole>
@@ -756,11 +824,64 @@ const CollectionStrategyFlowEditor = () => {
                         onChange={handleCorpLetterSealChange}
                       />
                     </Form.Item>
-                  ) : (
-                    <div className="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
-                      该节点类型暂无额外配置项
-                    </div>
-                  )}
+                  ) : null}
+
+                  <Collapse
+                    ghost
+                    size="small"
+                    expandIconPlacement="end"
+                    className="!-mx-2"
+                    items={[
+                      {
+                        key: 'advanced',
+                        label: (
+                          <span className="text-sm font-semibold text-zinc-600">
+                            更多高级配置
+                          </span>
+                        ),
+                        children: (
+                          <div className="rounded-lg bg-zinc-50 px-3 pt-3 pb-1">
+                            <Form.Item label="等待时间（分钟）" required>
+                              <InputNumber
+                                value={selectedNodeForm.waitMinutes}
+                                min={0}
+                                step={1}
+                                precision={0}
+                                style={{ width: '100%' }}
+                                onChange={(value) =>
+                                  handleStepConfigChange({
+                                    waitMinutes: Number(value) || 0,
+                                  })
+                                }
+                              />
+                            </Form.Item>
+                            <Form.Item label="失败策略" required>
+                              <Select<StepFailStrategy>
+                                value={selectedNodeForm.failStrategy}
+                                options={failStrategyOptions}
+                                onChange={(value) =>
+                                  handleStepConfigChange({
+                                    failStrategy: value,
+                                  })
+                                }
+                              />
+                            </Form.Item>
+                            <Form.Item label="跳过策略" required>
+                              <Select<StepSkipStrategy>
+                                value={selectedNodeForm.skipStrategy}
+                                options={skipStrategyOptions}
+                                onChange={(value) =>
+                                  handleStepConfigChange({
+                                    skipStrategy: value,
+                                  })
+                                }
+                              />
+                            </Form.Item>
+                          </div>
+                        ),
+                      },
+                    ]}
+                  />
                 </Form>
               </div>
             ) : (
@@ -770,14 +891,6 @@ const CollectionStrategyFlowEditor = () => {
             )}
           </ProCard>
         </div>
-
-        {activePersona ? (
-          <div className="mt-3">
-            <Title level={5} className="!mb-0 text-zinc-400">
-              当前画像：{activePersonaName}
-            </Title>
-          </div>
-        ) : null}
       </Spin>
     </PageContainer>
   );

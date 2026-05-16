@@ -1,8 +1,7 @@
 import {
-  ArrowLeftOutlined,
+  ArrowDownOutlined,
   ArrowRightOutlined,
-  CheckOutlined,
-  NodeIndexOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
@@ -16,7 +15,7 @@ import {
   Popover,
   Spin,
   Tabs,
-  Typography,
+  Tooltip,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -45,37 +44,38 @@ import {
   upsertNodeTypeMeta,
 } from './_shared';
 
-const { Title, Text } = Typography;
-
 type PersonaId = string | number;
 
 type CallConfigForm = {
   id: number | null;
+  identityName: string;
   strategyCore: string;
   personaId: PersonaId | null;
 };
 
 const emptyCallConfigForm: CallConfigForm = {
   id: null,
+  identityName: '',
   strategyCore: '',
   personaId: null,
 };
 
-const useFlowPreviewColumns = (
-  containerRef: React.RefObject<HTMLDivElement | null>,
-): number => {
+type CallConfigEditValues = {
+  strategyCore: string;
+};
+
+const useFlowPreviewColumns = (container: HTMLDivElement | null): number => {
   const [columns, setColumns] = useState(4);
 
   useEffect(() => {
-    const target = containerRef.current;
-    if (!target) return;
-    setColumns(resolveFlowPreviewColumns(target.clientWidth));
+    if (!container) return;
+    setColumns(resolveFlowPreviewColumns(container.clientWidth));
     const observer = new ResizeObserver(([entry]) => {
       setColumns(resolveFlowPreviewColumns(entry.contentRect.width));
     });
-    observer.observe(target);
+    observer.observe(container);
     return () => observer.disconnect();
-  }, [containerRef]);
+  }, [container]);
 
   return columns;
 };
@@ -83,7 +83,7 @@ const useFlowPreviewColumns = (
 const CollectionStrategyPage = () => {
   const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
-  const [modalApi, modalContextHolder] = Modal.useModal();
+  const [editCallConfigForm] = Form.useForm<CallConfigEditValues>();
 
   const [loading, setLoading] = useState(false);
   const [personaList, setPersonaList] = useState<PersonaItem[]>([]);
@@ -102,12 +102,11 @@ const CollectionStrategyPage = () => {
   const [callConfigSaving, setCallConfigSaving] = useState(false);
   const [callConfigForm, setCallConfigForm] =
     useState<CallConfigForm>(emptyCallConfigForm);
-  const [callConfigOriginal, setCallConfigOriginal] =
-    useState<CallConfigForm>(emptyCallConfigForm);
+  const [callConfigEditorOpen, setCallConfigEditorOpen] = useState(false);
 
-  const personaScrollRef = useRef<HTMLDivElement | null>(null);
-  const flowPreviewBodyRef = useRef<HTMLDivElement | null>(null);
-  const flowPreviewColumns = useFlowPreviewColumns(flowPreviewBodyRef);
+  const [flowPreviewBodyElement, setFlowPreviewBodyElement] =
+    useState<HTMLDivElement | null>(null);
+  const flowPreviewColumns = useFlowPreviewColumns(flowPreviewBodyElement);
 
   const loadFlowRequestSeqRef = useRef(0);
   const loadCallConfigRequestSeqRef = useRef(0);
@@ -118,14 +117,6 @@ const CollectionStrategyPage = () => {
       null,
     [activePersonaId, personaList],
   );
-
-  const hasCallConfigChanges = useMemo(() => {
-    return (
-      callConfigForm.id !== callConfigOriginal.id ||
-      callConfigForm.strategyCore !== callConfigOriginal.strategyCore ||
-      callConfigForm.personaId !== callConfigOriginal.personaId
-    );
-  }, [callConfigForm, callConfigOriginal]);
 
   const flowPreviewRows = useMemo<PreviewStep[][]>(() => {
     const columns = Math.max(1, flowPreviewColumns);
@@ -143,36 +134,38 @@ const CollectionStrategyPage = () => {
     [callConfigForm.id],
   );
 
+  const personaTabItems = useMemo(
+    () =>
+      personaList
+        .filter((item) => item.id != null)
+        .map((item) => ({
+          key: String(item.id),
+          label: (
+            <span className="inline-block max-w-[160px] truncate align-bottom">
+              {item.personaName ?? String(item.id)}
+            </span>
+          ),
+        })),
+    [personaList],
+  );
+
+  const activePersonaKey =
+    activePersonaId == null ? undefined : String(activePersonaId);
+
   const fillCallConfigForm = useCallback(
     (config: CallConfigVO | null, personaId: PersonaId | null) => {
       const next: CallConfigForm = config
         ? {
             id: config.id,
+            identityName: config.identityName ?? '',
             strategyCore: config.strategyCore ?? '',
             personaId: config.personaId ?? personaId,
           }
-        : { id: null, strategyCore: '', personaId };
+        : { id: null, identityName: '', strategyCore: '', personaId };
       setCallConfigForm(next);
-      setCallConfigOriginal(next);
     },
     [],
   );
-
-  const confirmDiscardCallConfigChanges = useCallback((): Promise<boolean> => {
-    if (!hasCallConfigChanges) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      modalApi.confirm({
-        title: '未保存修改',
-        content:
-          '当前外呼策略有未保存修改，切换后会丢弃这些改动。是否继续切换？',
-        okText: '继续切换',
-        cancelText: '留在当前',
-        autoFocusButton: 'cancel',
-        onOk: () => resolve(true),
-        onCancel: () => resolve(false),
-      });
-    });
-  }, [hasCallConfigChanges, modalApi]);
 
   const loadPersonaFlow = useCallback(
     async (
@@ -323,22 +316,31 @@ const CollectionStrategyPage = () => {
     if (key === callConfigTabKey) return;
     const nextId = Number(key);
     if (!Number.isFinite(nextId)) return;
-    const canSwitch = await confirmDiscardCallConfigChanges();
-    if (!canSwitch) return;
     setActiveCallConfig(nextId);
   };
 
-  const handlePersonaTabClick = async (personaId: PersonaId) => {
+  const handlePersonaTabClick = (personaId: PersonaId) => {
     if (isSamePersonaId(activePersonaId, personaId)) return;
-    const canSwitch = await confirmDiscardCallConfigChanges();
-    if (!canSwitch) return;
     setActivePersonaId(personaId);
   };
 
-  const handleStrategyCoreChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>,
-  ) => {
-    setCallConfigForm((prev) => ({ ...prev, strategyCore: e.target.value }));
+  const handlePersonaTabsChange = async (personaId: string) => {
+    const nextPersona = personaList.find((item) =>
+      isSamePersonaId(item.id, personaId),
+    );
+    if (nextPersona?.id == null) return;
+    handlePersonaTabClick(nextPersona.id);
+  };
+
+  const openCallConfigEditor = () => {
+    if (!callConfigForm.id) {
+      messageApi.warning('请选择外呼策略配置');
+      return;
+    }
+    editCallConfigForm.setFieldsValue({
+      strategyCore: callConfigForm.strategyCore,
+    });
+    setCallConfigEditorOpen(true);
   };
 
   const saveCallConfig = async () => {
@@ -346,27 +348,39 @@ const CollectionStrategyPage = () => {
       messageApi.warning('请选择外呼策略配置');
       return;
     }
+    let values: CallConfigEditValues;
+    try {
+      values = await editCallConfigForm.validateFields();
+    } catch {
+      return;
+    }
     setCallConfigSaving(true);
     try {
       const payload: UpdateCallConfigDTO = {
-        strategyCore: callConfigForm.strategyCore,
+        strategyCore: values.strategyCore ?? '',
         personaId: (callConfigForm.personaId ?? activePersonaId ?? undefined) as
           | number
           | undefined,
       };
       await updatePersonaCallConfig(callConfigForm.id, payload);
+      const nextCallConfigForm = {
+        ...callConfigForm,
+        strategyCore: payload.strategyCore ?? '',
+        personaId: payload.personaId ?? callConfigForm.personaId,
+      };
       setCallConfigList((prev) =>
         prev.map((item) =>
           item.id === callConfigForm.id
             ? {
                 ...item,
-                strategyCore: payload.strategyCore ?? item.strategyCore,
+                strategyCore: nextCallConfigForm.strategyCore,
                 personaId: payload.personaId ?? item.personaId,
               }
             : item,
         ),
       );
-      setCallConfigOriginal(callConfigForm);
+      setCallConfigForm(nextCallConfigForm);
+      setCallConfigEditorOpen(false);
       messageApi.success('外呼策略配置已保存');
     } catch (error) {
       console.error('保存外呼策略配置失败', error);
@@ -377,200 +391,169 @@ const CollectionStrategyPage = () => {
 
   const openFlowEditor = async () => {
     if (activePersonaId == null) return;
-    const canLeave = await confirmDiscardCallConfigChanges();
-    if (!canLeave) return;
     history.push(
       `/recov/collectionStrategy/flow?personaId=${encodeURIComponent(String(activePersonaId))}`,
     );
   };
 
-  const scrollPersonaTabs = (direction: -1 | 1) => {
-    personaScrollRef.current?.scrollBy({
-      left: direction * 260,
-      behavior: 'smooth',
-    });
-  };
-
-  const handlePersonaTabsWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (!personaScrollRef.current) return;
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    event.preventDefault();
-    personaScrollRef.current.scrollLeft += event.deltaY;
-  };
-
   const renderFlowRow = (row: PreviewStep[], rowIdx: number) => {
-    const hasTailArrow = rowIdx < flowPreviewRows.length - 1;
+    const hasNextRow = rowIdx < flowPreviewRows.length - 1;
     return (
-      <div
-        key={`flow-row-${rowIdx}`}
-        className="flex items-center gap-2"
-        style={{ marginBottom: 12 }}
-      >
-        {row.map((step, stepIdx) => {
-          const meta = getFlowModuleMeta(flowModuleMap, step.nodeCode);
-          const IconCmp = getFlowIconComponent(meta.icon);
-          return (
-            <div
-              key={step.id || `${rowIdx}-${stepIdx}-${step.nodeCode}`}
-              className="flex items-center"
-            >
-              <Popover
-                trigger="hover"
-                placement="top"
-                content={
-                  <div className="min-w-[220px] text-sm">
-                    <div className="mb-2 font-semibold">执行参数</div>
-                    <div className="mb-1 flex justify-between gap-3">
-                      <span className="text-zinc-500">等待时间</span>
-                      <strong>{step.config.waitMinutes} 分钟后继续</strong>
-                    </div>
-                    <div className="mb-1 flex justify-between gap-3">
-                      <span className="text-zinc-500">失败策略</span>
-                      <strong>
-                        {failStrategyLabelMap[step.config.failStrategy]}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">跳过策略</span>
-                      <strong>
-                        {skipStrategyLabelMap[step.config.skipStrategy]}
-                      </strong>
-                    </div>
-                  </div>
-                }
+      <div key={`flow-row-${rowIdx}`} className="flex flex-col">
+        <div className="flex items-center gap-3">
+          {row.map((step, stepIdx) => {
+            const meta = getFlowModuleMeta(flowModuleMap, step.nodeCode);
+            const IconCmp = getFlowIconComponent(meta.icon);
+            return (
+              <div
+                key={step.id || `${rowIdx}-${stepIdx}-${step.nodeCode}`}
+                className="flex items-center"
               >
-                <div
-                  className="flex flex-col items-center"
-                  style={{ width: 116 }}
+                <Popover
+                  trigger="hover"
+                  placement="top"
+                  content={
+                    <div className="min-w-[220px] text-sm">
+                      <div className="mb-2 font-semibold">执行参数</div>
+                      <div className="mb-1 flex justify-between gap-3">
+                        <span className="text-zinc-500">等待时间</span>
+                        <strong>{step.config.waitMinutes} 分钟后继续</strong>
+                      </div>
+                      <div className="mb-1 flex justify-between gap-3">
+                        <span className="text-zinc-500">失败策略</span>
+                        <strong>
+                          {failStrategyLabelMap[step.config.failStrategy]}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-zinc-500">跳过策略</span>
+                        <strong>
+                          {skipStrategyLabelMap[step.config.skipStrategy]}
+                        </strong>
+                      </div>
+                    </div>
+                  }
                 >
-                  <div className="mb-1 text-xs font-medium text-zinc-700 text-center">
-                    {meta.label}
-                  </div>
                   <div
-                    className="flex h-10 w-10 items-center justify-center rounded-lg"
-                    style={{ backgroundColor: meta.bgColor }}
+                    className="flex flex-col items-center"
+                    style={{ width: 128 }}
                   >
-                    <IconCmp
-                      className="text-base"
-                      style={
-                        {
-                          color: meta.iconColor,
-                          fontSize: 20,
-                        } as React.CSSProperties
-                      }
-                    />
+                    <div className="mb-1.5 text-sm font-semibold text-zinc-700 text-center">
+                      {meta.label}
+                    </div>
+                    <div
+                      className="flex h-12 w-12 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: meta.bgColor }}
+                    >
+                      <IconCmp
+                        style={
+                          {
+                            color: meta.iconColor,
+                            fontSize: 24,
+                          } as React.CSSProperties
+                        }
+                      />
+                    </div>
+                    <div className="mt-1.5 max-w-[112px] truncate text-xs text-zinc-500">
+                      {getNodeIdentityDisplayText(flowModuleMap, step)}
+                    </div>
                   </div>
-                  <div className="mt-1 max-w-[100px] truncate text-[11px] text-zinc-500">
-                    {getNodeIdentityDisplayText(flowModuleMap, step)}
-                  </div>
-                </div>
-              </Popover>
-              {stepIdx < row.length - 1 ? (
-                <span className="mx-2 text-zinc-400">
-                  <ArrowRightOutlined />
-                </span>
-              ) : null}
-            </div>
-          );
-        })}
-        {hasTailArrow ? (
-          <span className="ml-2 text-zinc-400">
-            <ArrowRightOutlined />
-          </span>
+                </Popover>
+                {stepIdx < row.length - 1 ? (
+                  <span className="mx-2 text-base text-zinc-400">
+                    <ArrowRightOutlined />
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+        {hasNextRow ? (
+          <div className="mb-3 mt-1 flex justify-center text-zinc-400">
+            <ArrowDownOutlined />
+          </div>
         ) : null}
       </div>
     );
   };
 
   return (
-    <PageContainer title="催收策略配置">
+    <PageContainer breadcrumbRender={false} title="催收策略配置">
       {messageContextHolder}
-      {modalContextHolder}
-      <div className="flex flex-col gap-4 pb-4">
-        <ProCard>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <Title level={4} className="!mb-1">
-                催收策略配置
-              </Title>
-              <Text type="secondary" className="text-sm">
-                按画像维护外呼策略与催收流程，系统将根据策略自动执行催收任务。
-              </Text>
-            </div>
-          </div>
-        </ProCard>
-
-        <ProCard>
-          <Spin spinning={loading}>
-            <div className="flex items-center gap-2 border-0 border-b border-solid border-zinc-100 pb-3">
-              <Button
-                shape="circle"
-                size="small"
-                aria-label="向左滚动画像标签"
-                icon={<ArrowLeftOutlined />}
-                onClick={() => scrollPersonaTabs(-1)}
-              />
-              <div
-                ref={personaScrollRef}
-                className="flex flex-1 min-w-0 items-center gap-2 overflow-x-auto"
-                style={{ scrollBehavior: 'smooth' }}
-                onWheel={handlePersonaTabsWheel}
-              >
-                {personaList.map((persona) => {
-                  const isActive = isSamePersonaId(
-                    activePersonaId,
-                    persona.id ?? null,
-                  );
-                  return (
-                    <button
-                      key={String(persona.id)}
-                      type="button"
-                      className={`shrink-0 max-w-[220px] truncate rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                        isActive
-                          ? 'bg-blue-600 text-white shadow'
-                          : 'text-zinc-600 hover:bg-blue-50 hover:text-blue-600'
-                      }`}
-                      onClick={() =>
-                        void handlePersonaTabClick(persona.id as PersonaId)
-                      }
-                    >
-                      {persona.personaName ?? '-'}
-                    </button>
-                  );
-                })}
+      <Modal
+        destroyOnHidden
+        title="编辑外呼策略"
+        open={callConfigEditorOpen}
+        width={720}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={callConfigSaving}
+        onOk={() => void saveCallConfig()}
+        onCancel={() => setCallConfigEditorOpen(false)}
+      >
+        <Form
+          form={editCallConfigForm}
+          layout="vertical"
+          preserve={false}
+          requiredMark={false}
+        >
+          <Form.Item label="身份名称">
+            <Input
+              disabled
+              value={callConfigForm.identityName || '未命名身份'}
+            />
+          </Form.Item>
+          <Form.Item
+            label="策略内容"
+            name="strategyCore"
+            rules={[{ max: 1000, message: '策略内容不能超过 1000 字' }]}
+          >
+            <Input.TextArea
+              rows={10}
+              maxLength={1000}
+              showCount
+              style={{ resize: 'none' }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <div className="pb-4">
+        <Spin spinning={loading}>
+          <div className="flex flex-col gap-4">
+            <ProCard className="min-w-0 overflow-hidden">
+              <div className="min-w-0 overflow-hidden">
+                <Tabs
+                  activeKey={activePersonaKey}
+                  items={personaTabItems}
+                  more={{ trigger: 'click' }}
+                  onChange={(key) => void handlePersonaTabsChange(key)}
+                  tabBarStyle={{ marginBottom: 0 }}
+                  style={{ maxWidth: '100%' }}
+                />
               </div>
-              <Button
-                shape="circle"
-                size="small"
-                aria-label="向右滚动画像标签"
-                icon={<ArrowRightOutlined />}
-                onClick={() => scrollPersonaTabs(1)}
-              />
-            </div>
+            </ProCard>
 
             {activePersona ? (
-              <div className="pt-4">
-                <section className="rounded-xl border border-solid border-zinc-100">
+              <>
+                <ProCard
+                  className="min-w-0"
+                  title="外呼策略"
+                  extra={
+                    <Tooltip title="编辑">
+                      <Button
+                        type="text"
+                        shape="circle"
+                        aria-label="编辑"
+                        icon={<EditOutlined />}
+                        disabled={!callConfigForm.id || callConfigLoading}
+                        onClick={openCallConfigEditor}
+                      />
+                    </Tooltip>
+                  }
+                >
                   <Spin spinning={callConfigLoading}>
-                    <div className="flex items-center justify-between gap-4 px-4 pt-4">
-                      <Text strong className="text-base">
-                        策略配置
-                      </Text>
-                      {hasCallConfigChanges ? (
-                        <Button
-                          type="primary"
-                          icon={<CheckOutlined />}
-                          loading={callConfigSaving}
-                          disabled={!callConfigForm.id}
-                          onClick={() => void saveCallConfig()}
-                        >
-                          保存配置
-                        </Button>
-                      ) : null}
-                    </div>
-
                     {callConfigList.length > 0 ? (
-                      <div className="mx-4 my-3 overflow-hidden rounded-lg border border-solid border-zinc-100">
+                      <div className="overflow-hidden rounded-lg border border-solid border-zinc-100">
                         <div className="px-4 pt-2">
                           <Tabs
                             activeKey={callConfigTabKey}
@@ -586,52 +569,45 @@ const CollectionStrategyPage = () => {
                           />
                         </div>
                         <div className="px-4 py-3">
-                          <Form layout="vertical">
-                            <Form.Item className="!mb-0">
-                              <Input.TextArea
-                                value={callConfigForm.strategyCore}
-                                onChange={handleStrategyCoreChange}
-                                rows={8}
-                                maxLength={1000}
-                                showCount
-                                style={{ resize: 'none' }}
-                              />
-                            </Form.Item>
-                          </Form>
+                          <div className="min-h-[220px] whitespace-pre-wrap break-words rounded-lg bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
+                            {callConfigForm.strategyCore.trim() || (
+                              <span className="text-zinc-400">
+                                暂无策略内容
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="px-4 pb-6 pt-2">
+                      <div className="py-6">
                         <Empty
                           description="暂无外呼策略配置"
-                          styles={{ image: { height: 80 } }}
+                          styles={{ image: { height: 64 } }}
                         />
                       </div>
                     )}
                   </Spin>
-                </section>
+                </ProCard>
 
-                <section className="mt-4 rounded-xl border border-solid border-zinc-100">
-                  <div className="flex items-center justify-between gap-4 px-4 pt-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                        <NodeIndexOutlined style={{ fontSize: 20 }} />
-                      </div>
-                      <div>
-                        <Text strong className="text-base">
-                          配置催收流程
-                        </Text>
-                        <div className="text-xs text-zinc-500">
-                          针对 {activePersona.personaName} 的业务逻辑与催收路径
-                        </div>
-                      </div>
-                    </div>
-                    <Button type="link" onClick={() => void openFlowEditor()}>
-                      进入编排工作台
-                    </Button>
-                  </div>
-
-                  <div ref={flowPreviewBodyRef} className="px-4 pb-4 pt-3">
+                <ProCard
+                  className="min-w-0"
+                  title="流程预览"
+                  extra={
+                    <Tooltip title="编辑流程">
+                      <Button
+                        type="text"
+                        shape="circle"
+                        aria-label="编辑流程"
+                        icon={<EditOutlined />}
+                        onClick={() => void openFlowEditor()}
+                      />
+                    </Tooltip>
+                  }
+                >
+                  <div
+                    ref={setFlowPreviewBodyElement}
+                    className="min-w-0 overflow-x-auto"
+                  >
                     {previewSteps.length > 0 ? (
                       <div className="flex flex-col">
                         {flowPreviewRows.map((row, rowIdx) =>
@@ -639,21 +615,23 @@ const CollectionStrategyPage = () => {
                         )}
                       </div>
                     ) : (
-                      <Empty
-                        description="暂无流程节点"
-                        styles={{ image: { height: 80 } }}
-                      />
+                      <div className="py-6">
+                        <Empty
+                          description="暂无流程节点"
+                          styles={{ image: { height: 64 } }}
+                        />
+                      </div>
                     )}
                   </div>
-                </section>
-              </div>
+                </ProCard>
+              </>
             ) : (
-              <div className="py-8">
+              <ProCard>
                 <Empty description="暂无画像数据" />
-              </div>
+              </ProCard>
             )}
-          </Spin>
-        </ProCard>
+          </div>
+        </Spin>
       </div>
     </PageContainer>
   );
