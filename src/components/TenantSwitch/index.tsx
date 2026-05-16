@@ -1,6 +1,7 @@
 import { BankOutlined } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
-import { App, Select } from 'antd';
+import type { MenuProps } from 'antd';
+import { App, Button, Dropdown, Grid, Select, Tooltip } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
   clearStoredDynamicTenantId,
@@ -27,6 +28,7 @@ const isSuperAdminUser = (currentUser?: {
 
 const TenantSwitch = () => {
   const { message } = App.useApp();
+  const screens = Grid.useBreakpoint();
   const { initialState, setInitialState } = useModel('@@initialState');
   const [tenantEnabled, setTenantEnabled] = useState(false);
   const [tenantList, setTenantList] = useState<TenantOption[]>([]);
@@ -34,6 +36,7 @@ const TenantSwitch = () => {
   const currentUser = initialState?.currentUser;
   const isSuperAdmin = isSuperAdminUser(currentUser);
   const selectedTenantId = initialState?.dynamicTenantId;
+  const isCompact = !screens.md;
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -117,11 +120,49 @@ const TenantSwitch = () => {
 
   if (!isSuperAdmin || !tenantEnabled || options.length === 0) return null;
 
+  if (isCompact) {
+    const menuItems: MenuProps['items'] = [
+      {
+        disabled: !selectedTenantId,
+        key: 'default',
+        label: '默认租户',
+      },
+      { type: 'divider' },
+      ...options.map((option) => ({
+        key: option.value,
+        label: option.label,
+      })),
+    ];
+
+    return (
+      <Dropdown
+        disabled={loading}
+        menu={{
+          items: menuItems,
+          onClick: ({ key }) => {
+            handleTenantChange(key === 'default' ? undefined : key);
+          },
+          selectedKeys: selectedTenantId ? [selectedTenantId] : [],
+        }}
+        placement="bottomRight"
+        trigger={['click']}
+      >
+        <Tooltip title="切换租户">
+          <Button
+            aria-label="切换租户"
+            icon={<BankOutlined />}
+            loading={loading}
+            type="text"
+          />
+        </Tooltip>
+      </Dropdown>
+    );
+  }
+
   return (
     <Select
       allowClear
-      showSearch
-      optionFilterProp="label"
+      showSearch={{ optionFilterProp: 'label' }}
       loading={loading}
       disabled={loading}
       options={options}
