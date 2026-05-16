@@ -9,7 +9,6 @@ export type LoginData = {
   tenantId?: string;
   username?: string;
   password?: string;
-  rememberMe?: boolean;
   socialCode?: string;
   socialState?: string;
   source?: string;

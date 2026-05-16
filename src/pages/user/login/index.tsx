@@ -7,7 +7,6 @@ import {
 } from '@ant-design/icons';
 import {
   LoginForm,
-  ProFormCheckbox,
   ProFormSelect,
   ProFormText,
 } from '@ant-design/pro-components';
@@ -37,41 +36,62 @@ type LoginFormValues = {
   tenantId?: string;
   username?: string;
   password?: string;
-  rememberMe?: boolean;
   code?: string;
   uuid?: string;
 };
 
 type TenantOption = NonNullable<TenantInfo['voList']>[number];
 
+type InitErrors = {
+  captcha?: string;
+  tenant?: string;
+};
+
 const defaultTenantId = '000000';
 const loginPath = '/user/login';
+const rememberedTenantIdKey = 'loginTenantId';
 
 const canUseStorage = () => typeof localStorage !== 'undefined';
 
-const getStoredLoginValues = (): LoginFormValues => {
-  if (!canUseStorage()) {
-    return {
-      tenantId: defaultTenantId,
-      rememberMe: false,
-    };
-  }
+const getRememberedTenantId = () => {
+  if (!canUseStorage()) return undefined;
+  return localStorage.getItem(rememberedTenantIdKey) || undefined;
+};
 
-  const rememberMe = localStorage.getItem('rememberMe') === 'true';
-  const username = localStorage.getItem('username') || undefined;
-  const tenantId = localStorage.getItem('tenantId') || defaultTenantId;
+const clearLegacyLoginCache = () => {
+  if (!canUseStorage()) return;
+  localStorage.removeItem('tenantId');
+  localStorage.removeItem('username');
+  localStorage.removeItem('password');
+  localStorage.removeItem('rememberMe');
+};
 
-  return {
-    tenantId,
-    username,
-    rememberMe,
-  };
+const rememberTenantId = (tenantId?: string) => {
+  if (!canUseStorage() || !tenantId) return;
+  clearLegacyLoginCache();
+  localStorage.setItem(rememberedTenantIdKey, tenantId);
+};
+
+const resolveTenantId = (
+  tenantList: TenantOption[],
+  currentTenantId?: string,
+) => {
+  const rememberedTenantId = getRememberedTenantId();
+  const hasCurrentTenant = tenantList.some(
+    (item) => item.tenantId === currentTenantId,
+  );
+  if (hasCurrentTenant) return currentTenantId;
+
+  const hasRememberedTenant = tenantList.some(
+    (item) => item.tenantId === rememberedTenantId,
+  );
+  if (hasRememberedTenant) return rememberedTenantId;
+
+  return tenantList[0]?.tenantId || defaultTenantId;
 };
 
 const getInitialLoginValues = (): LoginFormValues => ({
-  tenantId: defaultTenantId,
-  rememberMe: false,
-  ...getStoredLoginValues(),
+  tenantId: getRememberedTenantId() || defaultTenantId,
 });
 
 const getCaptchaMimeType = (base64: string) => {
@@ -88,23 +108,6 @@ const toCaptchaImageSrc = (img?: string) => {
   if (normalizedImg.startsWith('data:image/')) return normalizedImg;
 
   return `data:${getCaptchaMimeType(normalizedImg)};base64,${normalizedImg}`;
-};
-
-const rememberLoginValues = (values: LoginFormValues) => {
-  if (!canUseStorage()) return;
-
-  if (values.rememberMe) {
-    localStorage.setItem('tenantId', values.tenantId || defaultTenantId);
-    localStorage.setItem('username', values.username || '');
-    localStorage.setItem('rememberMe', 'true');
-    localStorage.removeItem('password');
-    return;
-  }
-
-  localStorage.removeItem('tenantId');
-  localStorage.removeItem('username');
-  localStorage.removeItem('password');
-  localStorage.removeItem('rememberMe');
 };
 
 const useStyles = createStyles(({ token }) => {
@@ -203,7 +206,7 @@ const Login: React.FC = () => {
   const [captchaEnabled, setCaptchaEnabled] = useState(true);
   const [captchaImage, setCaptchaImage] = useState('');
   const [captchaLoading, setCaptchaLoading] = useState(false);
-  const [initError, setInitError] = useState('');
+  const [initErrors, setInitErrors] = useState<InitErrors>({});
   const { initialState, setInitialState } = useModel('@@initialState');
   const { styles } = useStyles();
   const { message } = App.useApp();
@@ -217,6 +220,10 @@ const Login: React.FC = () => {
       })),
     [tenantList],
   );
+
+  const initError = [initErrors.captcha, initErrors.tenant]
+    .filter(Boolean)
+    .join(' ');
 
   const getSafeRedirectUrl = (redirect: string | null): string => {
     if (!redirect?.startsWith('/')) return '/';
@@ -245,6 +252,7 @@ const Login: React.FC = () => {
           uuid: response.data?.uuid,
         });
         setCaptchaImage(toCaptchaImageSrc(response.data?.img));
+        setInitErrors((current) => ({ ...current, captcha: undefined }));
         return;
       }
 
@@ -253,8 +261,12 @@ const Login: React.FC = () => {
         uuid: undefined,
       });
       setCaptchaImage('');
+      setInitErrors((current) => ({ ...current, captcha: undefined }));
     } catch {
-      setInitError('验证码加载失败，请稍后重试。');
+      setInitErrors((current) => ({
+        ...current,
+        captcha: '验证码加载失败，请稍后重试。',
+      }));
     } finally {
       setCaptchaLoading(false);
     }
@@ -268,15 +280,22 @@ const Login: React.FC = () => {
       setTenantEnabled(nextTenantEnabled);
       setTenantList(nextTenantList);
 
-      if (nextTenantEnabled) {
+      if (!nextTenantEnabled) {
+        form.setFieldsValue({
+          tenantId: defaultTenantId,
+        });
+      } else {
         const currentTenantId = form.getFieldValue('tenantId');
         form.setFieldsValue({
-          tenantId:
-            currentTenantId || nextTenantList[0]?.tenantId || defaultTenantId,
+          tenantId: resolveTenantId(nextTenantList, currentTenantId),
         });
       }
+      setInitErrors((current) => ({ ...current, tenant: undefined }));
     } catch {
-      setInitError('租户列表加载失败，请稍后重试。');
+      setInitErrors((current) => ({
+        ...current,
+        tenant: '租户列表加载失败，请稍后重试。',
+      }));
     }
   }, [form]);
 
@@ -304,7 +323,6 @@ const Login: React.FC = () => {
         tenantId: values.tenantId || defaultTenantId,
         username: values.username?.trim(),
         password: values.password,
-        rememberMe: values.rememberMe,
         code: values.code,
         uuid: values.uuid,
       });
@@ -316,7 +334,7 @@ const Login: React.FC = () => {
 
       setToken(accessToken);
       clearCachedRuoyiMenuData();
-      rememberLoginValues(values);
+      rememberTenantId(values.tenantId || defaultTenantId);
       message.success('登录成功');
       await fetchUserInfo();
 
@@ -473,16 +491,6 @@ const Login: React.FC = () => {
               )}
             </div>
           )}
-
-          <div
-            style={{
-              marginBottom: 24,
-            }}
-          >
-            <ProFormCheckbox noStyle name="rememberMe">
-              记住账号
-            </ProFormCheckbox>
-          </div>
         </LoginForm>
       </div>
       <Footer />
