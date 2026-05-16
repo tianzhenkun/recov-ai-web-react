@@ -1,9 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  TeamOutlined,
-} from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
   Button,
@@ -18,14 +13,12 @@ import {
   Pagination,
   Popover,
   Row,
-  Segmented,
   Select,
   Slider,
-  Space,
   Spin,
+  Tabs,
   Tag,
   Tooltip,
-  Typography,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
@@ -54,13 +47,10 @@ import {
   isConcurrencySnapshotEqual,
   RETRY_INTERVAL_FALLBACK_OPTIONS,
   VOICE_TAB_OPTIONS,
-  VOICE_TAB_TITLE,
   type VoiceFormState,
   type VoiceListTab,
 } from './_shared';
 import IdentityConfigCard from './IdentityConfigCard';
-
-const { Text } = Typography;
 
 type VoiceDialogMode = 'add' | 'edit';
 
@@ -113,6 +103,14 @@ const VoiceEngineConfigPage = () => {
   const [voiceTotal, setVoiceTotal] = useState(0);
   const [loadingVoice, setLoadingVoice] = useState(false);
   const voiceRequestSeqRef = useRef(0);
+  const voiceTabItems = useMemo(
+    () =>
+      VOICE_TAB_OPTIONS.map((item) => ({
+        key: item.value,
+        label: item.label,
+      })),
+    [],
+  );
 
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   const [voiceDialogMode, setVoiceDialogMode] =
@@ -327,8 +325,6 @@ const VoiceEngineConfigPage = () => {
     });
   };
 
-  const voiceListTitle = VOICE_TAB_TITLE[voiceTab];
-
   const renderVoiceCard = (voice: VoiceLibraryItem) => {
     const popoverContent = (
       <div className="w-[260px] space-y-3">
@@ -432,74 +428,71 @@ const VoiceEngineConfigPage = () => {
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
         <ProCard
-          title="并发、重拨策略"
-          subTitle="控制外呼吞吐与未接通后的重拨节奏"
+          title="并发与重拨策略"
           extra={
-            <Space size={8}>
-              {isConcurrencyDirty ? <Tag color="warning">未保存</Tag> : null}
+            isConcurrencyDirty ? (
               <Button
                 type="primary"
-                disabled={!isConcurrencyDirty}
                 loading={savingConcurrency}
                 onClick={() => void handleSaveConcurrency()}
               >
                 保存配置
               </Button>
-            </Space>
+            ) : null
           }
         >
           <Spin spinning={concurrencyLoading}>
             <Form<ConcurrencyConfigVo>
               form={concurrencyForm}
               layout="vertical"
+              requiredMark={false}
               initialValues={defaultConcurrencyForm}
               onValuesChange={handleConcurrencyValuesChange}
+              className="[&_.ant-form-item]:!mb-0"
             >
-              <Row gutter={[24, 16]}>
-                <Col xs={24} md={8}>
-                  <Form.Item
-                    label="外呼并发上限"
-                    name="maxConcurrency"
-                    rules={[{ required: true, message: '请输入外呼并发上限' }]}
-                    extra="并/线程"
-                  >
-                    <InputNumber min={1} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8}>
-                  <Form.Item
-                    label="重拨间隔下限"
-                    name="retryInterval"
-                    rules={[{ required: true, message: '请选择重拨间隔' }]}
-                    extra="未接通后等待重拨"
-                  >
-                    <Select
-                      options={retryIntervalOptions}
-                      loading={retryIntervalDict.loading}
-                      placeholder="请选择重拨间隔"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8}>
-                  <Form.Item
-                    label="每节点重拨上限"
-                    name="maxRetry"
-                    rules={[
-                      { required: true, message: '请输入每节点重拨上限' },
-                    ]}
-                    extra="次"
-                  >
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
+                <Form.Item
+                  label="外呼并发上限"
+                  name="maxConcurrency"
+                  rules={[{ required: true, message: '请输入外呼并发上限' }]}
+                >
+                  <InputNumber
+                    min={1}
+                    precision={0}
+                    suffix="并发线路"
+                    style={{ width: '100%' }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label="重拨间隔下限"
+                  name="retryInterval"
+                  rules={[{ required: true, message: '请选择重拨间隔' }]}
+                >
+                  <Select
+                    options={retryIntervalOptions}
+                    loading={retryIntervalDict.loading}
+                    placeholder="请选择重拨间隔"
+                  />
+                </Form.Item>
+                <Form.Item
+                  label="每节点重拨上限"
+                  name="maxRetry"
+                  rules={[{ required: true, message: '请输入每节点重拨上限' }]}
+                >
+                  <InputNumber
+                    min={0}
+                    precision={0}
+                    suffix="次"
+                    style={{ width: '100%' }}
+                  />
+                </Form.Item>
+              </div>
             </Form>
           </Spin>
         </ProCard>
 
         <ProCard
           title="音色资产库"
-          subTitle="按系统内置与自定义类型管理可用于外呼的音色"
           extra={
             <Button
               type="primary"
@@ -515,17 +508,13 @@ const VoiceEngineConfigPage = () => {
           }
         >
           <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Segmented<VoiceListTab>
-                size="small"
-                value={voiceTab}
-                options={VOICE_TAB_OPTIONS}
-                onChange={(value) => handleVoiceTabChange(value)}
-              />
-              <Text type="secondary" className="text-xs">
-                当前 {voiceListTitle}，共 {voiceTotal} 个
-              </Text>
-            </div>
+            <Tabs
+              activeKey={voiceTab}
+              items={voiceTabItems}
+              onChange={(key) => handleVoiceTabChange(key as VoiceListTab)}
+              tabBarGutter={28}
+              className="[&_.ant-tabs-nav]:!mb-0"
+            />
             <Spin spinning={loadingVoice}>
               <div className="min-h-[180px]">
                 {!loadingVoice && voiceList.length === 0 ? (
@@ -554,15 +543,7 @@ const VoiceEngineConfigPage = () => {
           </div>
         </ProCard>
 
-        <ProCard
-          title="数字员工身份配置"
-          subTitle="为不同身份配置默认音色、性别匹配和员工称谓"
-          extra={
-            <Tag color="success" icon={<TeamOutlined />}>
-              {identityList.length} 类身份
-            </Tag>
-          }
-        >
+        <ProCard title="数字员工配置">
           <Spin spinning={loadingIdentity}>
             {identityList.length > 0 ? (
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

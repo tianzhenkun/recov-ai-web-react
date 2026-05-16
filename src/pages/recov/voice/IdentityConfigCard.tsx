@@ -5,7 +5,6 @@ import {
   Input,
   Modal,
   Select,
-  Space,
   Switch,
   Tag,
   Typography,
@@ -85,6 +84,7 @@ const IdentityConfigCard = ({
   const Icon = meta.icon;
   const employeeNamePrefix = getEmployeeNamePrefix(config.identityName);
   const employeeNameMaxLength = getEmployeeNameMaxLength(employeeNamePrefix);
+  const employees = config.employeeNames ?? [];
 
   const genderMatchEnabled = localConfig.genderMatch === '1';
 
@@ -219,26 +219,31 @@ const IdentityConfigCard = ({
 
   return (
     <div className="flex flex-col rounded-xl border border-solid border-zinc-100 bg-white p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <Space size={8}>
-          <Icon style={{ color: meta.color, fontSize: 16 }} />
-          <Text strong className="text-sm text-zinc-800">
-            {config.identityName}
-          </Text>
-        </Space>
-        <Space size={8}>
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-4">
+          <div
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+            style={{ backgroundColor: `${meta.color}14` }}
+          >
+            <Icon style={{ color: meta.color, fontSize: 22 }} />
+          </div>
+          <div className="min-w-0">
+            <Text strong className="block text-base text-zinc-900">
+              {config.identityName}
+            </Text>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-zinc-500">
           <Text type="secondary" className="text-xs">
-            {genderMatchEnabled ? '性别匹配已开启' : '性别匹配已关闭'}
+            性别匹配
           </Text>
           <Switch
             size="small"
             checked={genderMatchEnabled}
             onChange={handleGenderMatchChange}
           />
-        </Space>
+        </div>
       </div>
-
-      <p className="mb-4 text-xs text-zinc-400">{meta.description}</p>
 
       {genderMatchEnabled ? (
         <div className="mb-4 grid grid-cols-2 gap-4">
@@ -277,10 +282,13 @@ const IdentityConfigCard = ({
         </div>
       ) : null}
 
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-4">
+        <div className="mb-2 text-xs font-medium text-zinc-500">
+          创建新数字员工
+        </div>
         <Button
-          type="primary"
-          size="small"
+          block
+          type="dashed"
           icon={<PlusOutlined />}
           onClick={openAddDialog}
         >
@@ -288,16 +296,23 @@ const IdentityConfigCard = ({
         </Button>
       </div>
 
-      {config.employeeNames && config.employeeNames.length > 0 ? (
-        <div className="mb-4">
-          <div className="mb-2 text-xs text-zinc-500">已有数字员工：</div>
+      <div className="mb-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Text type="secondary" className="text-xs font-medium">
+            已有数字员工：
+          </Text>
+          <Tag color="default" className="!mr-0">
+            {employees.length}
+          </Tag>
+        </div>
+        {employees.length > 0 ? (
           <div className="flex flex-wrap gap-2">
-            {config.employeeNames.map((emp) => (
+            {employees.map((emp) => (
               <Tag
                 key={emp.id}
                 closable
                 color="default"
-                className="!px-3 !py-1"
+                className="!rounded-lg !border-zinc-200 !bg-zinc-50 !px-3 !py-1.5"
                 onClose={(event) => {
                   event.preventDefault();
                   handleDeleteEmployee(emp);
@@ -307,8 +322,10 @@ const IdentityConfigCard = ({
               </Tag>
             ))}
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <div className="text-xs text-zinc-400">暂无数字员工</div>
+        )}
+      </div>
 
       {hasChanges ? (
         <div className="flex justify-end">
@@ -324,22 +341,34 @@ const IdentityConfigCard = ({
       ) : null}
 
       <Modal
-        title="新增数字员工"
-        width={400}
+        title={
+          <span className="text-base font-semibold text-zinc-900">
+            新增数字员工
+          </span>
+        }
+        width={440}
+        centered
         open={addOpen}
         destroyOnHidden
         mask={{ closable: false }}
         confirmLoading={adding}
-        okText="确定"
+        okText="添加员工"
         cancelText="取消"
+        styles={{
+          body: { paddingTop: 4 },
+          footer: { marginTop: 24 },
+          header: { marginBottom: 16 },
+        }}
         onOk={() => void handleAddEmployee()}
         onCancel={closeAddDialog}
       >
         <Form<AddEmployeeForm>
           form={addForm}
           layout="vertical"
-          requiredMark="optional"
+          variant="outlined"
+          requiredMark={false}
           preserve={false}
+          className="[&_.ant-form-item-label>label]:!font-medium [&_.ant-form-item-label>label]:!text-zinc-800"
         >
           <Form.Item
             label="员工姓名"
@@ -361,23 +390,28 @@ const IdentityConfigCard = ({
                 },
               },
             ]}
-            extra={`完整姓名将带前缀：「${employeeNamePrefix}」`}
           >
             <Input
               prefix={
-                <Text type="secondary" className="!text-xs">
+                <span className="mr-1 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">
                   {employeeNamePrefix}
-                </Text>
+                </span>
               }
               placeholder="请输入员工姓名"
+              allowClear
               maxLength={employeeNameMaxLength}
               showCount
             />
           </Form.Item>
-          <Form.Item label="关联音色" name="voiceId">
+          <Form.Item
+            label="关联音色"
+            name="voiceId"
+            rules={[{ required: true, message: '请选择音色' }]}
+          >
             <Select
-              placeholder="请选择音色（可选）"
+              placeholder="请选择关联音色"
               allowClear
+              showSearch={{ optionFilterProp: 'label' }}
               options={allVoiceOptions}
             />
           </Form.Item>
