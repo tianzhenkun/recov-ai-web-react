@@ -1,5 +1,5 @@
 import { ruoyiDownload } from '@/adapters/ruoyi/download';
-import { adminRequest, ruoyiRequest } from '@/adapters/ruoyi/request';
+import { ruoyiRequest } from '@/adapters/ruoyi/request';
 
 export type PageQuery = {
   pageNum?: number;
@@ -74,59 +74,74 @@ export type DebtPageResult = {
   stats?: DebtStats;
 };
 
-export type ImportProgressStatus = 'processing' | 'success' | 'failed';
+export type ImportPipelineStatus =
+  | 'importing'
+  | 'processing'
+  | 'success'
+  | 'failed';
+export type ImportPipelineSubTaskStatus =
+  | 'pending'
+  | 'processing'
+  | 'success'
+  | 'failed';
 
 export type SubmitImportTaskData = {
   ossId: string | number;
 };
 
-export type SubmitParseTaskData = {
-  taskId: string | number;
-};
-
-export type TaskProgressResult = {
+export type ImportPipelineSubTask = {
+  type?: 'debtImport' | 'assetParse' | 'personaClassify' | string;
+  taskId?: string;
+  rootTaskId?: string;
+  execTaskId?: string;
+  name?: string;
+  status?: ImportPipelineSubTaskStatus;
+  phase?: string;
   progress?: number;
   total?: number;
   current?: number;
-  phase?: string;
-  status?: ImportProgressStatus;
-  errorMsg?: string | null;
+  successCount?: number;
+  failedCount?: number;
+  errorMessage?: string | null;
 };
 
-export type ParseTaskProgressResult = {
+export type ImportPipelineProgressResult = {
   taskId?: string;
-  rootTaskId?: string;
+  status?: ImportPipelineStatus;
+  phase?: string;
   progress?: number;
-  phase?: string;
-  status?: ImportProgressStatus;
-  startTs?: number;
-  errorMsg?: string | null;
-};
-
-export type StartPersonaClassificationData = {
-  taskId: string | number;
-  batchSize?: number;
-};
-
-export type StartPersonaClassificationResult = {
-  taskId?: string;
-  inserted?: number;
-  status?: ImportProgressStatus;
-  backgroundRunning?: boolean;
-};
-
-export type PersonaClassificationProgressResult = {
-  taskId?: string;
   total?: number;
-  pending?: number;
-  processing?: number;
-  succeeded?: number;
-  failed?: number;
-  progress?: number;
-  percent?: number;
-  phase?: string;
-  status?: ImportProgressStatus;
-  timestamp?: number;
+  current?: number;
+  successCount?: number;
+  failedCount?: number;
+  errorMessage?: string | null;
+  startedAt?: number | string | null;
+  finishedAt?: number | string | null;
+  subTasks?: ImportPipelineSubTask[];
+};
+
+export type ImportFailureStage = 'assetParse' | 'personaClassify';
+
+export type ImportFailureDetail = {
+  id?: string;
+  stage?: ImportFailureStage | string;
+  taskId?: string;
+  execTaskId?: string;
+  debtId?: string;
+  debtNumber?: string;
+  debtorName?: string;
+  city?: string;
+  organization?: string;
+  name?: string;
+  bizType?: string;
+  status?: string;
+  statusName?: string;
+  errorMessage?: string;
+  retryCount?: number;
+  ossId?: string;
+  attPath?: string;
+  docType?: string;
+  updateTime?: string;
 };
 
 export const getDebtRecordPage = (params: DebtRecordQuery) =>
@@ -163,57 +178,42 @@ export const submitAssetPackageImport = (data: SubmitImportTaskData) =>
     data,
   });
 
-export const getAssetPackageTaskStatus = (taskId: string | number) =>
-  ruoyiRequest<TaskProgressResult>(
-    `/system/recov/debt/import/progress/${taskId}`,
+export const getCurrentAssetPackagePipelineProgress = () =>
+  ruoyiRequest<ImportPipelineProgressResult | null>(
+    '/system/recov/debt/import/current',
     {
       method: 'get',
     },
   );
 
-export const submitAssetPackageParse = (data: SubmitParseTaskData) =>
-  adminRequest<string | number | Record<string, unknown>>(
-    '/business/asset-package/parse/submit',
-    {
-      method: 'post',
-      data,
-    },
-  );
-
-export const getParseTaskProgress = (taskId: string | number) =>
-  adminRequest<ParseTaskProgressResult>(
-    `/business/asset-package/import/task/${taskId}`,
+export const getAssetPackagePipelineProgress = (taskId: string | number) =>
+  ruoyiRequest<ImportPipelineProgressResult>(
+    `/system/recov/debt/import/tasks/${taskId}/progress`,
     {
       method: 'get',
     },
   );
 
-export const startPersonaClassification = (
-  data: StartPersonaClassificationData,
+export const getAssetParseFailurePage = (
+  taskId: string | number,
+  params?: PageQuery,
 ) =>
-  adminRequest<StartPersonaClassificationResult>(
-    '/business/persona/classification/start',
-    {
-      method: 'post',
-      data,
-    },
-  );
-
-export const getPersonaClassificationProgress = (taskId: string | number) =>
-  adminRequest<PersonaClassificationProgressResult>(
-    `/business/persona/classification/progress/${taskId}`,
+  ruoyiRequest<ImportFailureDetail>(
+    `/system/recov/debt/import/tasks/${taskId}/asset-parse/failures`,
     {
       method: 'get',
+      params,
     },
   );
 
-export const retryPersonaClassification = (
-  data: StartPersonaClassificationData,
+export const getPersonaClassifyFailurePage = (
+  taskId: string | number,
+  params?: PageQuery,
 ) =>
-  adminRequest<StartPersonaClassificationResult>(
-    '/business/persona/classification/retry',
+  ruoyiRequest<ImportFailureDetail>(
+    `/system/recov/debt/import/tasks/${taskId}/persona-classify/failures`,
     {
-      method: 'post',
-      data,
+      method: 'get',
+      params,
     },
   );
