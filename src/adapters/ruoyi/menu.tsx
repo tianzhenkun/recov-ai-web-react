@@ -1,4 +1,4 @@
-import { AppstoreOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, BarChartOutlined } from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import type { RuoyiRoute } from '@/services/ruoyi/menu';
@@ -12,6 +12,10 @@ export type RuoyiMenuDataItem = MenuDataItem & {
 };
 
 const templateMenuPath = '/template';
+const salesAgentPath = '/sales';
+const salesOverviewPath = '/sales/dashboard';
+const salesOverviewTitle = '数据总览';
+
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
 let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
 
@@ -26,6 +30,53 @@ const normalizePath = (path?: string) => {
   if (isExternal(value)) return value;
   return value.startsWith('/') ? value : `/${value}`;
 };
+
+const salesOverviewMenuItem: RuoyiMenuDataItem = {
+  key: salesOverviewPath,
+  path: salesOverviewPath,
+  name: salesOverviewTitle,
+  locale: false,
+  icon: <BarChartOutlined />,
+};
+
+const isSalesAgentMenuItem = (item: MenuDataItem) => {
+  const path = normalizePath(item.path);
+  if (path === salesAgentPath) return true;
+  const name = String(item.name || '');
+  return /sales\s*agent/i.test(name) || name.includes('获客');
+};
+
+const hasSalesOverviewChild = (children: RuoyiMenuDataItem[]) =>
+  children.some(
+    (child) =>
+      normalizePath(child.path) === salesOverviewPath ||
+      child.name === salesOverviewTitle,
+  );
+
+/** 若依 Sales Agent 常为叶子菜单直达 /sales，补「数据总览」子项以展示二级菜单 */
+export const attachSalesAgentOverviewMenu = (
+  menuData: RuoyiMenuDataItem[],
+): RuoyiMenuDataItem[] =>
+  menuData.map((item) => {
+    const children = item.children
+      ? attachSalesAgentOverviewMenu(item.children as RuoyiMenuDataItem[])
+      : [];
+
+    if (!isSalesAgentMenuItem(item)) {
+      return children.length > 0 ? { ...item, children } : item;
+    }
+
+    const nextChildren = hasSalesOverviewChild(children)
+      ? children
+      : [...children, salesOverviewMenuItem];
+
+    const { redirect: _redirect, ...rest } = item;
+
+    return {
+      ...rest,
+      children: nextChildren,
+    };
+  });
 
 const joinPath = (parentPath: string, childPath?: string) => {
   const child = (childPath || '').trim();
@@ -142,8 +193,9 @@ export const buildLayoutMenuData = (
   ruoyiMenuData: RuoyiMenuDataItem[],
   defaultMenuData: MenuDataItem[],
 ) => {
+  const salesMenuData = attachSalesAgentOverviewMenu(ruoyiMenuData);
   const templateMenu = buildTemplateMenu(defaultMenuData);
-  return templateMenu ? [...ruoyiMenuData, templateMenu] : ruoyiMenuData;
+  return templateMenu ? [...salesMenuData, templateMenu] : salesMenuData;
 };
 
 export const setCachedRuoyiMenuData = (menuData: RuoyiMenuDataItem[]) => {
@@ -163,7 +215,9 @@ export const loadRuoyiMenuData = async () => {
 
   cachedRuoyiMenuRequest = getRouters({ skipErrorHandler: true })
     .then((response) => {
-      const menuData = buildRuoyiMenuData(response.data || []);
+      const menuData = attachSalesAgentOverviewMenu(
+        buildRuoyiMenuData(response.data || []),
+      );
       setCachedRuoyiMenuData(menuData);
       return menuData;
     })

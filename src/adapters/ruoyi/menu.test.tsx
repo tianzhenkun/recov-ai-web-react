@@ -1,4 +1,5 @@
 import {
+  attachSalesAgentOverviewMenu,
   buildLayoutMenuData,
   buildRuoyiMenuData,
   findRuoyiMenuByPath,
@@ -110,6 +111,27 @@ describe('RuoYi menu transform', () => {
     const menuData = buildRuoyiMenuData(ruoyiRoutes);
 
     expect(getFirstVisibleRuoyiPath(menuData)).toBe('/datelligence');
+  });
+
+  it('adds overview child under Sales Agent leaf menu', () => {
+    const menuData = attachSalesAgentOverviewMenu([
+      {
+        path: '/sales',
+        name: 'Sales Agent',
+      },
+    ]);
+
+    expect(menuData[0]).toMatchObject({
+      path: '/sales',
+      name: 'Sales Agent',
+    });
+    expect(menuData[0].children).toEqual([
+      expect.objectContaining({
+        path: '/sales/dashboard',
+        name: '数据总览',
+      }),
+    ]);
+    expect(menuData[0].redirect).toBeUndefined();
   });
 
   it('groups template menus without changing their original paths', () => {

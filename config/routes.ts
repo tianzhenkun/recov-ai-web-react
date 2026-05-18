@@ -281,6 +281,25 @@ export default [
     ],
   },
   {
+    path: '/sales',
+    name: 'sales',
+    icon: 'team',
+    hideInMenu: true,
+    routes: [
+      {
+        path: '/sales',
+        redirect: '/sales/dashboard',
+      },
+      {
+        name: 'overview',
+        icon: 'barChart',
+        path: '/sales/dashboard',
+        component: './sales/dashboard',
+        hideInMenu: true,
+      },
+    ],
+  },
+  {
     path: '/chatbot',
     name: 'chatbot',
     icon: 'robot',
