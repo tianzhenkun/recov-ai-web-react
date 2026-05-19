@@ -30,7 +30,8 @@ export type OssUploadResult = {
   url: string;
 };
 
-const isJsonBlob = (blob: Blob) => blob.type === 'application/json';
+const isJsonBlob = (blob: Blob) =>
+  blob.type.toLowerCase().includes('application/json');
 
 const saveBlob = (blob: Blob, filename: string) => {
   const url = window.URL.createObjectURL(blob);
@@ -40,7 +41,7 @@ const saveBlob = (blob: Blob, filename: string) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 };
 
 export const listOss = (params: OssQuery) =>

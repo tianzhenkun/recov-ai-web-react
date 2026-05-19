@@ -4,8 +4,17 @@ import {
   ClockCircleOutlined,
   CloseCircleOutlined,
   DownloadOutlined,
+  ExclamationCircleOutlined,
   EyeOutlined,
   FieldTimeOutlined,
+  FileExcelOutlined,
+  FileImageOutlined,
+  FilePdfOutlined,
+  FilePptOutlined,
+  FileSearchOutlined,
+  FileTextOutlined,
+  FileUnknownOutlined,
+  FileWordOutlined,
   FileZipOutlined,
   InboxOutlined,
   LoadingOutlined,
@@ -24,7 +33,6 @@ import {
   Alert,
   Button,
   Card,
-  Descriptions,
   Drawer,
   Empty,
   Form,
@@ -36,7 +44,6 @@ import {
   Select,
   Space,
   Spin,
-  Steps,
   Table,
   Tabs,
   Tag,
@@ -58,6 +65,7 @@ import {
   downloadDebtImportTemplate,
   getAssetPackagePipelineProgress,
   getAssetParseFailurePage,
+  getAssetParseUnmatchedPage,
   getCurrentAssetPackagePipelineProgress,
   getDebtCityOptions,
   getDebtOrganizationOptions,
@@ -67,10 +75,13 @@ import {
   type ImportFailureDetail,
   type ImportFailureStage,
   type ImportPipelineProgressResult,
+  type ImportPipelineStatus,
   type ImportPipelineSubTask,
+  ignoreAssetPackagePipelineFailures,
+  retryAssetPackagePipelineTask,
   submitAssetPackageImport,
 } from '@/services/ruoyi/datelligence';
-import { uploadOssFile } from '@/services/ruoyi/oss';
+import { downloadOss, listOssByIds, uploadOssFile } from '@/services/ruoyi/oss';
 import { getPersona, type PersonaItem } from '@/services/ruoyi/persona';
 
 const { Paragraph, Text, Title } = Typography;
@@ -140,6 +151,31 @@ type PipelineTimingState = {
   finishedAt: number;
 };
 
+type AttachmentFileKind =
+  | 'image'
+  | 'pdf'
+  | 'word'
+  | 'excel'
+  | 'ppt'
+  | 'archive'
+  | 'text'
+  | 'unknown';
+
+type AttachmentPreviewType = 'image' | 'embed';
+
+type AttachmentPreviewState = {
+  open: boolean;
+  fileUrl: string;
+  fileName: string;
+  previewType?: AttachmentPreviewType;
+};
+
+type DetailGridField = {
+  label: string;
+  content: React.ReactNode;
+  span?: 1 | 2;
+};
+
 const detailTabs: { key: DetailTabKey; label: string }[] = [
   { key: 'classification', label: '核心区分规则' },
   { key: 'traits', label: '核心特征' },
@@ -167,8 +203,48 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(next) ? next : 0;
 };
 
+const toOptionalNumber = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : undefined;
+};
+
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
+
+const renderEllipsisText = (value: unknown, options?: { strong?: boolean }) => {
+  const text = toText(value);
+  return (
+    <Text
+      ellipsis={{ tooltip: text !== '-' ? text : undefined }}
+      strong={options?.strong}
+      style={{ display: 'block', maxWidth: '100%' }}
+    >
+      {text}
+    </Text>
+  );
+};
+
+const normalizePersonaId = (value: unknown) => {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
+};
+
+const normalizeFlowId = (value: unknown) => {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
+};
+
+const getNonEmptyText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+};
 
 const formatCurrency = (value: unknown) =>
   currencyFormatter.format(toNumber(value));
@@ -226,23 +302,24 @@ const normalizeTags = (tags: PersonaItem['tags']) => {
   return [];
 };
 
-const getGenderAgeText = (data?: DebtRecordDetail | null) => {
-  if (!data) return '-';
-  const gender = data.debtorGender || data.debtor_gender || '';
-  const ageValue = data.debtorAge ?? data.debtor_age;
-  const age =
-    ageValue === null || ageValue === undefined || ageValue === ''
-      ? ''
-      : `${ageValue} 岁`;
-  if (gender && age) return `${gender} / ${age}`;
-  return gender || age || '-';
+const getDebtorGenderText = (data?: DebtRecordDetail | null) =>
+  toText(data?.debtorGender || data?.debtor_gender);
+
+const getDebtorAgeText = (data?: DebtRecordDetail | null) => {
+  const ageValue = data?.debtorAge ?? data?.debtor_age;
+  if (ageValue === null || ageValue === undefined || ageValue === '')
+    return '-';
+  return `${ageValue} 岁`;
 };
 
-const overdueDayTagColor = (days: unknown) => {
-  const value = toNumber(days);
-  if (value > 90) return 'red';
-  if (value > 30) return 'orange';
-  return 'blue';
+const currentStatusTagColor = (status: unknown) => {
+  const text = String(status ?? '').trim();
+  if (!text) return undefined;
+  if (/(完成|成功|已结清|已缴清)/.test(text)) return 'success';
+  if (/(失败|异常|逾期|拒绝)/.test(text)) return 'error';
+  if (/(进行|处理中|外呼中|执行中)/.test(text)) return 'processing';
+  if (/(暂停|停止|待处理|未开始)/.test(text)) return 'warning';
+  return 'default';
 };
 
 const formatElapsed = (startTs: number) => {
@@ -354,8 +431,35 @@ const StatCard = ({ title, value, icon, color }: StatCardProps) => {
 const normalizeProgress = (value: unknown) =>
   Math.min(100, Math.max(0, Number(value) || 0));
 
-const PIPELINE_PROCESSING_STATUSES = new Set(['importing', 'processing']);
-const PIPELINE_TERMINAL_STATUSES = new Set(['success', 'failed']);
+const PIPELINE_PROCESSING_STATUSES = new Set<ImportPipelineStatus>([
+  'importing',
+  'processing',
+]);
+const PIPELINE_TERMINAL_STATUSES = new Set<ImportPipelineStatus>([
+  'success',
+  'failed',
+  'partial_failed',
+  'partial_success',
+]);
+
+const pipelineStatusTitleText: Record<ImportPipelineStatus, string> = {
+  importing: '正在导入数据',
+  processing: '正在处理后续任务',
+  success: '全部完成',
+  failed: '导入失败',
+  partial_failed: '部分失败',
+  partial_success: '已忽略失败',
+};
+
+const pipelineStatusDescriptionText: Record<ImportPipelineStatus, string> = {
+  importing: '正在解析资产包并导入债务数据，请稍候。',
+  processing: '债务数据已导入，正在进行附件解析和画像分类。',
+  success: '全部任务已完成，数据已更新。',
+  failed: '请修正文件后重新上传完整 ZIP。',
+  partial_failed:
+    '债务数据已导入，附件解析或画像分类存在失败记录，可重试或忽略后继续。',
+  partial_success: '失败记录已忽略，本次导入流程已放行，仍可查看明细。',
+};
 
 const findPipelineSubTask = (
   data: ImportPipelineProgressResult,
@@ -368,6 +472,21 @@ const isPipelineTerminal = (data?: ImportPipelineProgressResult | null) =>
 const isPipelineProcessing = (data?: ImportPipelineProgressResult | null) =>
   Boolean(data?.status && PIPELINE_PROCESSING_STATUSES.has(data.status));
 
+const getAssetParseUnmatchedCount = (task?: ImportPipelineSubTask | null) => {
+  if (!task) return undefined;
+  const candidates = [
+    task.unmatchedCount,
+    task.unmatchedAttachmentCount,
+    task.unmatchedFileCount,
+    task.unmatchedTotal,
+  ];
+  for (const value of candidates) {
+    const count = toOptionalNumber(value);
+    if (count !== undefined) return Math.max(0, count);
+  }
+  return undefined;
+};
+
 const toTimestamp = (value: unknown) => {
   if (value === null || value === undefined || value === '') return 0;
   const timestamp =
@@ -377,6 +496,7 @@ const toTimestamp = (value: unknown) => {
 
 const failureStageText: Record<ImportFailureStage, string> = {
   assetParse: '附件解析失败明细',
+  assetParseUnmatched: '未匹配附件',
   personaClassify: '画像分类失败明细',
 };
 
@@ -386,7 +506,113 @@ const pipelineTaskFallbackName: Record<string, string> = {
   personaClassify: '画像分类',
 };
 
-const renderFailureReason = (value: unknown) => (
+const pipelineListRefreshTaskTypes: Array<ImportPipelineSubTask['type']> = [
+  'debtImport',
+  'assetParse',
+  'personaClassify',
+];
+
+type RetryablePipelineTaskType = 'assetParse' | 'personaClassify';
+
+const isImportRetryStage = (
+  type: ImportPipelineSubTask['type'],
+): type is RetryablePipelineTaskType =>
+  type === 'assetParse' || type === 'personaClassify';
+
+const failureDetailActionText: Record<RetryablePipelineTaskType, string> = {
+  assetParse: '查看明细',
+  personaClassify: '查看明细',
+};
+
+const attachmentSuffixGroups = {
+  image: new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg']),
+  pdf: new Set(['pdf']),
+  word: new Set(['doc', 'docx']),
+  excel: new Set(['xls', 'xlsx', 'csv']),
+  ppt: new Set(['ppt', 'pptx']),
+  archive: new Set(['zip', 'rar', '7z', 'tar', 'gz']),
+  text: new Set(['txt', 'md', 'json', 'xml', 'log']),
+};
+
+const previewableAttachmentKinds = new Set<AttachmentFileKind>([
+  'image',
+  'pdf',
+  'text',
+]);
+
+const getAttachmentSuffix = (record: DebtAttachmentItem) => {
+  const explicitSuffix = getNonEmptyText(record.fileSuffix).replace(/^\./, '');
+  if (explicitSuffix) return explicitSuffix.toLowerCase();
+
+  const candidates = [
+    record.originalName,
+    record.fileName,
+    record.name,
+    record.attPath,
+    record.docType,
+    record.url,
+    record.fileUrl,
+  ];
+
+  for (const candidate of candidates) {
+    const text = getNonEmptyText(candidate);
+    if (!text) continue;
+    const normalized = text.replace(/^\./, '').toLowerCase();
+    if (
+      Object.values(attachmentSuffixGroups).some((group) =>
+        group.has(normalized),
+      )
+    ) {
+      return normalized;
+    }
+    const match = text.match(/\.([a-zA-Z0-9]+)(?:[?#].*)?$/);
+    if (match?.[1]) return match[1].toLowerCase();
+  }
+
+  return '';
+};
+
+const getAttachmentKind = (record: DebtAttachmentItem): AttachmentFileKind => {
+  const suffix = getAttachmentSuffix(record);
+  if (attachmentSuffixGroups.image.has(suffix)) return 'image';
+  if (attachmentSuffixGroups.pdf.has(suffix)) return 'pdf';
+  if (attachmentSuffixGroups.word.has(suffix)) return 'word';
+  if (attachmentSuffixGroups.excel.has(suffix)) return 'excel';
+  if (attachmentSuffixGroups.ppt.has(suffix)) return 'ppt';
+  if (attachmentSuffixGroups.archive.has(suffix)) return 'archive';
+  if (attachmentSuffixGroups.text.has(suffix)) return 'text';
+  return 'unknown';
+};
+
+const getAttachmentName = (record: DebtAttachmentItem) => {
+  const name = getNonEmptyText(
+    record.originalName,
+    record.fileName,
+    record.name,
+    record.attPath,
+    record.docType,
+  );
+  if (name) {
+    return name.split(/[\\/]/).pop()?.split('?')[0] || name;
+  }
+  return record.ossId ? `附件_${record.ossId}` : '未命名附件';
+};
+
+const getAttachmentUrl = (record: DebtAttachmentItem) =>
+  getNonEmptyText(record.url, record.fileUrl);
+
+const getAttachmentDownloadName = (record: DebtAttachmentItem) => {
+  const name = getAttachmentName(record);
+  const suffix = getAttachmentSuffix(record);
+  return suffix && !name.toLowerCase().endsWith(`.${suffix}`)
+    ? `${name}.${suffix}`
+    : name;
+};
+
+const renderFailureReason = (
+  value: unknown,
+  type: 'danger' | 'warning' = 'danger',
+) => (
   <Paragraph
     copyable={{ text: toText(value), tooltips: ['复制原因', '已复制'] }}
     ellipsis={{
@@ -395,7 +621,7 @@ const renderFailureReason = (value: unknown) => (
       symbol: (expanded) => (expanded ? '收起' : '展开'),
     }}
     style={{ marginBottom: 0 }}
-    type="danger"
+    type={type}
   >
     {toText(value)}
   </Paragraph>
@@ -422,6 +648,15 @@ const DatelligencePage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<DebtRecordDetail | null>(null);
+  const [attachmentPreview, setAttachmentPreview] =
+    useState<AttachmentPreviewState>({
+      open: false,
+      fileUrl: '',
+      fileName: '',
+    });
+  const [attachmentDownloadingKeys, setAttachmentDownloadingKeys] = useState<
+    Set<string>
+  >(new Set());
 
   const [personaOpen, setPersonaOpen] = useState(false);
   const [personaLoading, setPersonaLoading] = useState(false);
@@ -431,6 +666,7 @@ const DatelligencePage = () => {
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [taskDetailRefreshing, setTaskDetailRefreshing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>({
@@ -453,9 +689,17 @@ const DatelligencePage = () => {
     total: 0,
   });
   const [pipelinePhase, setPipelinePhase] = useState('');
+  const [pipelineStatus, setPipelineStatus] = useState<
+    ImportPipelineStatus | ''
+  >('');
+  const [pipelineErrorMessage, setPipelineErrorMessage] = useState('');
   const [pipelineSubTasks, setPipelineSubTasks] = useState<
     ImportPipelineSubTask[]
   >([]);
+  const [assetParseUnmatchedSummary, setAssetParseUnmatchedSummary] = useState({
+    taskId: '',
+    total: 0,
+  });
 
   const [parseState, setParseState] = useState<ParseState>({
     parsing: false,
@@ -493,6 +737,8 @@ const DatelligencePage = () => {
     startedAt: 0,
     finishedAt: 0,
   });
+  const [retryingPipelineTask, setRetryingPipelineTask] = useState(false);
+  const [ignoringFailures, setIgnoringFailures] = useState(false);
   const [failureDrawerOpen, setFailureDrawerOpen] = useState(false);
   const [failureStage, setFailureStage] =
     useState<ImportFailureStage>('assetParse');
@@ -509,7 +755,9 @@ const DatelligencePage = () => {
   const pipelinePollingTimerRef = useRef<number | null>(null);
   const parseElapsedTimerRef = useRef<number | null>(null);
   const pipelineTerminalNotifiedRef = useRef<Record<string, string>>({});
+  const pipelineDataRefreshMarkersRef = useRef<Record<string, true>>({});
   const pipelineProgressSeqRef = useRef(0);
+  const retryingPipelineTaskRef = useRef(false);
 
   useEffect(() => {
     queryRef.current = query;
@@ -570,8 +818,39 @@ const DatelligencePage = () => {
   }, []);
 
   const refreshAll = useCallback(() => {
+    void loadFilterOptions().catch(() => undefined);
     void fetchDebtors(queryRef.current);
-  }, [fetchDebtors]);
+  }, [fetchDebtors, loadFilterOptions]);
+
+  const refreshDebtDataByPipelineProgress = useCallback(
+    (data: ImportPipelineProgressResult) => {
+      const taskId = String(data.taskId || '');
+      if (!taskId) return;
+
+      const markers: string[] = [];
+      for (const taskType of pipelineListRefreshTaskTypes) {
+        const task = findPipelineSubTask(data, taskType);
+        if (task?.status === 'success') {
+          markers.push(`${taskId}:${taskType}:success`);
+        }
+      }
+
+      if (isPipelineTerminal(data)) {
+        markers.push(`${taskId}:pipeline:${data.status || 'terminal'}`);
+      }
+
+      const newMarkers = markers.filter(
+        (marker) => !pipelineDataRefreshMarkersRef.current[marker],
+      );
+      if (newMarkers.length === 0) return;
+
+      for (const marker of newMarkers) {
+        pipelineDataRefreshMarkersRef.current[marker] = true;
+      }
+      refreshAll();
+    },
+    [refreshAll],
+  );
 
   useEffect(() => {
     void loadFilterOptions();
@@ -644,16 +923,34 @@ const DatelligencePage = () => {
     return formatElapsed(pipelineTiming.startedAt);
   }, [parseElapsedTick, pipelineTiming.finishedAt, pipelineTiming.startedAt]);
 
+  const isPipelineBusyStatus =
+    pipelineStatus === 'importing' || pipelineStatus === 'processing';
+  const hasPipelineRunningSubTask = pipelineSubTasks.some(
+    (task) => task.status === 'processing',
+  );
+  const hasRetryablePipelineFailure = pipelineSubTasks.some(
+    (task) =>
+      isImportRetryStage(task.type) &&
+      (task.status === 'failed' || Number(task.failedCount) > 0),
+  );
   const isImportWorkflowProcessing =
     pipelineRestoring ||
     uploadState.uploading ||
+    isPipelineBusyStatus ||
     importStageState.processing ||
     parseState.parsing ||
     personaState.processing;
 
   const hasImportFailureDetails =
     parseState.failedCount > 0 || personaState.failedCount > 0;
+  const hasPostProcessFailureFacts =
+    parseState.failed || personaState.failed || hasImportFailureDetails;
+  const hasBlockingPipelineFailure =
+    pipelineStatus === 'failed' || pipelineStatus === 'partial_failed';
+  const hasLegacyImportFailure =
+    !pipelineStatus && (importStageState.failed || hasPostProcessFailureFacts);
   const showImportTaskProgress =
+    Boolean(pipelineStatus) ||
     importStageState.processing ||
     importStageState.failed ||
     parseState.parsing ||
@@ -661,29 +958,89 @@ const DatelligencePage = () => {
     personaState.processing ||
     personaState.failed ||
     hasImportFailureDetails;
-  const importTaskFailed =
-    importStageState.failed ||
-    parseState.failed ||
-    personaState.failed ||
-    hasImportFailureDetails;
+  const importTaskFailed = hasBlockingPipelineFailure || hasLegacyImportFailure;
   const importTaskProcessing =
     importStageState.processing ||
     parseState.parsing ||
     personaState.processing;
+  const importTaskAlertType =
+    pipelineStatus === 'success'
+      ? 'success'
+      : pipelineStatus === 'partial_success' ||
+          pipelineStatus === 'partial_failed'
+        ? 'warning'
+        : importTaskFailed
+          ? 'error'
+          : 'info';
+  const canRetryPipelineFailures =
+    pipelineStatus === 'partial_failed' &&
+    !isPipelineBusyStatus &&
+    !hasPipelineRunningSubTask &&
+    hasRetryablePipelineFailure;
+  const canIgnorePipelineFailures = canRetryPipelineFailures;
+  const canDismissImportTaskNotice = !pipelineStatus && importTaskFailed;
+  const importDisabledReason = (() => {
+    if (isImportWorkflowProcessing) {
+      return '当前任务处理中，请等待完成后再导入';
+    }
+    if (pipelineStatus === 'partial_failed') {
+      return '后续处理存在失败，请先重试或忽略后再导入';
+    }
+    return '';
+  })();
+  const canImportAssetPackage = !importDisabledReason;
+  const outboundDisabledReason = (() => {
+    if (recordTotal === 0) return '暂无债务记录，无法开启外呼';
+    if (isImportWorkflowProcessing) {
+      return '当前导入任务处理中，请等待完成后再开启外呼';
+    }
+    if (pipelineStatus === 'failed') {
+      return '导入失败，请重新上传完整 ZIP';
+    }
+    if (pipelineStatus === 'partial_failed') {
+      return '后续处理存在失败，请重试或忽略后再开启外呼';
+    }
+    if (hasLegacyImportFailure) {
+      return '导入链路存在失败，请处理后再开启外呼';
+    }
+    if (pipelineStatus !== 'success' && pipelineStatus !== 'partial_success') {
+      return '导入链路状态未确认，请刷新后重试';
+    }
+    return '';
+  })();
+  const canStartOutbound = !outboundDisabledReason;
 
-  const importTaskTitle = importTaskFailed ? '导入失败' : '导入任务处理中';
+  const importTaskTitle = pipelineStatus
+    ? pipelineStatusTitleText[pipelineStatus]
+    : importTaskFailed
+      ? '导入失败'
+      : '导入任务处理中';
 
   const importTaskDescription = useMemo(() => {
+    if (pipelineStatus) {
+      return pipelineStatusDescriptionText[pipelineStatus];
+    }
+
     if (importStageState.failed) {
-      return importStageState.errorMsg || '导入入库失败，请查看详情';
+      return (
+        pipelineErrorMessage ||
+        importStageState.errorMsg ||
+        '导入入库失败，请查看详情'
+      );
     }
 
     if (parseState.failed) {
-      return parseState.errorMsg || '资产包解析失败，请查看详情';
+      return (
+        pipelineErrorMessage ||
+        parseState.errorMsg ||
+        '资产包解析失败，请查看详情'
+      );
     }
 
     if (personaState.failed) {
-      return personaState.errorMsg || '画像分析存在失败记录';
+      return (
+        pipelineErrorMessage || personaState.errorMsg || '画像分析存在失败记录'
+      );
     }
 
     if (pipelinePhase) {
@@ -722,7 +1079,9 @@ const DatelligencePage = () => {
     importStageState.total,
     importTaskProcessing,
     pipelineElapsedText,
+    pipelineErrorMessage,
     pipelinePhase,
+    pipelineStatus,
     parseState.errorMsg,
     parseState.failed,
     parseState.parsing,
@@ -735,13 +1094,62 @@ const DatelligencePage = () => {
     personaState.total,
   ]);
 
-  const uploadDialogStep = uploadState.errorMsg
-    ? 2
-    : uploadState.uploading
-      ? 2
-      : selectedFile
-        ? 1
-        : 0;
+  const assetParseUnmatchedProbeKey = useMemo(() => {
+    const assetTask = pipelineSubTasks.find(
+      (task) => task.type === 'assetParse',
+    );
+    if (!pipelineTaskId || !assetTask) return '';
+    if (getAssetParseUnmatchedCount(assetTask) !== undefined) return '';
+    if (assetTask.status === 'pending' || assetTask.status === 'processing') {
+      return '';
+    }
+    return [
+      pipelineTaskId,
+      assetTask.taskId,
+      assetTask.execTaskId,
+      assetTask.status,
+      assetTask.current,
+      assetTask.total,
+      assetTask.successCount,
+      assetTask.failedCount,
+    ]
+      .map((item) => String(item ?? ''))
+      .join('|');
+  }, [pipelineSubTasks, pipelineTaskId]);
+
+  useEffect(() => {
+    const taskId = String(pipelineTaskId || '');
+    if (!taskId || !assetParseUnmatchedProbeKey) {
+      setAssetParseUnmatchedSummary((prev) =>
+        prev.taskId || prev.total ? { taskId: '', total: 0 } : prev,
+      );
+      return;
+    }
+
+    let cancelled = false;
+    const loadAssetParseUnmatchedTotal = async () => {
+      try {
+        const res = await getAssetParseUnmatchedPage(taskId, {
+          pageNum: 1,
+          pageSize: 1,
+        });
+        if (cancelled) return;
+        setAssetParseUnmatchedSummary({
+          taskId,
+          total: Number(res.total) || 0,
+        });
+      } catch {
+        if (!cancelled) {
+          setAssetParseUnmatchedSummary({ taskId, total: 0 });
+        }
+      }
+    };
+
+    void loadAssetParseUnmatchedTotal();
+    return () => {
+      cancelled = true;
+    };
+  }, [assetParseUnmatchedProbeKey, pipelineTaskId]);
 
   const applyQuery = (next: DebtRecordQuery) => {
     setQuery(next);
@@ -765,10 +1173,6 @@ const DatelligencePage = () => {
     });
   };
 
-  const handleRefresh = () => {
-    refreshAll();
-  };
-
   const resetUploadState = () => {
     setSelectedFile(null);
     setUploadFileList([]);
@@ -783,8 +1187,8 @@ const DatelligencePage = () => {
   };
 
   const openUploadDialog = () => {
-    if (isImportWorkflowProcessing) {
-      messageApi.warning('当前任务处理中，请等待完成后再导入资产包');
+    if (!canImportAssetPackage) {
+      messageApi.warning(importDisabledReason);
       return;
     }
     resetUploadState();
@@ -871,6 +1275,8 @@ const DatelligencePage = () => {
       total: 0,
     });
     setPipelinePhase('');
+    setPipelineStatus('');
+    setPipelineErrorMessage('');
     setPipelineSubTasks([]);
     setPipelineTiming({ startedAt: 0, finishedAt: 0 });
     if (parseState.failed) {
@@ -910,7 +1316,9 @@ const DatelligencePage = () => {
       const importFinished =
         importStatus === 'success' ||
         data.status === 'processing' ||
-        data.status === 'success';
+        data.status === 'success' ||
+        data.status === 'partial_failed' ||
+        data.status === 'partial_success';
       const importFailed =
         importStatus === 'failed' || (!hasSubTasks && data.status === 'failed');
       const personaSuccessCount = Number(personaTask?.successCount ?? 0) || 0;
@@ -921,17 +1329,22 @@ const DatelligencePage = () => {
       const personaTotal = Number(personaTask?.total ?? 0) || 0;
       const parseFinished =
         parseStatus === 'success' || data.status === 'success';
-      const parseFailed = parseStatus === 'failed' || parseFailedCount > 0;
+      const parseFailed =
+        parseStatus === 'failed' ||
+        (data.status === 'partial_failed' && parseFailedCount > 0);
       const personaFinished =
         personaStatus === 'success' || data.status === 'success';
       const personaFailed =
-        personaStatus === 'failed' || personaFailedCount > 0;
+        personaStatus === 'failed' ||
+        (data.status === 'partial_failed' && personaFailedCount > 0);
       const pipelineProcessing = isPipelineProcessing(data);
 
       if (taskId) {
         setPipelineTaskId(taskId);
       }
+      setPipelineStatus(data.status || '');
       setPipelinePhase(data.phase || '');
+      setPipelineErrorMessage(data.errorMessage || '');
       setPipelineSubTasks(data.subTasks ?? []);
       setPipelineTiming({
         startedAt,
@@ -950,8 +1363,8 @@ const DatelligencePage = () => {
           importTask?.phase ||
           (importFinished ? '已完成' : data.phase || '等待导入'),
         errorMsg: importTask?.errorMessage || '',
-        current: Number(importTask?.current ?? data.current ?? 0) || 0,
-        total: Number(importTask?.total ?? data.total ?? 0) || 0,
+        current: Number(importTask?.current ?? 0) || 0,
+        total: Number(importTask?.total ?? 0) || 0,
       });
 
       setParseState({
@@ -997,8 +1410,14 @@ const DatelligencePage = () => {
       } else {
         stopParseElapsedTimer();
       }
+
+      refreshDebtDataByPipelineProgress(data);
     },
-    [ensureParseElapsedTimer, stopParseElapsedTimer],
+    [
+      ensureParseElapsedTimer,
+      refreshDebtDataByPipelineProgress,
+      stopParseElapsedTimer,
+    ],
   );
 
   const notifyPipelineTerminal = useCallback(
@@ -1008,23 +1427,34 @@ const DatelligencePage = () => {
       if (pipelineTerminalNotifiedRef.current[taskId] === data.status) return;
 
       pipelineTerminalNotifiedRef.current[taskId] = data.status || '';
-      if (data.status === 'success') {
-        messageApi.success('资产包后续处理完成，数据已更新');
-      } else if (data.status === 'failed') {
-        const failedTask = data.subTasks?.find(
-          (item) => item.status === 'failed' || Number(item.failedCount) > 0,
-        );
-        messageApi.error(
-          data.errorMessage ||
-            failedTask?.errorMessage ||
-            (failedTask?.name
-              ? `${failedTask.name}失败`
-              : '资产包后续处理失败'),
-        );
+      switch (data.status) {
+        case 'success':
+          messageApi.success('导入及后续处理完成，数据已更新');
+          break;
+        case 'partial_success':
+          messageApi.success('导入完成，异常已忽略');
+          break;
+        case 'partial_failed':
+          messageApi.warning(
+            data.errorMessage || '导入成功，后续处理部分失败，可重试或忽略',
+          );
+          break;
+        case 'failed': {
+          const failedTask = data.subTasks?.find(
+            (item) => item.status === 'failed',
+          );
+          messageApi.error(
+            data.errorMessage ||
+              failedTask?.errorMessage ||
+              '导入失败，请修正后重新上传完整 ZIP',
+          );
+          break;
+        }
+        default:
+          break;
       }
-      refreshAll();
     },
-    [messageApi, refreshAll],
+    [messageApi],
   );
 
   const pollPipelineProgress = useCallback(
@@ -1047,6 +1477,8 @@ const DatelligencePage = () => {
         if (seq !== pipelineProgressSeqRef.current) return;
         stopPipelinePolling();
         stopParseElapsedTimer();
+        setPipelineStatus('');
+        setPipelineErrorMessage('查询导入进度失败，请刷新页面重试');
         setImportStageState((prev) => ({
           ...prev,
           processing: false,
@@ -1069,13 +1501,25 @@ const DatelligencePage = () => {
   );
 
   const startPipelinePolling = useCallback(
-    (taskId: string | number, options?: { silent?: boolean }) => {
+    (
+      taskId: string | number,
+      options?: {
+        silent?: boolean;
+        initialStatus?: ImportPipelineStatus;
+        initialPhase?: string;
+      },
+    ) => {
       const normalizedTaskId = String(taskId);
       if (!normalizedTaskId) return;
       stopPipelinePolling();
       setPipelineTaskId(normalizedTaskId);
-      setPipelinePhase('等待导入');
+      setPipelineStatus(options?.initialStatus || 'importing');
+      setPipelinePhase(options?.initialPhase || '等待导入');
+      setPipelineErrorMessage('');
       setPipelineSubTasks([]);
+      setRetryingPipelineTask(false);
+      retryingPipelineTaskRef.current = false;
+      setIgnoringFailures(false);
       setParseElapsedTick(0);
       setPipelineTiming({
         startedAt: Date.now(),
@@ -1111,6 +1555,25 @@ const DatelligencePage = () => {
     [pollPipelineProgress, stopPipelinePolling],
   );
 
+  const openTaskDetail = useCallback(() => {
+    setTaskDetailOpen(true);
+    const taskId = String(pipelineTaskId || '');
+    if (!taskId) return;
+
+    setTaskDetailRefreshing(true);
+    void pollPipelineProgress(taskId, { silent: true }).finally(() => {
+      setTaskDetailRefreshing(false);
+    });
+  }, [pipelineTaskId, pollPipelineProgress]);
+
+  const closeTaskDetail = useCallback(() => {
+    setTaskDetailOpen(false);
+    const taskId = String(pipelineTaskId || '');
+    if (!taskId) return;
+
+    void pollPipelineProgress(taskId, { silent: true });
+  }, [pipelineTaskId, pollPipelineProgress]);
+
   useEffect(() => {
     let mounted = true;
     const restoreCurrentPipeline = async () => {
@@ -1120,10 +1583,18 @@ const DatelligencePage = () => {
         if (mounted && data) {
           applyPipelineProgress(data);
           if (data.taskId && isPipelineProcessing(data)) {
-            startPipelinePolling(data.taskId, { silent: true });
+            startPipelinePolling(data.taskId, {
+              silent: true,
+              initialStatus: data.status,
+              initialPhase: data.phase || '处理中',
+            });
           }
         } else if (mounted) {
           setPipelineTaskId('');
+          setPipelineStatus('');
+          setPipelinePhase('');
+          setPipelineErrorMessage('');
+          setPipelineSubTasks([]);
         }
       } catch {
         // current 是页面恢复状态的唯一来源；失败时不使用本地任务 ID 兜底。
@@ -1141,8 +1612,8 @@ const DatelligencePage = () => {
   }, [applyPipelineProgress, startPipelinePolling]);
 
   const submitUpload = async () => {
-    if (isImportWorkflowProcessing) {
-      messageApi.warning('当前任务处理中，请等待完成后再导入资产包');
+    if (!canImportAssetPackage) {
+      messageApi.warning(importDisabledReason);
       return;
     }
     if (!selectedFile) {
@@ -1192,7 +1663,7 @@ const DatelligencePage = () => {
         const currentRes = await getCurrentAssetPackagePipelineProgress();
         const currentTask = currentRes.data;
         if (!currentTask?.taskId) {
-          throw new Error('导入任务已提交，但后端未返回可追踪的任务 ID');
+          throw new Error('导入任务已提交，但后端未返回可追踪的批次 ID');
         }
         setUploadState((prev) => ({
           ...prev,
@@ -1205,7 +1676,10 @@ const DatelligencePage = () => {
         refreshAll();
         applyPipelineProgress(currentTask);
         if (isPipelineProcessing(currentTask)) {
-          startPipelinePolling(currentTask.taskId);
+          startPipelinePolling(currentTask.taskId, {
+            initialStatus: currentTask.status,
+            initialPhase: currentTask.phase || '处理中',
+          });
         }
         return;
       }
@@ -1231,6 +1705,41 @@ const DatelligencePage = () => {
     }
   };
 
+  const getAttachmentKey = (record: DebtAttachmentItem, index = 0) =>
+    String(record.ossId ?? record.fileName ?? record.docType ?? index);
+
+  const enrichDebtAttachments = async (attachments: DebtAttachmentItem[]) => {
+    const ossIds = attachments
+      .map((item) => item.ossId)
+      .filter((ossId) => ossId !== undefined && ossId !== null && ossId !== '')
+      .map(String);
+
+    if (!ossIds.length) return attachments;
+
+    try {
+      const response = await listOssByIds(
+        Array.from(new Set(ossIds)).join(','),
+      );
+      const ossMap = new Map(
+        (response.data ?? [])
+          .filter((item) => item.ossId !== undefined && item.ossId !== null)
+          .map((item) => [String(item.ossId), item]),
+      );
+
+      return attachments.map((attachment) => {
+        const ossId = attachment.ossId;
+        const oss =
+          ossId === undefined || ossId === null
+            ? undefined
+            : ossMap.get(String(ossId));
+        return oss ? { ...attachment, ...oss } : attachment;
+      });
+    } catch {
+      messageApi.warning('附件文件信息加载失败，已显示基础信息');
+      return attachments;
+    }
+  };
+
   const openDebtDetail = async (record: DebtRecordItem) => {
     if (record.id === undefined || record.id === null) {
       messageApi.warning('债务记录 ID 为空，无法查询详情');
@@ -1242,11 +1751,12 @@ const DatelligencePage = () => {
     setDetailData(null);
     try {
       const res = await getDebtRecordDetail(record.id);
+      const attachments = Array.isArray(res.data?.attachments)
+        ? await enrichDebtAttachments(res.data.attachments)
+        : [];
       setDetailData({
         ...(res.data ?? {}),
-        attachments: Array.isArray(res.data?.attachments)
-          ? res.data.attachments
-          : [],
+        attachments,
       });
     } catch {
       setDetailOpen(false);
@@ -1255,25 +1765,18 @@ const DatelligencePage = () => {
     }
   };
 
-  const resolvePersonaId = async (record: DebtRecordItem) => {
-    if (record.personaId) return record.personaId;
-    if (record.id === undefined || record.id === null) return undefined;
-    const res = await getDebtRecordDetail(record.id);
-    return res.data?.personaId;
-  };
-
   const openPersonaDetail = async (record: DebtRecordItem) => {
+    const personaId = normalizePersonaId(record.personaId);
+    if (!personaId) {
+      messageApi.warning('当前债务记录未关联用户画像');
+      return;
+    }
+
     setPersonaOpen(true);
     setPersonaLoading(true);
     setPersonaActiveTab('classification');
     setPersonaData(null);
     try {
-      const personaId = await resolvePersonaId(record);
-      if (!personaId) {
-        messageApi.warning('当前债务记录未关联用户画像');
-        setPersonaOpen(false);
-        return;
-      }
       const res = await getPersona(personaId);
       setPersonaData(res.data ?? null);
     } catch {
@@ -1290,16 +1793,18 @@ const DatelligencePage = () => {
       pageSize = FAILURE_PAGE_SIZE,
     ) => {
       if (!pipelineTaskId) {
-        messageApi.warning('当前导入任务 ID 为空，无法查询失败明细');
+        messageApi.warning('当前资产包批次 ID 为空，无法查询明细');
         return;
       }
       setFailureLoading(true);
       try {
         const params = { pageNum, pageSize };
-        const res =
-          stage === 'assetParse'
-            ? await getAssetParseFailurePage(pipelineTaskId, params)
-            : await getPersonaClassifyFailurePage(pipelineTaskId, params);
+        const requestMap = {
+          assetParse: getAssetParseFailurePage,
+          assetParseUnmatched: getAssetParseUnmatchedPage,
+          personaClassify: getPersonaClassifyFailurePage,
+        };
+        const res = await requestMap[stage](pipelineTaskId, params);
         setFailureRows(res.rows ?? []);
         setFailureTotal(Number(res.total) || 0);
         setFailurePage({ pageNum, pageSize });
@@ -1322,8 +1827,176 @@ const DatelligencePage = () => {
     void loadFailureDetails(stage, 1, FAILURE_PAGE_SIZE);
   };
 
+  const retryPipelineTask = useCallback(async () => {
+    if (!pipelineTaskId) {
+      messageApi.warning('当前资产包批次 ID 为空，无法重试');
+      return;
+    }
+    if (retryingPipelineTaskRef.current) return;
+
+    retryingPipelineTaskRef.current = true;
+    setRetryingPipelineTask(true);
+    try {
+      const res = await retryAssetPackagePipelineTask(pipelineTaskId);
+      const data = res.data;
+      if (!data) return;
+
+      applyPipelineProgress(data);
+      if (isPipelineProcessing(data) && data.taskId) {
+        startPipelinePolling(data.taskId, {
+          initialStatus: data.status,
+          initialPhase: data.phase || '处理中',
+        });
+        return;
+      }
+
+      if (isPipelineTerminal(data)) {
+        stopPipelinePolling();
+        if (data.status === 'partial_failed') {
+          messageApi.warning('重试后仍存在失败记录，请查看明细');
+        } else {
+          notifyPipelineTerminal(data);
+        }
+      }
+    } finally {
+      retryingPipelineTaskRef.current = false;
+      setRetryingPipelineTask(false);
+    }
+  }, [
+    applyPipelineProgress,
+    messageApi,
+    notifyPipelineTerminal,
+    pipelineTaskId,
+    startPipelinePolling,
+    stopPipelinePolling,
+  ]);
+
+  const confirmIgnorePipelineFailures = useCallback(() => {
+    if (!pipelineTaskId) {
+      messageApi.warning('当前资产包批次 ID 为空，无法忽略');
+      return;
+    }
+
+    Modal.confirm({
+      title: '忽略失败并继续',
+      content:
+        '忽略后不会修复附件解析或画像分类失败记录，只是让本次导入链路不再阻塞后续外呼。确认继续吗？',
+      okText: '确认忽略并继续',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setIgnoringFailures(true);
+        try {
+          const res = await ignoreAssetPackagePipelineFailures(pipelineTaskId);
+          const data = res.data;
+          if (!data) return;
+
+          applyPipelineProgress(data);
+          stopPipelinePolling();
+          messageApi.success('已忽略后续处理失败');
+          refreshAll();
+        } finally {
+          setIgnoringFailures(false);
+        }
+      },
+    });
+  }, [
+    applyPipelineProgress,
+    messageApi,
+    pipelineTaskId,
+    refreshAll,
+    stopPipelinePolling,
+  ]);
+
   const showPendingFeature = (feature: string) => {
     messageApi.info(`${feature} 功能尚未接入真实接口`);
+  };
+
+  const renderDetailSection = (title: string, fields: DetailGridField[]) => {
+    const border = `1px solid ${token.colorBorderSecondary}`;
+    const labelCellStyle: React.CSSProperties = {
+      minWidth: 0,
+      padding: '10px 12px',
+      borderRight: border,
+      borderBottom: border,
+      background: token.colorFillAlter,
+      color: token.colorTextSecondary,
+      fontWeight: 500,
+    };
+    const contentCellStyle: React.CSSProperties = {
+      minWidth: 0,
+      padding: '10px 12px',
+      borderRight: border,
+      borderBottom: border,
+      color: token.colorText,
+      wordBreak: 'break-word',
+    };
+    const cells: React.ReactNode[] = [];
+    let halfFieldCount = 0;
+
+    const appendEmptyHalfField = (key: string) => {
+      cells.push(
+        <div key={`${key}-label`} style={labelCellStyle} />,
+        <div key={`${key}-content`} style={contentCellStyle} />,
+      );
+      halfFieldCount = 0;
+    };
+
+    fields.forEach((field, index) => {
+      const key = `${field.label}-${index}`;
+
+      if (field.span === 2) {
+        if (halfFieldCount === 1) {
+          appendEmptyHalfField(`${key}-empty`);
+        }
+
+        cells.push(
+          <div key={`${key}-label`} style={labelCellStyle}>
+            {field.label}
+          </div>,
+          <div
+            key={`${key}-content`}
+            style={{ ...contentCellStyle, gridColumn: 'span 3' }}
+          >
+            {field.content}
+          </div>,
+        );
+        halfFieldCount = 0;
+        return;
+      }
+
+      cells.push(
+        <div key={`${key}-label`} style={labelCellStyle}>
+          {field.label}
+        </div>,
+        <div key={`${key}-content`} style={contentCellStyle}>
+          {field.content}
+        </div>,
+      );
+      halfFieldCount = halfFieldCount === 1 ? 0 : 1;
+    });
+
+    if (halfFieldCount === 1) {
+      appendEmptyHalfField('tail-empty');
+    }
+
+    return (
+      <div>
+        <Title level={5}>{title}</Title>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '150px minmax(0, 1fr) 150px minmax(0, 1fr)',
+            overflow: 'hidden',
+            borderTop: border,
+            borderLeft: border,
+            borderRadius: token.borderRadiusLG,
+          }}
+        >
+          {cells}
+        </div>
+      </div>
+    );
   };
 
   const columns = useMemo<ColumnsType<DebtRecordItem>>(
@@ -1332,7 +2005,7 @@ const DatelligencePage = () => {
         title: '资产编号',
         dataIndex: 'debtNumber',
         width: 150,
-        render: (value) => <Text code>{toText(value)}</Text>,
+        render: toText,
       },
       {
         title: '所属城市',
@@ -1345,19 +2018,14 @@ const DatelligencePage = () => {
         dataIndex: 'organization',
         width: 180,
         ellipsis: true,
-        render: toText,
+        render: (value) => renderEllipsisText(value),
       },
       {
         title: '业主姓名',
         dataIndex: 'debtorName',
         width: 120,
-        render: (value) => <Text strong>{toText(value)}</Text>,
-      },
-      {
-        title: '电话号码',
-        dataIndex: 'debtorPhone',
-        width: 140,
-        render: (value) => <Text code>{toText(value)}</Text>,
+        ellipsis: true,
+        render: (value) => renderEllipsisText(value, { strong: true }),
       },
       {
         title: '逾期金额',
@@ -1371,27 +2039,23 @@ const DatelligencePage = () => {
         dataIndex: 'overdueAmount',
         width: 150,
         align: 'right',
-        render: (value) => (
-          <Text type={toNumber(value) > 0 ? 'danger' : undefined}>
-            {formatCurrency(value)}
-          </Text>
-        ),
+        render: (value) => formatCurrency(value),
       },
       {
         title: '逾期天数',
         dataIndex: 'overdueDays',
         width: 120,
         align: 'center',
-        render: (value) => (
-          <Tag color={overdueDayTagColor(value)}>{toNumber(value)} 天</Tag>
-        ),
+        render: (value) => `${toNumber(value)} 天`,
       },
       {
         title: '当前状态',
         dataIndex: 'currentStatus',
         width: 130,
         align: 'center',
-        render: (value) => toText(value),
+        render: (value) => (
+          <Tag color={currentStatusTagColor(value)}>{toText(value)}</Tag>
+        ),
       },
       {
         title: '创建时间',
@@ -1413,20 +2077,28 @@ const DatelligencePage = () => {
           <TableActions
             maxVisible={3}
             actions={[
-              {
-                key: 'persona',
-                label: '用户画像',
-                icon: <UserOutlined />,
-                onClick: () => {
-                  void openPersonaDetail(record);
-                },
-              },
-              {
-                key: 'analysis',
-                label: '分析结果',
-                icon: <BarChartOutlined />,
-                onClick: () => showPendingFeature('分析结果'),
-              },
+              ...(normalizePersonaId(record.personaId)
+                ? [
+                    {
+                      key: 'persona',
+                      label: '用户画像',
+                      icon: <UserOutlined />,
+                      onClick: () => {
+                        void openPersonaDetail(record);
+                      },
+                    },
+                  ]
+                : []),
+              ...(normalizeFlowId(record.flowId)
+                ? [
+                    {
+                      key: 'analysis',
+                      label: '分析结果',
+                      icon: <BarChartOutlined />,
+                      onClick: () => showPendingFeature('分析结果'),
+                    },
+                  ]
+                : []),
               {
                 key: 'detail',
                 label: '查看详情',
@@ -1443,22 +2115,219 @@ const DatelligencePage = () => {
     [messageApi],
   );
 
-  const attachmentColumns = useMemo<ColumnsType<DebtAttachmentItem>>(
-    () => [
-      {
-        title: 'OSS ID',
-        dataIndex: 'ossId',
-        width: 180,
-        render: (value) => <Text code>{toText(value)}</Text>,
+  const getAttachmentVisual = (kind: AttachmentFileKind) => {
+    const visualMap: Record<
+      AttachmentFileKind,
+      { icon: React.ReactNode; color: string; background: string }
+    > = {
+      image: {
+        icon: <FileImageOutlined />,
+        color: '#722ed1',
+        background: '#f9f0ff',
       },
-      {
-        title: '文档类型',
-        dataIndex: 'docType',
-        render: toText,
+      pdf: {
+        icon: <FilePdfOutlined />,
+        color: '#cf1322',
+        background: '#fff1f0',
       },
-    ],
-    [],
-  );
+      word: {
+        icon: <FileWordOutlined />,
+        color: '#1d39c4',
+        background: '#f0f5ff',
+      },
+      excel: {
+        icon: <FileExcelOutlined />,
+        color: '#237804',
+        background: '#f6ffed',
+      },
+      ppt: {
+        icon: <FilePptOutlined />,
+        color: '#d46b08',
+        background: '#fff7e6',
+      },
+      archive: {
+        icon: <FileZipOutlined />,
+        color: '#7c5a00',
+        background: '#fffbe6',
+      },
+      text: {
+        icon: <FileTextOutlined />,
+        color: '#08979c',
+        background: '#e6fffb',
+      },
+      unknown: {
+        icon: <FileUnknownOutlined />,
+        color: token.colorTextSecondary,
+        background: token.colorFillAlter,
+      },
+    };
+    return visualMap[kind];
+  };
+
+  const canPreviewAttachment = (record: DebtAttachmentItem) =>
+    Boolean(
+      getAttachmentUrl(record) &&
+        previewableAttachmentKinds.has(getAttachmentKind(record)),
+    );
+
+  const openAttachmentPreview = (record: DebtAttachmentItem) => {
+    const fileUrl = getAttachmentUrl(record);
+    if (!fileUrl) {
+      messageApi.warning('当前附件没有可预览地址');
+      return;
+    }
+
+    const kind = getAttachmentKind(record);
+    if (!previewableAttachmentKinds.has(kind)) {
+      messageApi.info('当前文件类型暂不支持在线预览');
+      return;
+    }
+
+    setAttachmentPreview({
+      open: true,
+      fileUrl,
+      fileName: getAttachmentName(record),
+      previewType: kind === 'image' ? 'image' : 'embed',
+    });
+  };
+
+  const downloadAttachment = async (
+    record: DebtAttachmentItem,
+    index: number,
+  ) => {
+    if (!record.ossId) {
+      messageApi.warning('当前附件缺少 OSS ID，无法下载');
+      return;
+    }
+
+    const rowKey = getAttachmentKey(record, index);
+    if (attachmentDownloadingKeys.has(rowKey)) return;
+
+    const messageKey = `attachment-download-${rowKey}`;
+    setAttachmentDownloadingKeys((keys) => new Set(keys).add(rowKey));
+    messageApi.open({
+      key: messageKey,
+      type: 'loading',
+      content: '正在下载附件...',
+      duration: 0,
+    });
+    try {
+      await downloadOss(record.ossId, getAttachmentDownloadName(record));
+      messageApi.open({
+        key: messageKey,
+        type: 'success',
+        content: '下载已开始',
+        duration: 2,
+      });
+    } catch (error) {
+      messageApi.open({
+        key: messageKey,
+        type: 'error',
+        content:
+          error instanceof Error ? error.message : '附件下载失败，请稍后重试',
+        duration: 3,
+      });
+    } finally {
+      setAttachmentDownloadingKeys((keys) => {
+        const nextKeys = new Set(keys);
+        nextKeys.delete(rowKey);
+        return nextKeys;
+      });
+    }
+  };
+
+  const renderAttachmentCard = (
+    attachment: DebtAttachmentItem,
+    index: number,
+  ) => {
+    const kind = getAttachmentKind(attachment);
+    const suffix = getAttachmentSuffix(attachment);
+    const visual = getAttachmentVisual(kind);
+    const name = getAttachmentName(attachment);
+    const rowKey = getAttachmentKey(attachment, index);
+    const isDownloading = attachmentDownloadingKeys.has(rowKey);
+
+    return (
+      <Card
+        key={rowKey}
+        size="small"
+        variant="outlined"
+        style={{
+          borderColor: token.colorBorderSecondary,
+          background: token.colorBgContainer,
+        }}
+        styles={{ body: { padding: 12 } }}
+      >
+        <div className="flex items-start gap-3">
+          <span
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-lg"
+            style={{
+              color: visual.color,
+              background: visual.background,
+              borderRadius: token.borderRadiusLG,
+            }}
+          >
+            {visual.icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <Tooltip title={name}>
+                <Text
+                  strong
+                  style={{
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {name}
+                </Text>
+              </Tooltip>
+              <Space size={4} wrap={false}>
+                {canPreviewAttachment(attachment) && (
+                  <Tooltip title="预览附件">
+                    <Button
+                      aria-label="预览附件"
+                      icon={<EyeOutlined />}
+                      onClick={() => openAttachmentPreview(attachment)}
+                      shape="circle"
+                      size="small"
+                      type="text"
+                    />
+                  </Tooltip>
+                )}
+                <Tooltip title="下载附件">
+                  <Button
+                    aria-label="下载附件"
+                    icon={<DownloadOutlined />}
+                    loading={isDownloading}
+                    onClick={() => {
+                      void downloadAttachment(attachment, index);
+                    }}
+                    shape="circle"
+                    size="small"
+                    type="text"
+                  />
+                </Tooltip>
+              </Space>
+            </div>
+            <Space size={6} style={{ marginTop: 6 }} wrap>
+              {suffix && <Tag>{suffix.toUpperCase()}</Tag>}
+              {attachment.ossId && (
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, lineHeight: '20px' }}
+                >
+                  {attachment.ossId}
+                </Text>
+              )}
+            </Space>
+          </div>
+        </div>
+      </Card>
+    );
+  };
 
   const renderFailureInlineMetaItem = (
     label: string,
@@ -1479,22 +2348,15 @@ const DatelligencePage = () => {
   );
 
   const renderFailureDetailItem = (record: ImportFailureDetail) => {
-    const isAssetParse = failureStage === 'assetParse';
-    const primaryTitle = isAssetParse
+    const isUnmatchedStage = failureStage === 'assetParseUnmatched';
+    const isAttachmentStage = failureStage === 'assetParse' || isUnmatchedStage;
+    const primaryTitle = isAttachmentStage
       ? toText(record.attPath ?? record.name)
       : toText(record.debtorName);
-    const metaItems = isAssetParse
-      ? [
-          renderFailureInlineMetaItem(
-            '文档类型',
-            toText(record.docType ?? record.bizType),
-          ),
-          renderFailureInlineMetaItem(
-            'OSS ID',
-            <Text code>{toText(record.ossId)}</Text>,
-          ),
-          renderFailureInlineMetaItem('重试次数', toNumber(record.retryCount)),
-        ]
+    const metaItems = isAttachmentStage
+      ? record.statusName && isUnmatchedStage
+        ? [renderFailureInlineMetaItem('状态', toText(record.statusName))]
+        : []
       : [
           renderFailureInlineMetaItem('所属项目', toText(record.organization)),
           renderFailureInlineMetaItem(
@@ -1502,6 +2364,17 @@ const DatelligencePage = () => {
             <Text code>{toText(record.debtNumber)}</Text>,
           ),
         ];
+    const reasonTitle = isUnmatchedStage ? '未匹配原因' : '失败原因';
+    const reasonType = isUnmatchedStage ? 'warning' : 'danger';
+    const reasonPanelStyle = isUnmatchedStage
+      ? {
+          border: `1px solid ${token.colorWarningBorder}`,
+          background: token.colorWarningBg,
+        }
+      : {
+          border: `1px solid ${token.colorErrorBorder}`,
+          background: token.colorErrorBg,
+        };
 
     return (
       <List.Item
@@ -1532,16 +2405,15 @@ const DatelligencePage = () => {
           <div
             style={{
               padding: 12,
-              border: `1px solid ${token.colorErrorBorder}`,
               borderRadius: token.borderRadiusLG,
-              background: token.colorErrorBg,
+              ...reasonPanelStyle,
             }}
           >
-            <Text strong type="danger">
-              失败原因
+            <Text strong type={reasonType}>
+              {reasonTitle}
             </Text>
             <div style={{ marginTop: 6 }}>
-              {renderFailureReason(record.errorMessage)}
+              {renderFailureReason(record.errorMessage, reasonType)}
             </div>
           </div>
         </div>
@@ -1572,7 +2444,10 @@ const DatelligencePage = () => {
     ...otherPipelineTasks,
   ].filter((task): task is ImportPipelineSubTask => Boolean(task));
   const resolvePipelineTaskStatus = (task: ImportPipelineSubTask) => {
-    if (task.status === 'failed' || Number(task.failedCount) > 0) {
+    if (
+      task.status === 'failed' ||
+      (pipelineStatus === 'partial_failed' && Number(task.failedCount) > 0)
+    ) {
       return 'failed';
     }
     return task.status || 'pending';
@@ -1589,30 +2464,62 @@ const DatelligencePage = () => {
     }
     return resolvePipelineTaskStatus(task) === 'success' ? 100 : 0;
   };
+  const assetParseUnmatchedCountFromTask =
+    getAssetParseUnmatchedCount(assetParseTask);
+  const assetParseUnmatchedCount = assetParseTask
+    ? (assetParseUnmatchedCountFromTask ??
+      (assetParseUnmatchedSummary.taskId === pipelineTaskId
+        ? assetParseUnmatchedSummary.total
+        : 0))
+    : 0;
+  const hasAssetParseUnmatched = assetParseUnmatchedCount > 0;
+  const hasTaskDetailFooter =
+    canRetryPipelineFailures || canIgnorePipelineFailures;
   const renderPipelineTaskCard = (task: ImportPipelineSubTask) => {
     const status = resolvePipelineTaskStatus(task);
+    const current = Number(task.current) || 0;
+    const total = Number(task.total) || 0;
+    const successCount = Number(task.successCount) || 0;
     const failedCount = Number(task.failedCount) || 0;
+    const hasCountSummary = total > 0;
     const progress = resolvePipelineTaskProgress(task);
-    const progressStatus =
-      status === 'failed'
+    const isIgnoredFailure =
+      pipelineStatus === 'partial_success' &&
+      isImportRetryStage(task.type) &&
+      status !== 'success';
+    const progressStatus = isIgnoredFailure
+      ? 'normal'
+      : status === 'failed'
         ? 'exception'
         : status === 'processing'
           ? 'active'
           : 'normal';
-    const progressStrokeColor =
-      status === 'success' || status === 'processing'
+    const progressStrokeColor = isIgnoredFailure
+      ? token.colorWarning
+      : status === 'success' || status === 'processing'
         ? token.colorInfo
         : undefined;
+    const failureDetailStage = isImportRetryStage(task.type)
+      ? task.type
+      : undefined;
     const canOpenFailure =
-      (status === 'failed' || failedCount > 0) &&
-      (task.type === 'assetParse' || task.type === 'personaClassify');
-    const failureStage = task.type as ImportFailureStage;
+      Boolean(failureDetailStage) &&
+      total > 0 &&
+      (status === 'failed' || isIgnoredFailure);
+    const canOpenUnmatched =
+      task.type === 'assetParse' && hasAssetParseUnmatched;
     const title =
       task.name ||
       (task.type ? pipelineTaskFallbackName[task.type] : '') ||
       toText(task.type);
-    const statusVisual =
-      status === 'failed'
+    const statusVisual = isIgnoredFailure
+      ? {
+          color: token.colorWarning,
+          background: token.colorWarningBg,
+          borderColor: token.colorWarningBorder,
+          icon: <ExclamationCircleOutlined />,
+        }
+      : status === 'failed'
         ? {
             color: token.colorError,
             background: token.colorErrorBg,
@@ -1671,19 +2578,38 @@ const DatelligencePage = () => {
                 <div className="min-w-0">
                   <Text strong>{title}</Text>
                   <div style={{ marginTop: 2 }}>
-                    <Text type="secondary">{task.phase || '等待处理'}</Text>
+                    <Text type="secondary">
+                      {isIgnoredFailure
+                        ? '已忽略失败'
+                        : task.phase || '等待处理'}
+                    </Text>
                   </div>
                 </div>
-                {canOpenFailure && (
-                  <Button
-                    color="danger"
-                    icon={<EyeOutlined />}
-                    onClick={() => openFailureDrawer(failureStage)}
-                    size="small"
-                    variant="filled"
-                  >
-                    查看明细
-                  </Button>
+                {(canOpenFailure || canOpenUnmatched) && (
+                  <Space size={8} wrap>
+                    {canOpenFailure && failureDetailStage && (
+                      <Button
+                        color={isIgnoredFailure ? 'gold' : 'danger'}
+                        icon={<EyeOutlined />}
+                        onClick={() => openFailureDrawer(failureDetailStage)}
+                        size="small"
+                        variant="filled"
+                      >
+                        {failureDetailActionText[failureDetailStage]}
+                      </Button>
+                    )}
+                    {canOpenUnmatched && (
+                      <Button
+                        color="default"
+                        icon={<FileSearchOutlined />}
+                        onClick={() => openFailureDrawer('assetParseUnmatched')}
+                        size="small"
+                        variant="outlined"
+                      >
+                        未匹配附件（{assetParseUnmatchedCount}）
+                      </Button>
+                    )}
+                  </Space>
                 )}
               </div>
             </div>
@@ -1693,9 +2619,21 @@ const DatelligencePage = () => {
               status={progressStatus}
               strokeColor={progressStrokeColor}
             />
-            {task.errorMessage && (
-              <Text type="danger">{task.errorMessage}</Text>
+            {hasCountSummary && (
+              <Space size={12} wrap>
+                <Text type="secondary">总计 {total} 条</Text>
+                <Text type="secondary">成功 {successCount} 条</Text>
+                <Text type="secondary">失败 {failedCount} 条</Text>
+                <Text type="secondary">
+                  已处理 {current}/{total}
+                </Text>
+              </Space>
             )}
+            {task.errorMessage && isIgnoredFailure ? (
+              <Text type="warning">{task.errorMessage}</Text>
+            ) : task.errorMessage && status === 'failed' ? (
+              <Text type="danger">{task.errorMessage}</Text>
+            ) : null}
           </div>
         </div>
       </Card>
@@ -1709,20 +2647,21 @@ const DatelligencePage = () => {
         {showImportTaskProgress && (
           <button
             type="button"
-            onClick={() => setTaskDetailOpen(true)}
+            disabled={taskDetailRefreshing}
+            onClick={openTaskDetail}
             style={{
               appearance: 'none',
               width: '100%',
               padding: 0,
               border: 0,
               background: 'transparent',
-              cursor: 'pointer',
+              cursor: taskDetailRefreshing ? 'wait' : 'pointer',
               textAlign: 'left',
             }}
           >
             <Alert
               showIcon
-              type={importTaskFailed ? 'error' : 'info'}
+              type={importTaskAlertType}
               message={
                 <Space size={8} wrap>
                   <Text strong>{importTaskTitle}</Text>
@@ -1733,7 +2672,7 @@ const DatelligencePage = () => {
                 <Text
                   style={{ color: token.colorPrimary, whiteSpace: 'nowrap' }}
                 >
-                  查看详情
+                  {taskDetailRefreshing ? '刷新中' : '查看详情'}
                 </Text>
               }
             />
@@ -1808,31 +2747,24 @@ const DatelligencePage = () => {
                 </Button>
               </Space>
               <Space wrap size={8}>
-                <Button icon={<ReloadOutlined />} onClick={handleRefresh}>
-                  刷新
-                </Button>
-                <Tooltip
-                  title={
-                    isImportWorkflowProcessing
-                      ? '当前任务处理中，请等待完成后再导入'
-                      : undefined
-                  }
-                >
+                <Tooltip title={importDisabledReason || undefined}>
                   <Button
-                    disabled={isImportWorkflowProcessing}
+                    disabled={!canImportAssetPackage}
                     icon={<UploadOutlined />}
                     onClick={openUploadDialog}
                   >
                     导入资产包
                   </Button>
                 </Tooltip>
-                <Button
-                  disabled={recordTotal === 0 || isImportWorkflowProcessing}
-                  icon={<PhoneOutlined />}
-                  onClick={() => showPendingFeature('AI 外呼')}
-                >
-                  启动 AI 外呼
-                </Button>
+                <Tooltip title={outboundDisabledReason || undefined}>
+                  <Button
+                    disabled={!canStartOutbound}
+                    icon={<PhoneOutlined />}
+                    onClick={() => showPendingFeature('AI 外呼')}
+                  >
+                    启动 AI 外呼
+                  </Button>
+                </Tooltip>
               </Space>
             </div>
           </Form>
@@ -1894,17 +2826,6 @@ const DatelligencePage = () => {
         }}
       >
         <Space direction="vertical" size={18} style={{ width: '100%' }}>
-          <Steps
-            size="small"
-            current={uploadDialogStep}
-            status={uploadState.errorMsg ? 'error' : 'process'}
-            items={[
-              { title: '准备数据' },
-              { title: '上传压缩包' },
-              { title: uploadState.uploading ? '导入处理中' : '提交导入' },
-            ]}
-          />
-
           <div
             className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
             style={{
@@ -1996,10 +2917,10 @@ const DatelligencePage = () => {
                   <FileZipOutlined />
                 </span>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <Text strong>正在导入资产包</Text>
+                  <Text strong>正在上传并创建导入任务</Text>
                   <div style={{ marginTop: 4 }}>
                     <Text type="secondary">
-                      {uploadState.phase || '正在处理资产包'}
+                      {uploadState.phase || '正在上传资产包'}
                     </Text>
                   </div>
                 </div>
@@ -2040,61 +2961,109 @@ const DatelligencePage = () => {
         size={520}
         open={taskDetailOpen}
         destroyOnHidden
-        onClose={() => setTaskDetailOpen(false)}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            width: '100%',
-          }}
-        >
-          {pipelineSubTasks.length > 0 && (
+        footer={
+          hasTaskDetailFooter ? (
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 12,
+                gap: 8,
               }}
             >
-              {pipelineStepTasks.map(renderPipelineTaskCard)}
-            </div>
-          )}
-
-          {!pipelineSubTasks.length &&
-            (parseState.failed ||
-              parseState.failedCount > 0 ||
-              personaState.failed ||
-              personaState.failedCount > 0) && (
-              <Space wrap>
-                {(parseState.failed || parseState.failedCount > 0) && (
+              <Space
+                size={8}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  width: '100%',
+                }}
+                wrap
+              >
+                <Button onClick={closeTaskDetail}>取消</Button>
+                {canRetryPipelineFailures && (
                   <Button
-                    size="small"
-                    onClick={() => openFailureDrawer('assetParse')}
+                    color="danger"
+                    disabled={ignoringFailures || retryingPipelineTask}
+                    icon={<ReloadOutlined />}
+                    loading={retryingPipelineTask}
+                    onClick={() => {
+                      void retryPipelineTask();
+                    }}
+                    variant="filled"
                   >
-                    附件解析失败明细
+                    重试
                   </Button>
                 )}
-                {(personaState.failed || personaState.failedCount > 0) && (
+                {canIgnorePipelineFailures && (
                   <Button
-                    size="small"
-                    onClick={() => openFailureDrawer('personaClassify')}
+                    color="gold"
+                    disabled={retryingPipelineTask}
+                    icon={<CheckCircleOutlined />}
+                    loading={ignoringFailures}
+                    onClick={confirmIgnorePipelineFailures}
+                    variant="filled"
                   >
-                    画像分类失败明细
+                    忽略
                   </Button>
                 )}
               </Space>
+            </div>
+          ) : null
+        }
+        onClose={closeTaskDetail}
+      >
+        <Spin spinning={taskDetailRefreshing}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              width: '100%',
+            }}
+          >
+            {pipelineSubTasks.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                {pipelineStepTasks.map(renderPipelineTaskCard)}
+              </div>
             )}
 
-          {importTaskFailed && (
-            <Space wrap>
-              <Button danger onClick={dismissImportTaskErrors}>
-                关闭异常提示
-              </Button>
-            </Space>
-          )}
-        </div>
+            {!pipelineSubTasks.length &&
+              (parseState.failed || personaState.failed) && (
+                <Space wrap>
+                  {parseState.failed && (
+                    <Button
+                      size="small"
+                      onClick={() => openFailureDrawer('assetParse')}
+                    >
+                      附件解析失败明细
+                    </Button>
+                  )}
+                  {personaState.failed && (
+                    <Button
+                      size="small"
+                      onClick={() => openFailureDrawer('personaClassify')}
+                    >
+                      画像分类失败明细
+                    </Button>
+                  )}
+                </Space>
+              )}
+
+            {canDismissImportTaskNotice && (
+              <Space wrap>
+                <Button danger onClick={dismissImportTaskErrors}>
+                  关闭异常提示
+                </Button>
+              </Space>
+            )}
+          </div>
+        </Spin>
       </Drawer>
 
       <Drawer
@@ -2109,7 +3078,17 @@ const DatelligencePage = () => {
           dataSource={failureRows}
           itemLayout="vertical"
           loading={failureLoading}
-          locale={{ emptyText: <Empty description="暂无失败明细" /> }}
+          locale={{
+            emptyText: (
+              <Empty
+                description={
+                  failureStage === 'assetParseUnmatched'
+                    ? '暂无未匹配附件'
+                    : '暂无失败明细'
+                }
+              />
+            ),
+          }}
           renderItem={renderFailureDetailItem}
           rowKey={(record) =>
             `${record.stage || failureStage}-${record.id || record.debtId || record.name}`
@@ -2149,88 +3128,148 @@ const DatelligencePage = () => {
         <Spin spinning={detailLoading}>
           {detailData ? (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              <Descriptions bordered column={2} size="small">
-                <Descriptions.Item label="资产编号">
-                  {toText(detailData.debtNumber)}
-                </Descriptions.Item>
-                <Descriptions.Item label="所属城市">
-                  {toText(detailData.city)}
-                </Descriptions.Item>
-                <Descriptions.Item label="所属项目">
-                  {toText(detailData.organization)}
-                </Descriptions.Item>
-                <Descriptions.Item label="业主姓名">
-                  {toText(detailData.debtorName)}
-                </Descriptions.Item>
-                <Descriptions.Item label="业主邮箱">
-                  {toText(detailData.debtorEmail)}
-                </Descriptions.Item>
-                <Descriptions.Item label="电话号码">
-                  {toText(detailData.debtorPhone)}
-                </Descriptions.Item>
-                <Descriptions.Item label="身份证号码">
-                  {toText(detailData.debtIdCard)}
-                </Descriptions.Item>
-                <Descriptions.Item label="性别/年龄">
-                  {getGenderAgeText(detailData)}
-                </Descriptions.Item>
-                <Descriptions.Item label="当前状态">
-                  {toText(detailData.currentStatus)}
-                </Descriptions.Item>
-                <Descriptions.Item label="用户画像 ID">
-                  {toText(detailData.personaId)}
-                </Descriptions.Item>
-                <Descriptions.Item label="逾期金额">
-                  {formatCurrency(detailData.debtAmount)}
-                </Descriptions.Item>
-                <Descriptions.Item label="违约（滞纳）金">
-                  {formatCurrency(detailData.overdueAmount)}
-                </Descriptions.Item>
-                <Descriptions.Item label="逾期天数">
-                  {toNumber(detailData.overdueDays)} 天
-                </Descriptions.Item>
-                <Descriptions.Item label="债务发生日期">
-                  {toText(detailData.debtTime)}
-                </Descriptions.Item>
-                <Descriptions.Item label="缴费截止日期">
-                  {toText(detailData.deadlineTime)}
-                </Descriptions.Item>
-                <Descriptions.Item label="房屋面积">
-                  {toText(detailData.area)}
-                </Descriptions.Item>
-                <Descriptions.Item label="资产包任务 ID">
-                  {toText(detailData.taskId)}
-                </Descriptions.Item>
-                <Descriptions.Item label="创建时间">
-                  {toText(detailData.createTime)}
-                </Descriptions.Item>
-                <Descriptions.Item label="房屋地址" span={2}>
-                  {toText(detailData.address)}
-                </Descriptions.Item>
-                <Descriptions.Item label="历史催缴说明" span={2}>
-                  <Text>{toText(detailData.reminderRemark)}</Text>
-                </Descriptions.Item>
-              </Descriptions>
+              {renderDetailSection('业主信息', [
+                { label: '业主姓名', content: toText(detailData.debtorName) },
+                { label: '电话号码', content: toText(detailData.debtorPhone) },
+                { label: '业主邮箱', content: toText(detailData.debtorEmail) },
+                { label: '身份证号码', content: toText(detailData.debtIdCard) },
+                { label: '性别', content: getDebtorGenderText(detailData) },
+                { label: '年龄', content: getDebtorAgeText(detailData) },
+              ])}
+
+              {renderDetailSection('债务信息', [
+                { label: '资产编号', content: toText(detailData.debtNumber) },
+                {
+                  label: '当前状态',
+                  content: toText(detailData.currentStatus),
+                },
+                {
+                  label: '逾期金额',
+                  content: formatCurrency(detailData.debtAmount),
+                },
+                {
+                  label: '违约（滞纳）金',
+                  content: formatCurrency(detailData.overdueAmount),
+                },
+                {
+                  label: '逾期天数',
+                  content: `${toNumber(detailData.overdueDays)} 天`,
+                },
+                {
+                  label: '缴费截止日期',
+                  content: toText(detailData.deadlineTime),
+                },
+              ])}
+
+              {renderDetailSection('其他信息', [
+                { label: '所属城市', content: toText(detailData.city) },
+                { label: '所属项目', content: toText(detailData.organization) },
+                { label: '房屋面积', content: toText(detailData.area) },
+                { label: '房屋地址', content: toText(detailData.address) },
+                {
+                  label: '历史催缴说明',
+                  content: <Text>{toText(detailData.reminderRemark)}</Text>,
+                  span: 2,
+                },
+              ])}
 
               <div>
                 <Title level={5}>关联附件</Title>
-                <Table<DebtAttachmentItem>
-                  bordered
-                  columns={attachmentColumns}
-                  dataSource={detailData.attachments || []}
-                  pagination={false}
-                  rowKey={(record) => String(record.ossId ?? record.docType)}
-                  size="small"
-                  locale={{
-                    emptyText: <Empty description="暂无关联附件" />,
-                  }}
-                />
+                {detailData.attachments?.length ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 12,
+                      gridTemplateColumns:
+                        'repeat(auto-fill, minmax(260px, 1fr))',
+                    }}
+                  >
+                    {detailData.attachments.map(renderAttachmentCard)}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: 24,
+                      border: `1px dashed ${token.colorBorder}`,
+                      borderRadius: token.borderRadiusLG,
+                    }}
+                  >
+                    <Empty description="暂无关联附件" />
+                  </div>
+                )}
               </div>
             </Space>
           ) : (
             <Empty description="暂无详情数据" />
           )}
         </Spin>
+      </Modal>
+
+      <Modal
+        title={attachmentPreview.fileName || '附件预览'}
+        open={attachmentPreview.open}
+        width={860}
+        destroyOnHidden
+        footer={
+          <Space>
+            <Button
+              disabled={!attachmentPreview.fileUrl}
+              onClick={() => window.open(attachmentPreview.fileUrl, '_blank')}
+            >
+              新窗口打开
+            </Button>
+            <Button
+              onClick={() =>
+                setAttachmentPreview((prev) => ({ ...prev, open: false }))
+              }
+            >
+              关闭
+            </Button>
+          </Space>
+        }
+        onCancel={() =>
+          setAttachmentPreview((prev) => ({ ...prev, open: false }))
+        }
+      >
+        {attachmentPreview.fileUrl ? (
+          attachmentPreview.previewType === 'image' ? (
+            <img
+              alt={attachmentPreview.fileName}
+              src={attachmentPreview.fileUrl}
+              style={{
+                display: 'block',
+                maxHeight: '70vh',
+                maxWidth: '100%',
+                margin: '0 auto',
+                objectFit: 'contain',
+              }}
+            />
+          ) : (
+            <object
+              data={attachmentPreview.fileUrl}
+              style={{
+                width: '100%',
+                height: '70vh',
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: token.borderRadiusLG,
+              }}
+            >
+              <div className="flex h-[320px] flex-col items-center justify-center gap-3">
+                <Text type="secondary">当前浏览器不支持内嵌预览该附件</Text>
+                <Button
+                  type="primary"
+                  onClick={() =>
+                    window.open(attachmentPreview.fileUrl, '_blank')
+                  }
+                >
+                  新窗口打开
+                </Button>
+              </div>
+            </object>
+          )
+        ) : (
+          <Empty description="暂无可预览附件" />
+        )}
       </Modal>
 
       <Modal
@@ -2249,12 +3288,9 @@ const DatelligencePage = () => {
                   <Title level={4} style={{ marginBottom: 4 }}>
                     {personaData.personaName || '-'}
                   </Title>
-                  <Text type="secondary">
-                    ID：{toText(personaData.id)}
-                    {personaData.priority
-                      ? ` · 优先级：${personaData.priority}`
-                      : ''}
-                  </Text>
+                  {personaData.priority && (
+                    <Text type="secondary">优先级：{personaData.priority}</Text>
+                  )}
                 </div>
                 {personaTags.length > 0 && (
                   <Space wrap size={4} style={{ justifyContent: 'flex-end' }}>

@@ -21,6 +21,7 @@ export type DebtRecordQuery = PageQuery & {
 
 export type DebtRecordItem = {
   id?: number | string;
+  batchId?: number | string;
   debtNumber?: number | string;
   debtAmount?: number | string;
   debtTime?: string;
@@ -43,6 +44,7 @@ export type DebtRecordItem = {
   taskId?: number | string;
   debtIdCard?: string;
   personaId?: number | string;
+  flowId?: number | string | null;
   overdueDays?: number | string;
   overdueAmount?: number | string;
   currentStatus?: string;
@@ -55,6 +57,13 @@ export type DebtRecordItem = {
 export type DebtAttachmentItem = {
   ossId?: number | string;
   docType?: string;
+  name?: string;
+  attPath?: string;
+  fileName?: string;
+  originalName?: string;
+  fileSuffix?: string;
+  url?: string;
+  fileUrl?: string;
 };
 
 export type DebtRecordDetail = DebtRecordItem & {
@@ -78,7 +87,9 @@ export type ImportPipelineStatus =
   | 'importing'
   | 'processing'
   | 'success'
-  | 'failed';
+  | 'failed'
+  | 'partial_failed'
+  | 'partial_success';
 export type ImportPipelineSubTaskStatus =
   | 'pending'
   | 'processing'
@@ -102,6 +113,10 @@ export type ImportPipelineSubTask = {
   current?: number;
   successCount?: number;
   failedCount?: number;
+  unmatchedCount?: number | string;
+  unmatchedAttachmentCount?: number | string;
+  unmatchedFileCount?: number | string;
+  unmatchedTotal?: number | string;
   errorMessage?: string | null;
 };
 
@@ -120,11 +135,15 @@ export type ImportPipelineProgressResult = {
   subTasks?: ImportPipelineSubTask[];
 };
 
-export type ImportFailureStage = 'assetParse' | 'personaClassify';
+export type ImportFailureStage =
+  | 'assetParse'
+  | 'assetParseUnmatched'
+  | 'personaClassify';
 
 export type ImportFailureDetail = {
   id?: string;
   stage?: ImportFailureStage | string;
+  batchId?: string;
   taskId?: string;
   execTaskId?: string;
   debtId?: string;
@@ -183,6 +202,7 @@ export const getCurrentAssetPackagePipelineProgress = () =>
     '/system/recov/debt/import/current',
     {
       method: 'get',
+      skipErrorHandler: true,
     },
   );
 
@@ -194,12 +214,44 @@ export const getAssetPackagePipelineProgress = (taskId: string | number) =>
     },
   );
 
+export const retryAssetPackagePipelineTask = (
+  taskId: string | number,
+) =>
+  ruoyiRequest<ImportPipelineProgressResult>(
+    `/system/recov/debt/import/tasks/${taskId}/retry`,
+    {
+      method: 'post',
+    },
+  );
+
+export const ignoreAssetPackagePipelineFailures = (
+  taskId: string | number,
+) =>
+  ruoyiRequest<ImportPipelineProgressResult>(
+    `/system/recov/debt/import/tasks/${taskId}/ignore-failures`,
+    {
+      method: 'post',
+    },
+  );
+
 export const getAssetParseFailurePage = (
   taskId: string | number,
   params?: PageQuery,
 ) =>
   ruoyiRequest<ImportFailureDetail>(
     `/system/recov/debt/import/tasks/${taskId}/asset-parse/failures`,
+    {
+      method: 'get',
+      params,
+    },
+  );
+
+export const getAssetParseUnmatchedPage = (
+  taskId: string | number,
+  params?: PageQuery,
+) =>
+  ruoyiRequest<ImportFailureDetail>(
+    `/system/recov/debt/import/tasks/${taskId}/asset-parse/unmatched`,
     {
       method: 'get',
       params,
