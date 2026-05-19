@@ -52,4 +52,5 @@ export default {
   'menu.chatbot': 'AI Assistant',
   'menu.sales': 'Customer Acquisition Agent',
   'menu.sales.overview': 'Overview',
+  'menu.sales.icp-modeling': 'ICP Modeling',
 };

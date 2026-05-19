@@ -52,4 +52,5 @@ export default {
   'menu.chatbot': 'AI 助手',
   'menu.sales': '获客智能体',
   'menu.sales.overview': '数据总览',
+  'menu.sales.icp-modeling': 'ICP 建模',
 };

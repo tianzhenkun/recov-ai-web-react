@@ -297,6 +297,12 @@ export default [
         component: './sales/dashboard',
         hideInMenu: true,
       },
+      {
+        name: 'icp-modeling',
+        icon: 'experiment',
+        path: '/sales/icp-modeling',
+        component: './sales/icp-modeling',
+      },
     ],
   },
   {

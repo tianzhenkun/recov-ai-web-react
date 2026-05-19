@@ -1,4 +1,8 @@
-import { AppstoreOutlined, BarChartOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  BarChartOutlined,
+  ExperimentOutlined,
+} from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import type { RuoyiRoute } from '@/services/ruoyi/menu';
@@ -15,6 +19,8 @@ const templateMenuPath = '/template';
 const salesAgentPath = '/sales';
 const salesOverviewPath = '/sales/dashboard';
 const salesOverviewTitle = '数据总览';
+const salesIcpModelingPath = '/sales/icp-modeling';
+const salesIcpModelingTitle = 'ICP 建模';
 
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
 let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
@@ -39,6 +45,19 @@ const salesOverviewMenuItem: RuoyiMenuDataItem = {
   icon: <BarChartOutlined />,
 };
 
+const salesIcpModelingMenuItem: RuoyiMenuDataItem = {
+  key: salesIcpModelingPath,
+  path: salesIcpModelingPath,
+  name: salesIcpModelingTitle,
+  locale: false,
+  icon: <ExperimentOutlined />,
+};
+
+const salesAgentInjectedChildren: RuoyiMenuDataItem[] = [
+  salesOverviewMenuItem,
+  salesIcpModelingMenuItem,
+];
+
 const isSalesAgentMenuItem = (item: MenuDataItem) => {
   const path = normalizePath(item.path);
   if (path === salesAgentPath) return true;
@@ -46,14 +65,27 @@ const isSalesAgentMenuItem = (item: MenuDataItem) => {
   return /sales\s*agent/i.test(name) || name.includes('获客');
 };
 
-const hasSalesOverviewChild = (children: RuoyiMenuDataItem[]) =>
+const hasSalesAgentChild = (
+  children: RuoyiMenuDataItem[],
+  menuItem: RuoyiMenuDataItem,
+) =>
   children.some(
     (child) =>
-      normalizePath(child.path) === salesOverviewPath ||
-      child.name === salesOverviewTitle,
+      normalizePath(child.path) === normalizePath(menuItem.path) ||
+      child.name === menuItem.name,
   );
 
-/** 若依 Sales Agent 常为叶子菜单直达 /sales，补「数据总览」子项以展示二级菜单 */
+const mergeSalesAgentChildren = (children: RuoyiMenuDataItem[]) => {
+  const nextChildren = [...children];
+  for (const menuItem of salesAgentInjectedChildren) {
+    if (!hasSalesAgentChild(nextChildren, menuItem)) {
+      nextChildren.push(menuItem);
+    }
+  }
+  return nextChildren;
+};
+
+/** 若依 Sales Agent 常为叶子菜单直达 /sales，补前端子菜单以展示二级导航 */
 export const attachSalesAgentOverviewMenu = (
   menuData: RuoyiMenuDataItem[],
 ): RuoyiMenuDataItem[] =>
@@ -66,9 +98,7 @@ export const attachSalesAgentOverviewMenu = (
       return children.length > 0 ? { ...item, children } : item;
     }
 
-    const nextChildren = hasSalesOverviewChild(children)
-      ? children
-      : [...children, salesOverviewMenuItem];
+    const nextChildren = mergeSalesAgentChildren(children);
 
     const { redirect: _redirect, ...rest } = item;
 

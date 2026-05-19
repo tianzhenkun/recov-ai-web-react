@@ -113,7 +113,7 @@ describe('RuoYi menu transform', () => {
     expect(getFirstVisibleRuoyiPath(menuData)).toBe('/datelligence');
   });
 
-  it('adds overview child under Sales Agent leaf menu', () => {
+  it('adds overview and ICP children under Sales Agent leaf menu', () => {
     const menuData = attachSalesAgentOverviewMenu([
       {
         path: '/sales',
@@ -129,6 +129,10 @@ describe('RuoYi menu transform', () => {
       expect.objectContaining({
         path: '/sales/dashboard',
         name: '数据总览',
+      }),
+      expect.objectContaining({
+        path: '/sales/icp-modeling',
+        name: 'ICP 建模',
       }),
     ]);
     expect(menuData[0].redirect).toBeUndefined();
