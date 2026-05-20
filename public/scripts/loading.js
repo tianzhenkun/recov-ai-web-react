@@ -4,6 +4,45 @@
  */
 (() => {
   const _root = document.querySelector('#root');
+  const renderLoadError = (reason) => {
+    if (!_root || !_root.querySelector('.resource-loading-placeholder')) return;
+
+    const title = _root.querySelector('.loading-title');
+    const subTitle = _root.querySelector('.loading-sub-title');
+    const warp = _root.querySelector('.page-loading-warp');
+
+    if (title) title.textContent = '资源加载异常';
+    if (subTitle) {
+      subTitle.textContent =
+        reason || '页面资源加载失败，可能是资源已更新或网络异常，请刷新页面重试。';
+    }
+    if (warp) {
+      warp.innerHTML = `
+        <button type="button" class="loading-reload-button">
+          刷新页面
+        </button>
+      `;
+      warp
+        .querySelector('.loading-reload-button')
+        ?.addEventListener('click', reloadWithCacheBust);
+    }
+  };
+
+  const isResourceError = (event) => {
+    const target = event?.target;
+    const tagName = target?.tagName?.toLowerCase?.();
+    if (tagName === 'script' || tagName === 'link') return true;
+
+    const message = String(event?.message || event?.reason?.message || '');
+    return /chunk|dynamically imported module|unexpected token/i.test(message);
+  };
+
+  const reloadWithCacheBust = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_resource_reload', String(Date.now()));
+    window.location.replace(url.toString());
+  };
+
   if (_root && _root.innerHTML === '') {
     _root.innerHTML = `
       <style>
@@ -170,9 +209,26 @@
             transform: rotate(405deg);
           }
         }
+
+        .loading-reload-button {
+          height: 40px;
+          padding: 0 18px;
+          border: 1px solid #1677ff;
+          border-radius: 8px;
+          color: #fff;
+          background: #1677ff;
+          box-shadow: 0 2px 0 rgba(5, 145, 255, 0.1);
+          cursor: pointer;
+          font-size: 14px;
+        }
+
+        .loading-reload-button:hover {
+          background: #4096ff;
+          border-color: #4096ff;
+        }
       </style>
 
-      <div style="
+      <div class="resource-loading-placeholder" style="
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -198,5 +254,24 @@
         </div>
       </div>
     `;
+
+    window.addEventListener(
+      'error',
+      (event) => {
+        if (isResourceError(event)) {
+          renderLoadError('页面资源加载失败，请刷新页面重试。');
+        }
+      },
+      true,
+    );
+    window.addEventListener('unhandledrejection', (event) => {
+      if (isResourceError(event)) {
+        renderLoadError('页面资源加载失败，请刷新页面重试。');
+      }
+    });
+
+    window.setTimeout(() => {
+      renderLoadError('页面资源加载时间过长，请刷新页面重试。');
+    }, 15000);
   }
 })();

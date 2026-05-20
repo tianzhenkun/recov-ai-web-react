@@ -45,6 +45,10 @@ export type DebtRecordItem = {
   debtIdCard?: string;
   personaId?: number | string;
   flowId?: number | string | null;
+  flowStartBatchId?: number | string | null;
+  flowStartStatus?: number | string | null;
+  flowStartErrorMessage?: string | null;
+  flowStartTime?: string | null;
   overdueDays?: number | string;
   overdueAmount?: number | string;
   currentStatus?: string;

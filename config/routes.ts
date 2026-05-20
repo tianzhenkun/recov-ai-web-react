@@ -422,6 +422,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/flow-manager',
+    component: './recov/flow',
+    hideInMenu: true,
+  },
+  {
     path: '/delivery',
     component: './recov/delivery',
     hideInMenu: true,

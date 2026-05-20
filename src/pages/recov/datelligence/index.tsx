@@ -56,6 +56,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile, UploadProps } from 'antd/es/upload';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TableActions from '@/components/TableActions';
+import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   type DebtAttachmentItem,
   type DebtRecordDetail,
@@ -81,6 +82,11 @@ import {
   retryAssetPackagePipelineTask,
   submitAssetPackageImport,
 } from '@/services/ruoyi/datelligence';
+import {
+  type FlowBatchStartFilter,
+  getFlowBatchProgress,
+  startFlowBatch,
+} from '@/services/ruoyi/flowBatchStart';
 import { downloadOss, listOssByIds, uploadOssFile } from '@/services/ruoyi/oss';
 import { getPersona, type PersonaItem } from '@/services/ruoyi/persona';
 
@@ -95,6 +101,7 @@ type DetailTabKey = 'classification' | 'traits' | 'dialogue' | 'keyword';
 
 const DEFAULT_PAGE_SIZE = 20;
 const TASK_POLLING_INTERVAL = 3000;
+const FLOW_START_POLLING_INTERVAL = 3000;
 const FAILURE_PAGE_SIZE = 10;
 
 type UploadState = {
@@ -244,6 +251,29 @@ const getNonEmptyText = (...values: unknown[]) => {
     if (text) return text;
   }
   return '';
+};
+
+const toFlowBatchStartFilter = (
+  values: QueryFormValues | DebtRecordQuery,
+): FlowBatchStartFilter => {
+  const filter: FlowBatchStartFilter = {};
+  const city = getNonEmptyText(values.city);
+  const organization = getNonEmptyText(values.organization);
+  if (city) filter.city = city;
+  if (organization) filter.organization = organization;
+  return filter;
+};
+
+const isSameFlowBatchStartFilter = (
+  left: QueryFormValues | DebtRecordQuery,
+  right: QueryFormValues | DebtRecordQuery,
+) => {
+  const leftFilter = toFlowBatchStartFilter(left);
+  const rightFilter = toFlowBatchStartFilter(right);
+  return (
+    leftFilter.city === rightFilter.city &&
+    leftFilter.organization === rightFilter.organization
+  );
 };
 
 const formatCurrency = (value: unknown) =>
@@ -524,6 +554,19 @@ const failureDetailActionText: Record<RetryablePipelineTaskType, string> = {
   personaClassify: '查看明细',
 };
 
+const renderPersonaMarkdownContent = (value: unknown) => {
+  const content = getNonEmptyText(value);
+  return (
+    <div className="min-h-40 text-sm leading-relaxed">
+      {content ? (
+        <XMarkdown>{content}</XMarkdown>
+      ) : (
+        <Empty description="暂无画像内容" />
+      )}
+    </div>
+  );
+};
+
 const attachmentSuffixGroups = {
   image: new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg']),
   pdf: new Set(['pdf']),
@@ -663,6 +706,8 @@ const DatelligencePage = () => {
   const [personaData, setPersonaData] = useState<PersonaItem | null>(null);
   const [personaActiveTab, setPersonaActiveTab] =
     useState<DetailTabKey>('classification');
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceInstanceId, setTraceInstanceId] = useState<string>('');
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
@@ -737,6 +782,8 @@ const DatelligencePage = () => {
     startedAt: 0,
     finishedAt: 0,
   });
+  const [outboundStarting, setOutboundStarting] = useState(false);
+  const [outboundFlowProcessing, setOutboundFlowProcessing] = useState(false);
   const [retryingPipelineTask, setRetryingPipelineTask] = useState(false);
   const [ignoringFailures, setIgnoringFailures] = useState(false);
   const [failureDrawerOpen, setFailureDrawerOpen] = useState(false);
@@ -753,10 +800,12 @@ const DatelligencePage = () => {
   const requestSeqRef = useRef(0);
   const queryRef = useRef(query);
   const pipelinePollingTimerRef = useRef<number | null>(null);
+  const outboundFlowPollingTimerRef = useRef<number | null>(null);
   const parseElapsedTimerRef = useRef<number | null>(null);
   const pipelineTerminalNotifiedRef = useRef<Record<string, string>>({});
   const pipelineDataRefreshMarkersRef = useRef<Record<string, true>>({});
   const pipelineProgressSeqRef = useRef(0);
+  const outboundFlowProgressSeqRef = useRef(0);
   const retryingPipelineTaskRef = useRef(false);
 
   useEffect(() => {
@@ -817,10 +866,69 @@ const DatelligencePage = () => {
     }
   }, []);
 
+  const stopOutboundFlowPolling = useCallback(() => {
+    if (outboundFlowPollingTimerRef.current) {
+      window.clearInterval(outboundFlowPollingTimerRef.current);
+      outboundFlowPollingTimerRef.current = null;
+    }
+  }, []);
+
   const refreshAll = useCallback(() => {
     void loadFilterOptions().catch(() => undefined);
     void fetchDebtors(queryRef.current);
   }, [fetchDebtors, loadFilterOptions]);
+
+  const pollOutboundFlowProgress = useCallback(
+    async (batchId: string | number, options?: { silent?: boolean }) => {
+      outboundFlowProgressSeqRef.current += 1;
+      const seq = outboundFlowProgressSeqRef.current;
+      try {
+        const res = await getFlowBatchProgress(batchId);
+        if (seq !== outboundFlowProgressSeqRef.current) return;
+        const data = res.data;
+        if (!data) return;
+
+        if (toNumber(data.pendingCount) > 0) return;
+
+        stopOutboundFlowPolling();
+        setOutboundFlowProcessing(false);
+        refreshAll();
+
+        const failedCount = toNumber(data.failedCount);
+        if (failedCount > 0) {
+          messageApi.warning(
+            `催收流程发起完成，${numberFormatter.format(failedCount)} 条失败，可到流程管理查看`,
+          );
+          return;
+        }
+
+        if (!options?.silent) {
+          messageApi.success('催收流程发起完成');
+        }
+      } catch {
+        if (seq !== outboundFlowProgressSeqRef.current) return;
+        stopOutboundFlowPolling();
+        setOutboundFlowProcessing(false);
+        refreshAll();
+        messageApi.error('催收流程进度查询失败，请稍后刷新列表');
+      }
+    },
+    [messageApi, refreshAll, stopOutboundFlowPolling],
+  );
+
+  const startOutboundFlowPolling = useCallback(
+    (batchId: string | number) => {
+      const normalizedBatchId = String(batchId || '');
+      if (!normalizedBatchId) return;
+      stopOutboundFlowPolling();
+      setOutboundFlowProcessing(true);
+      void pollOutboundFlowProgress(normalizedBatchId, { silent: true });
+      outboundFlowPollingTimerRef.current = window.setInterval(() => {
+        void pollOutboundFlowProgress(normalizedBatchId, { silent: true });
+      }, FLOW_START_POLLING_INTERVAL);
+    },
+    [pollOutboundFlowProgress, stopOutboundFlowPolling],
+  );
 
   const refreshDebtDataByPipelineProgress = useCallback(
     (data: ImportPipelineProgressResult) => {
@@ -861,8 +969,9 @@ const DatelligencePage = () => {
     () => () => {
       stopPipelinePolling();
       stopParseElapsedTimer();
+      stopOutboundFlowPolling();
     },
-    [stopPipelinePolling, stopParseElapsedTimer],
+    [stopOutboundFlowPolling, stopParseElapsedTimer, stopPipelinePolling],
   );
 
   const statCards = useMemo(
@@ -990,6 +1099,8 @@ const DatelligencePage = () => {
   })();
   const canImportAssetPackage = !importDisabledReason;
   const outboundDisabledReason = (() => {
+    if (outboundStarting) return '催收流程正在发起，请稍后';
+    if (outboundFlowProcessing) return '催收流程批次处理中，请稍后';
     if (recordTotal === 0) return '暂无债务记录，无法开启外呼';
     if (isImportWorkflowProcessing) {
       return '当前导入任务处理中，请等待完成后再开启外呼';
@@ -1908,9 +2019,86 @@ const DatelligencePage = () => {
     stopPipelinePolling,
   ]);
 
-  const showPendingFeature = (feature: string) => {
-    messageApi.info(`${feature} 功能尚未接入真实接口`);
-  };
+  const handleStartOutbound = useCallback(() => {
+    if (!canStartOutbound) {
+      messageApi.warning(outboundDisabledReason);
+      return;
+    }
+
+    const formValues = form.getFieldsValue();
+    if (!isSameFlowBatchStartFilter(formValues, queryRef.current)) {
+      messageApi.warning('筛选条件已变更，请先点击查询刷新列表后再发起');
+      return;
+    }
+
+    const filter = toFlowBatchStartFilter(queryRef.current);
+    const hasEmptyFilter = !filter.city && !filter.organization;
+
+    Modal.confirm({
+      title: hasEmptyFilter ? '确认发起全部范围流程' : '确认发起催收流程',
+      content: (
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+            <Text type="secondary">所属城市</Text>
+            <Text>{filter.city || '全部'}</Text>
+            <Text type="secondary">所属项目</Text>
+            <Text>{filter.organization || '全部'}</Text>
+          </div>
+          <Text type={hasEmptyFilter ? 'danger' : 'secondary'}>
+            {hasEmptyFilter
+              ? '当前未设置城市或所属项目筛选，将对当前权限范围内全部债务尝试发起催收流程。请确认这是预期操作。'
+              : '将对当前筛选条件发起催收流程。已发起或正在发起的债务会自动跳过。'}
+          </Text>
+          <Alert
+            showIcon
+            type="warning"
+            title="发起成功后会创建催收流程实例，后续进度可在流程管理中查看。"
+          />
+        </div>
+      ),
+      okText: '确认发起',
+      cancelText: '取消',
+      onOk: async () => {
+        setOutboundStarting(true);
+        try {
+          const res = await startFlowBatch(filter);
+          const result = res.data;
+          if (!result) return;
+
+          if (toNumber(result.matchedCount) === 0) {
+            messageApi.warning('当前筛选条件无匹配债务');
+            refreshAll();
+            return;
+          }
+
+          if (toNumber(result.acceptedCount) === 0) {
+            messageApi.info('当前筛选结果没有可发起的债务');
+            refreshAll();
+            return;
+          }
+
+          messageApi.success('催收流程发起任务已受理');
+          const batchId = String(result.batchId || '');
+          if (batchId) {
+            startOutboundFlowPolling(batchId);
+          } else {
+            refreshAll();
+          }
+        } catch {
+          messageApi.error('催收流程发起失败，请稍后重试');
+        } finally {
+          setOutboundStarting(false);
+        }
+      },
+    });
+  }, [
+    canStartOutbound,
+    form,
+    messageApi,
+    outboundDisabledReason,
+    refreshAll,
+    startOutboundFlowPolling,
+  ]);
 
   const renderDetailSection = (title: string, fields: DetailGridField[]) => {
     const border = `1px solid ${token.colorBorderSecondary}`;
@@ -2042,13 +2230,6 @@ const DatelligencePage = () => {
         render: (value) => formatCurrency(value),
       },
       {
-        title: '逾期天数',
-        dataIndex: 'overdueDays',
-        width: 120,
-        align: 'center',
-        render: (value) => `${toNumber(value)} 天`,
-      },
-      {
         title: '当前状态',
         dataIndex: 'currentStatus',
         width: 130,
@@ -2056,6 +2237,13 @@ const DatelligencePage = () => {
         render: (value) => (
           <Tag color={currentStatusTagColor(value)}>{toText(value)}</Tag>
         ),
+      },
+      {
+        title: '逾期天数',
+        dataIndex: 'overdueDays',
+        width: 120,
+        align: 'center',
+        render: (value) => `${toNumber(value)} 天`,
       },
       {
         title: '创建时间',
@@ -2095,7 +2283,15 @@ const DatelligencePage = () => {
                       key: 'analysis',
                       label: '分析结果',
                       icon: <BarChartOutlined />,
-                      onClick: () => showPendingFeature('分析结果'),
+                      onClick: () => {
+                        const flowId = normalizeFlowId(record.flowId);
+                        if (!flowId) {
+                          messageApi.warning('当前债务暂无流程实例');
+                          return;
+                        }
+                        setTraceInstanceId(flowId);
+                        setTraceOpen(true);
+                      },
                     },
                   ]
                 : []),
@@ -2760,7 +2956,8 @@ const DatelligencePage = () => {
                   <Button
                     disabled={!canStartOutbound}
                     icon={<PhoneOutlined />}
-                    onClick={() => showPendingFeature('AI 外呼')}
+                    loading={outboundStarting || outboundFlowProcessing}
+                    onClick={handleStartOutbound}
                   >
                     启动 AI 外呼
                   </Button>
@@ -3309,13 +3506,7 @@ const DatelligencePage = () => {
                 items={detailTabs.map((tab) => ({
                   key: tab.key,
                   label: tab.label,
-                  children: (
-                    <div className="min-h-40 text-sm leading-relaxed">
-                      <XMarkdown>
-                        {String(personaData[tab.key] || '-')}
-                      </XMarkdown>
-                    </div>
-                  ),
+                  children: renderPersonaMarkdownContent(personaData[tab.key]),
                 }))}
               />
             </Space>
@@ -3324,6 +3515,13 @@ const DatelligencePage = () => {
           )}
         </Spin>
       </Modal>
+
+      <FlowTraceDrawer
+        open={traceOpen}
+        instanceId={traceInstanceId}
+        onClose={() => setTraceOpen(false)}
+        onChanged={refreshAll}
+      />
     </PageContainer>
   );
 };
