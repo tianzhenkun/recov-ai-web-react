@@ -472,6 +472,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/litigation-process',
+    component: './recov/litigationProcess',
+    hideInMenu: true,
+  },
+  {
     path: '/sys/runtime',
     component: './recov/runtime',
     hideInMenu: true,
