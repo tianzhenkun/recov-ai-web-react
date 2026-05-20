@@ -232,21 +232,20 @@ type StatDisplayValue = {
 
 const statCardStyles = {
   body: {
-    minHeight: 116,
-    padding: 24,
+    padding: 12,
   },
 } satisfies { body: CSSProperties };
 
 const statIconStyle = (color: string, bg: string): CSSProperties => ({
   display: 'inline-flex',
-  width: 56,
-  height: 56,
+  width: 32,
+  height: 32,
   alignItems: 'center',
   justifyContent: 'center',
-  borderRadius: 12,
+  borderRadius: 8,
   color,
   background: bg,
-  fontSize: 24,
+  fontSize: 14,
 });
 
 type StatCardProps = {
@@ -256,28 +255,68 @@ type StatCardProps = {
   icon: ReactNode;
 };
 
-const StatCard = ({ title, value, color, icon }: StatCardProps) => (
-  <ProCard styles={statCardStyles}>
-    <Space size={16} align="start">
-      {icon}
-      <div>
-        <Text type="secondary">{title}</Text>
-        <div style={{ marginTop: 16, whiteSpace: 'nowrap' }}>
-          <Tooltip title={value.tooltip}>
-            <span style={{ color, fontSize: 28, fontWeight: 700 }}>
-              {value.primary}
-            </span>
-          </Tooltip>
-          {value.unit ? (
-            <Text type="secondary" style={{ marginLeft: 4 }}>
-              {value.unit}
-            </Text>
-          ) : null}
-        </div>
+const StatCard = ({ title, value, color, icon }: StatCardProps) => {
+  const hasTooltip = Boolean(value.tooltip && value.tooltip !== value.primary);
+  const valueNode = (
+    <span
+      style={{
+        display: 'inline-flex',
+        cursor: hasTooltip ? 'pointer' : 'default',
+      }}
+    >
+      <Space align="baseline" size={4} wrap={false}>
+        <Text
+          strong
+          style={{
+            color,
+            cursor: 'inherit',
+            fontSize: 22,
+            lineHeight: 1.2,
+            wordBreak: 'keep-all',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {value.primary}
+        </Text>
+        {value.unit ? (
+          <Text
+            type="secondary"
+            style={{ cursor: 'inherit', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            {value.unit}
+          </Text>
+        ) : null}
+      </Space>
+    </span>
+  );
+
+  return (
+    <ProCard size="small" style={{ minWidth: 0 }} styles={statCardStyles}>
+      <div
+        style={{
+          minHeight: 62,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          gap: 8,
+          minWidth: 0,
+        }}
+      >
+        <Space align="center" size={8}>
+          {icon}
+          <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
+            {title}
+          </Text>
+        </Space>
+        {hasTooltip ? (
+          <Tooltip title={value.tooltip}>{valueNode}</Tooltip>
+        ) : (
+          valueNode
+        )}
       </div>
-    </Space>
-  </ProCard>
-);
+    </ProCard>
+  );
+};
 
 const InstrumentListPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
@@ -800,7 +839,13 @@ const InstrumentListPage = () => {
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 10,
+          }}
+        >
           {statCards.map((item) => (
             <StatCard key={item.title} {...item} />
           ))}
