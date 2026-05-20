@@ -492,6 +492,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/intelligent-outbound',
+    component: './recov/intelligentOutbound',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
