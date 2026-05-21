@@ -12,14 +12,17 @@ import {
   Steps,
   Table,
   Tag,
+  Timeline,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  type FlowEventItem,
   type FlowExecutionTrace,
   type FlowInstanceDetail,
   type FlowTraceAttempt,
+  getFlowEvents,
   getFlowExecutionTrace,
   getFlowInstanceDetail,
   retryFlowCurrentStep,
@@ -126,6 +129,44 @@ const renderMessage = (
   );
 };
 
+const parseData = (value?: string | null): Record<string, unknown> | null => {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const eventColor = (eventType?: string) => {
+  if (eventType === 'node_failed') return 'red';
+  if (eventType === 'node_skipped') return 'gold';
+  if (eventType === 'node_delayed') return 'orange';
+  if (eventType === 'flow_completed') return 'green';
+  if (eventType === 'flow_terminated') return 'gray';
+  return 'blue';
+};
+
+const renderEventChange = (event: FlowEventItem) => {
+  if (event.eventType !== 'node_delayed') return null;
+  const beforeData = parseData(event.beforeData);
+  const afterData = parseData(event.afterData);
+  const oldWakeUpTime = beforeData?.wakeUpTime;
+  const newWakeUpTime = afterData?.wakeUpTime;
+  if (!oldWakeUpTime && !newWakeUpTime) return null;
+  return (
+    <div className="mt-2 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
+      <Text type="secondary">原计划</Text>
+      <Text>{toText(oldWakeUpTime)}</Text>
+      <Text type="secondary">调整后</Text>
+      <Text>{toText(newWakeUpTime)}</Text>
+    </div>
+  );
+};
+
 const FlowTraceDrawer = ({
   open,
   instanceId,
@@ -136,6 +177,7 @@ const FlowTraceDrawer = ({
   const [modalApi, modalContextHolder] = Modal.useModal();
   const [detail, setDetail] = useState<FlowInstanceDetail | null>(null);
   const [trace, setTrace] = useState<FlowExecutionTrace | null>(null);
+  const [events, setEvents] = useState<FlowEventItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -172,16 +214,28 @@ const FlowTraceDrawer = ({
         setLoading(true);
       }
       try {
-        const [traceResult, detailResult] = await Promise.allSettled([
-          getFlowExecutionTrace(instanceId),
-          getFlowInstanceDetail(instanceId),
-        ]);
+        const [traceResult, detailResult, eventsResult] =
+          await Promise.allSettled([
+            getFlowExecutionTrace(instanceId),
+            getFlowInstanceDetail(instanceId),
+            getFlowEvents(instanceId),
+          ]);
         if (seq !== requestSeqRef.current) return;
 
         if (detailResult.status === 'fulfilled') {
           setDetail(detailResult.value.data ?? null);
         } else {
           setDetail(null);
+        }
+
+        if (eventsResult.status === 'fulfilled') {
+          setEvents(
+            Array.isArray(eventsResult.value.data)
+              ? eventsResult.value.data
+              : [],
+          );
+        } else {
+          setEvents([]);
         }
 
         if (traceResult.status !== 'fulfilled') {
@@ -214,6 +268,7 @@ const FlowTraceDrawer = ({
     if (!open || !instanceId) {
       setDetail(null);
       setTrace(null);
+      setEvents([]);
       stopPolling();
       return;
     }
@@ -347,6 +402,34 @@ const FlowTraceDrawer = ({
     ],
     [],
   );
+
+  const eventItems = events.map((event) => ({
+    color: eventColor(event.eventType),
+    children: (
+      <div className="min-w-0">
+        <Space size={6} wrap>
+          <Text strong>
+            {event.eventTitle || event.eventType || '流程事件'}
+          </Text>
+          {event.nodeCode ? <Tag>{event.nodeCode}</Tag> : null}
+        </Space>
+        {event.eventContent ? (
+          <Paragraph style={{ marginBottom: 0, marginTop: 4 }}>
+            {event.eventContent}
+          </Paragraph>
+        ) : null}
+        {event.reasonText ? (
+          <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+            {event.reasonText}
+          </Text>
+        ) : null}
+        {renderEventChange(event)}
+        <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+          {toText(event.createTime)}
+        </Text>
+      </div>
+    ),
+  }));
 
   return (
     <Drawer
@@ -509,6 +592,15 @@ const FlowTraceDrawer = ({
                 />
               ) : (
                 <Empty description="暂无步骤轨迹" />
+              )}
+            </div>
+
+            <div>
+              <Title level={5}>流程动态</Title>
+              {eventItems.length > 0 ? (
+                <Timeline items={eventItems} />
+              ) : (
+                <Empty description="暂无流程动态" />
               )}
             </div>
 

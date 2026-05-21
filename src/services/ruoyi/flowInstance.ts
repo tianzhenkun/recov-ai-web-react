@@ -130,6 +130,28 @@ export type FlowExecutionTrace = {
   messages?: FlowTraceMessage[];
 };
 
+export type FlowEventItem = {
+  id?: number | string;
+  tenantId?: string;
+  instanceId?: number | string;
+  debtId?: number | string;
+  eventType?: string;
+  eventTitle?: string;
+  eventContent?: string | null;
+  stepId?: string;
+  stepIndex?: number;
+  nodeCode?: string;
+  taskId?: string;
+  reasonCode?: string;
+  reasonText?: string | null;
+  beforeData?: string | null;
+  afterData?: string | null;
+  sourceType?: string;
+  sourceId?: string;
+  createBy?: number | string;
+  createTime?: string;
+};
+
 const BASE = '/system/recov/flow/instance';
 
 export const pageFlowInstances = (params?: FlowInstanceQuery) =>
@@ -145,6 +167,11 @@ export const getFlowInstanceDetail = (instanceId: number | string) =>
 
 export const getFlowExecutionTrace = (instanceId: number | string) =>
   ruoyiRequest<FlowExecutionTrace>(`${BASE}/${instanceId}/trace`, {
+    method: 'get',
+  });
+
+export const getFlowEvents = (instanceId: number | string) =>
+  ruoyiRequest<FlowEventItem[]>(`${BASE}/${instanceId}/events`, {
     method: 'get',
   });
 
