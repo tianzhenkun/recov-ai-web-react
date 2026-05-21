@@ -22,10 +22,10 @@ import {
 } from '@/pages/recov/settle/_shared';
 import type {
   FeeManagementResult,
-  LitigationNodeStatus,
   LitigationNodeType,
   LitigationOverviewVO,
   LitigationRowVO,
+  LitigationStatus,
 } from '@/services/ruoyi/litigation-process';
 
 export const PAGE_TITLE = '智能法律诉讼管理';
@@ -44,7 +44,7 @@ export type ColumnProp =
   | 'overdueDays'
   | 'courtName'
   | 'caseNo'
-  | 'nodeStatus'
+  | 'status'
   | 'failReason'
   | 'paymentDeadline'
   | 'paymentAmount'
@@ -61,7 +61,7 @@ export type ColumnSchema = {
     | 'asset'
     | 'money'
     | 'days'
-    | 'nodeStatus'
+    | 'status'
     | 'warning'
     | 'feeStatus'
     | 'remainDays'
@@ -77,14 +77,14 @@ export const BASE_COLUMNS: ColumnSchema[] = [
   { prop: 'debtorName', label: '当事人姓名', minWidth: 100, type: 'party' },
   {
     prop: 'debtAmount',
-    label: '逾期金额',
+    label: '债务金额',
     minWidth: 120,
     align: 'right',
     type: 'money',
   },
   {
     prop: 'overdueAmount',
-    label: '违约金',
+    label: '滞纳/违约金额',
     minWidth: 120,
     align: 'right',
     type: 'money',
@@ -99,11 +99,11 @@ export const BASE_COLUMNS: ColumnSchema[] = [
   { prop: 'caseNo', label: '案号', minWidth: 180, type: 'mono' },
   { prop: 'courtName', label: '立案法院', minWidth: 170 },
   {
-    prop: 'nodeStatus',
+    prop: 'status',
     label: '节点状态',
     minWidth: 110,
     align: 'center',
-    type: 'nodeStatus',
+    type: 'status',
   },
   { prop: 'failReason', label: '失败原因', minWidth: 170 },
 ];
@@ -157,6 +157,17 @@ export const CITY_OPTIONS = [
   '北京市',
   '杭州市',
   '成都市',
+];
+
+export const LITIGATION_STATUS_FILTER_OPTIONS: {
+  value: LitigationStatus;
+  label: string;
+}[] = [
+  { value: '0', label: '待处理' },
+  { value: '1', label: '处理中' },
+  { value: '2', label: '已完成' },
+  { value: '3', label: '失败' },
+  { value: '4', label: '已跳过' },
 ];
 
 export const ORGANIZATION_OPTIONS = [
@@ -314,222 +325,15 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
   },
 ];
 
-export type LitigationDocTemplate = {
-  id: string;
-  title: string;
-  content: string;
-  courtIssued: boolean;
-};
-
-const DOC_TEMPLATES: LitigationDocTemplate[] = [
-  {
-    id: 'complaint',
-    title: '起诉状',
-    courtIssued: false,
-    content: `民事起诉状
-
-原告：[物业公司]
-被告：[当事人]
-
-诉讼请求：
-1. 判令被告向原告支付欠缴的物业服务费 [逾期金额]；
-2. 判令被告支付逾期违约金 [滞纳金]；
-3. 判令被告承担本案诉讼费用。
-
-事实与理由：
-被告系原告提供物业服务的 [项目] 小区业主，长期拖欠物业费，经多次催告仍未履行缴费义务。截至起诉之日，被告已逾期 [逾期天数] 天。
-
-此致
-[法院]
-
-原告：某某物业服务有限公司
-[日期]`,
-  },
-  {
-    id: 'evidence_list',
-    title: '证据清单',
-    courtIssued: false,
-    content: `证据清单
-
-案号：[案号]
-原告：某某物业服务有限公司
-被告：[当事人]
-
-证据一：物业服务合同原件
-证明对象：原被告之间存在物业服务合同关系。
-
-证据二：欠费明细表
-证明对象：被告欠费金额 [逾期金额]，逾期 [逾期天数] 天。
-
-证据三：催款函及送达凭证
-证明对象：原告已履行催告义务。
-
-证据四：业主身份信息
-证明对象：被告主体资格。
-
-以上证据均已核对原件。
-
-[日期]`,
-  },
-  {
-    id: 'filing_notice',
-    title: '立案通知书',
-    courtIssued: true,
-    content: `受理案件通知书
-
-[案号]
-
-某某物业服务有限公司：
-
-本院已收到贵司与 [当事人] 物业服务合同纠纷一案的起诉状。经审查，起诉符合法定受理条件，本院决定立案受理。
-
-请于收到本通知之日起十五日内向本院预交案件受理费。
-
-特此通知。
-
-[法院]
-[日期]`,
-  },
-  {
-    id: 'fee_notice',
-    title: '缴费通知书',
-    courtIssued: true,
-    content: `诉讼费用交纳通知书
-
-[案号]
-
-某某物业服务有限公司：
-
-本院已受理贵司与 [当事人] 物业服务合同纠纷一案。依照《诉讼费用交纳办法》的规定，原告应向本院预交诉讼费人民币 [缴费金额]。
-
-请于收到本通知书之日起七日内交纳。逾期不交纳且无缓、减、免交申请的，本院将按原告撤回起诉处理。
-
-[法院]
-[日期]`,
-  },
-  {
-    id: 'hearing_notice',
-    title: '开庭通知',
-    courtIssued: true,
-    content: `传票
-
-[案号]
-
-被传唤人：[当事人]
-案由：物业服务合同纠纷
-传唤事由：开庭审理
-应到地点：[法院] 第十五法庭
-
-注意事项：
-1. 被传唤人必须准时到达。
-2. 携带身份证件及相关证据原件。
-
-[法院]
-[日期]`,
-  },
-  {
-    id: 'judgment',
-    title: '判决书',
-    courtIssued: true,
-    content: `民事判决书
-
-[案号]
-
-原告：某某物业服务有限公司
-被告：[当事人]
-
-本院审理原告与被告物业服务合同纠纷一案，现已审理终结。
-
-本院认为，被告作为 [项目] 小区业主，应当按照合同约定交纳物业费。被告长期拖欠物业费的行为已构成违约。
-
-判决如下：
-被告 [当事人] 于本判决生效之日起十日内向原告支付物业服务费 [逾期金额] 及违约金 [滞纳金]。
-
-如不服本判决，可在判决书送达之日起十五日内，向本院递交上诉状。
-
-[法院]
-[日期]`,
-  },
-  {
-    id: 'enforcement_notice',
-    title: '强制执行通知书',
-    courtIssued: true,
-    content: `执行通知书
-
-[案号]
-
-被执行人：[当事人]
-
-本院受理申请执行人某某物业服务有限公司申请执行你物业服务合同纠纷一案，执行依据为 [案号] 民事判决书。
-
-现责令你立即履行上述法律文书确定的义务：支付物业服务费 [逾期金额] 及违约金 [滞纳金]。
-
-逾期不履行的，本院将依法强制执行。
-
-[法院]
-[日期]`,
-  },
-];
-
-const NODE_DOC_MAP: Record<LitigationNodeType, string[]> = {
-  MATERIAL_SUBMIT: ['complaint', 'evidence_list'],
-  PRE_MEDIATION: ['complaint', 'evidence_list'],
-  WAITING_FILING: ['complaint', 'evidence_list'],
-  FILED: ['complaint', 'evidence_list', 'filing_notice'],
-  FEE_MANAGEMENT: ['complaint', 'evidence_list', 'filing_notice', 'fee_notice'],
-  COURT_MEDIATION: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-  ],
-  WAITING_HEARING: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-    'hearing_notice',
-  ],
-  HEARING_DONE: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-    'hearing_notice',
-  ],
-  WAITING_VERDICT: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-    'hearing_notice',
-  ],
-  VERDICT_DONE: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-    'hearing_notice',
-    'judgment',
-  ],
-  APPLY_ENFORCEMENT: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-    'hearing_notice',
-    'judgment',
-    'enforcement_notice',
-  ],
-  ENFORCING: [
-    'complaint',
-    'evidence_list',
-    'filing_notice',
-    'fee_notice',
-    'hearing_notice',
-    'judgment',
-    'enforcement_notice',
-  ],
+export type LitigationResultPayload = {
+  screenshots?: { name?: string; ossId?: string }[];
+  attributes?: Record<string, unknown>;
+  rawSummary?: string;
+  paymentDeadline?: string;
+  paymentAmount?: string;
+  remainingDays?: number;
+  warningMessage?: string | null;
+  paid?: boolean;
 };
 
 export const getVisibleColumns = (nodeType: LitigationNodeType) =>
@@ -537,20 +341,36 @@ export const getVisibleColumns = (nodeType: LitigationNodeType) =>
     ? [...BASE_COLUMNS, ...FEE_COLUMNS]
     : BASE_COLUMNS;
 
-export const parseFeeResult = (
+export const parseLitigationResult = (
   result: string | null,
-): FeeManagementResult | undefined => {
+): LitigationResultPayload | undefined => {
   if (!result) return undefined;
   try {
-    return JSON.parse(result) as FeeManagementResult;
+    return JSON.parse(result) as LitigationResultPayload;
   } catch {
     return undefined;
   }
 };
 
+export const parseFeeResult = (
+  result: string | null,
+): FeeManagementResult | undefined => {
+  const parsed = parseLitigationResult(result);
+  if (!parsed?.paymentDeadline && parsed?.paymentAmount === undefined) {
+    return undefined;
+  }
+  return {
+    paymentDeadline: String(parsed.paymentDeadline ?? ''),
+    paymentAmount: String(parsed.paymentAmount ?? '0'),
+    remainingDays: Number(parsed.remainingDays ?? 0),
+    warningMessage: parsed.warningMessage ?? null,
+    paid: Boolean(parsed.paid),
+  };
+};
+
 export const formatDebtNumber = (value: number | null | undefined) => {
   if (value == null) return '-';
-  return `A1-${String(value).padStart(5, '0')}`;
+  return String(value);
 };
 
 export const formatDisplayMoney = (value: unknown) => {
@@ -574,29 +394,22 @@ export const buildRangeText = (
   return `当前显示 ${start}-${end} 条，共 ${total} 条`;
 };
 
-export const getNodeStatusLabel = (status: LitigationNodeStatus) => {
-  const map: Record<LitigationNodeStatus, string> = {
-    PENDING: '待处理',
-    IN_PROGRESS: '处理中',
-    COMPLETED: '已完成',
-    FAILED: '失败',
-    SKIPPED: '已跳过',
-  };
-  return map[status] || status;
-};
+export const getLitigationStatusLabel = (status: LitigationStatus) =>
+  LITIGATION_STATUS_FILTER_OPTIONS.find((item) => item.value === status)
+    ?.label ?? status;
 
-export const getNodeStatusColor = (
-  status: LitigationNodeStatus,
-): 'default' | 'processing' | 'success' | 'error' | 'warning' => {
+export const getLitigationStatusColor = (
+  status: LitigationStatus,
+): 'default' | 'processing' | 'success' | 'error' => {
   const map: Record<
-    LitigationNodeStatus,
-    'default' | 'processing' | 'success' | 'error' | 'warning'
+    LitigationStatus,
+    'default' | 'processing' | 'success' | 'error'
   > = {
-    PENDING: 'default',
-    IN_PROGRESS: 'processing',
-    COMPLETED: 'success',
-    FAILED: 'error',
-    SKIPPED: 'default',
+    '0': 'default',
+    '1': 'processing',
+    '2': 'success',
+    '3': 'error',
+    '4': 'default',
   };
   return map[status] ?? 'default';
 };
@@ -624,31 +437,5 @@ export const getRemainDaysColor = (remainingDays?: number, paid?: boolean) => {
   if ((remainingDays ?? 99) <= 5) return 'error';
   return undefined;
 };
-
-export const getLitigationDocTemplates = (
-  nodeType: LitigationNodeType,
-): LitigationDocTemplate[] => {
-  const ids = NODE_DOC_MAP[nodeType] || ['complaint', 'evidence_list'];
-  return ids
-    .map((id) => DOC_TEMPLATES.find((item) => item.id === id))
-    .filter((item): item is LitigationDocTemplate => Boolean(item));
-};
-
-export const renderDocContent = (
-  template: LitigationDocTemplate,
-  row: DisplayRow,
-) =>
-  template.content
-    .replace(/\[当事人\]/g, row.debtorName)
-    .replace(/\[逾期金额\]/g, formatDisplayMoney(row.debtAmount))
-    .replace(/\[滞纳金\]/g, formatDisplayMoney(row.overdueAmount))
-    .replace(/\[逾期天数\]/g, `${row.overdueDays}`)
-    .replace(/\[案号\]/g, row.caseNo ?? '（待分配）')
-    .replace(/\[法院\]/g, row.courtName ?? '（待分配）')
-    .replace(/\[项目\]/g, row.organization)
-    .replace(/\[物业公司\]/g, '某某物业服务有限公司')
-    .replace(/\[缴费金额\]/g, formatDisplayMoney(row._fee?.paymentAmount))
-    .replace(/\[开庭时间\]/g, '（待排期）')
-    .replace(/\[日期\]/g, new Date().toLocaleDateString('zh-CN'));
 
 export { formatCompactCurrencyDisplay, formatCurrencyDisplay, toNumber };

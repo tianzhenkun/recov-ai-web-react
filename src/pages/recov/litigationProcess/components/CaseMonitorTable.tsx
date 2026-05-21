@@ -2,9 +2,12 @@ import { DownOutlined, EyeOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
 import { Dropdown, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import TableActions from '@/components/TableActions';
-import type { LitigationNodeType } from '@/services/ruoyi/litigation-process';
+import type {
+  LitigationNodeType,
+  LitigationStatus,
+} from '@/services/ruoyi/litigation-process';
 import {
   CITY_OPTIONS,
   type ColumnSchema,
@@ -14,11 +17,12 @@ import {
   formatText,
   getFeeStatusColor,
   getFeeStatusLabel,
-  getNodeStatusColor,
-  getNodeStatusLabel,
+  getLitigationStatusColor,
+  getLitigationStatusLabel,
   getOverdueDaysColor,
   getRemainDaysColor,
   getVisibleColumns,
+  LITIGATION_STATUS_FILTER_OPTIONS,
   ORGANIZATION_OPTIONS,
 } from '../_shared';
 
@@ -33,8 +37,10 @@ type CaseMonitorTableProps = {
   loading?: boolean;
   cityFilter: string;
   organizationFilter: string;
+  statusFilter: LitigationStatus | '';
   onCityFilterChange: (city: string) => void;
   onOrganizationFilterChange: (organization: string) => void;
+  onStatusFilterChange: (status: LitigationStatus | '') => void;
   onPageChange: (pageNum: number, pageSize: number) => void;
   onViewDetail: (row: DisplayRow) => void;
 };
@@ -42,50 +48,31 @@ type CaseMonitorTableProps = {
 const renderFilterTitle = (
   label: string,
   activeValue: string,
-  options: string[],
+  options: { key: string; label: ReactNode }[],
   onSelect: (value: string) => void,
-) => {
-  const items = [
-    {
-      key: '',
-      label: (
-        <span className={!activeValue ? 'font-semibold text-[#4f46e5]' : ''}>
-          全部
-        </span>
-      ),
-    },
-    ...options.map((item) => ({
-      key: item,
-      label: (
-        <span
-          className={activeValue === item ? 'font-semibold text-[#4f46e5]' : ''}
-        >
-          {item}
-        </span>
-      ),
-    })),
-  ];
-
-  return (
-    <Dropdown
-      menu={{
-        items,
-        onClick: ({ key }) => onSelect(key),
-      }}
-      trigger={['click']}
+  placement: 'bottomLeft' | 'bottom' = 'bottomLeft',
+) => (
+  <Dropdown
+    placement={placement}
+    autoAdjustOverflow={false}
+    getPopupContainer={() => document.body}
+    menu={{
+      items: options,
+      onClick: ({ key }) => onSelect(key),
+    }}
+    trigger={['click']}
+  >
+    <button
+      type="button"
+      className={`inline-flex items-center gap-1 border-0 bg-transparent p-0 text-xs font-bold ${
+        activeValue ? 'text-[#4f46e5]' : 'text-[#64748b]'
+      }`}
     >
-      <button
-        type="button"
-        className={`inline-flex items-center gap-1 border-0 bg-transparent p-0 text-xs font-bold ${
-          activeValue ? 'text-[#4f46e5]' : 'text-[#64748b]'
-        }`}
-      >
-        <span>{label}</span>
-        <DownOutlined style={{ fontSize: 10 }} />
-      </button>
-    </Dropdown>
-  );
-};
+      <span>{label}</span>
+      <DownOutlined style={{ fontSize: 10 }} />
+    </button>
+  </Dropdown>
+);
 
 const renderCell = (row: DisplayRow, column: ColumnSchema) => {
   if (column.feeOnly) {
@@ -159,10 +146,10 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
       return (
         <Tag color={getOverdueDaysColor(Number(value))}>{`${value} 天`}</Tag>
       );
-    case 'nodeStatus':
+    case 'status':
       return (
-        <Tag color={getNodeStatusColor(row.nodeStatus)}>
-          {getNodeStatusLabel(row.nodeStatus)}
+        <Tag color={getLitigationStatusColor(row.status)}>
+          {getLitigationStatusLabel(row.status)}
         </Tag>
       );
     case 'party':
@@ -187,11 +174,39 @@ const CaseMonitorTable = ({
   loading,
   cityFilter,
   organizationFilter,
+  statusFilter,
   onCityFilterChange,
   onOrganizationFilterChange,
+  onStatusFilterChange,
   onPageChange,
   onViewDetail,
 }: CaseMonitorTableProps) => {
+  const statusFilterItems = useMemo(
+    () => [
+      {
+        key: '',
+        label: (
+          <span className={!statusFilter ? 'font-semibold text-[#4f46e5]' : ''}>
+            全部
+          </span>
+        ),
+      },
+      ...LITIGATION_STATUS_FILTER_OPTIONS.map((item) => ({
+        key: item.value,
+        label: (
+          <span
+            className={
+              statusFilter === item.value ? 'font-semibold text-[#4f46e5]' : ''
+            }
+          >
+            {item.label}
+          </span>
+        ),
+      })),
+    ],
+    [statusFilter],
+  );
+
   const columns = useMemo(() => {
     const schema = getVisibleColumns(nodeType);
     const dataColumns: ColumnsType<DisplayRow> = schema.map((column) => ({
@@ -202,17 +217,81 @@ const CaseMonitorTable = ({
           ? renderFilterTitle(
               '所属城市',
               cityFilter,
-              CITY_OPTIONS,
+              [
+                {
+                  key: '',
+                  label: (
+                    <span
+                      className={
+                        !cityFilter ? 'font-semibold text-[#4f46e5]' : ''
+                      }
+                    >
+                      全部
+                    </span>
+                  ),
+                },
+                ...CITY_OPTIONS.map((item) => ({
+                  key: item,
+                  label: (
+                    <span
+                      className={
+                        cityFilter === item
+                          ? 'font-semibold text-[#4f46e5]'
+                          : ''
+                      }
+                    >
+                      {item}
+                    </span>
+                  ),
+                })),
+              ],
               onCityFilterChange,
             )
           : column.prop === 'organization'
             ? renderFilterTitle(
                 '所属项目',
                 organizationFilter,
-                ORGANIZATION_OPTIONS,
+                [
+                  {
+                    key: '',
+                    label: (
+                      <span
+                        className={
+                          !organizationFilter
+                            ? 'font-semibold text-[#4f46e5]'
+                            : ''
+                        }
+                      >
+                        全部
+                      </span>
+                    ),
+                  },
+                  ...ORGANIZATION_OPTIONS.map((item) => ({
+                    key: item,
+                    label: (
+                      <span
+                        className={
+                          organizationFilter === item
+                            ? 'font-semibold text-[#4f46e5]'
+                            : ''
+                        }
+                      >
+                        {item}
+                      </span>
+                    ),
+                  })),
+                ],
                 onOrganizationFilterChange,
               )
-            : column.label,
+            : column.prop === 'status'
+              ? renderFilterTitle(
+                  '节点状态',
+                  statusFilter,
+                  statusFilterItems,
+                  (key) => onStatusFilterChange(key as LitigationStatus | ''),
+                  'bottom',
+                )
+              : column.label,
       minWidth: column.minWidth,
       align: column.align,
       ellipsis: true,
@@ -245,8 +324,11 @@ const CaseMonitorTable = ({
     nodeType,
     cityFilter,
     organizationFilter,
+    statusFilter,
+    statusFilterItems,
     onCityFilterChange,
     onOrganizationFilterChange,
+    onStatusFilterChange,
     onViewDetail,
   ]);
 

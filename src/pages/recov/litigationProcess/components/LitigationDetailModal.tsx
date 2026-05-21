@@ -1,55 +1,110 @@
-import { CloseOutlined, FileProtectOutlined } from '@ant-design/icons';
-import { Modal, Typography } from 'antd';
+import {
+  CloseOutlined,
+  CopyOutlined,
+  FileProtectOutlined,
+  LinkOutlined,
+} from '@ant-design/icons';
+import {
+  Alert,
+  Button,
+  Descriptions,
+  Image,
+  Modal,
+  message,
+  Space,
+  Tag,
+  Typography,
+} from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import type { LitigationNodeType } from '@/services/ruoyi/litigation-process';
+import type { OssItem } from '@/services/ruoyi/oss';
+import { listOssByIds } from '@/services/ruoyi/oss';
 import {
   type DisplayRow,
-  getLitigationDocTemplates,
-  type LitigationDocTemplate,
-  renderDocContent,
+  formatDebtNumber,
+  formatDisplayMoney,
+  formatText,
+  getFeeStatusColor,
+  getFeeStatusLabel,
+  getLitigationStatusColor,
+  getLitigationStatusLabel,
+  parseFeeResult,
+  parseLitigationResult,
 } from '../_shared';
 
-const { Text, Title } = Typography;
+const { Text, Title, Paragraph } = Typography;
 
 type LitigationDetailModalProps = {
   open: boolean;
   row: DisplayRow | null;
-  nodeType: LitigationNodeType;
   onClose: () => void;
 };
 
 const LitigationDetailModal = ({
   open,
   row,
-  nodeType,
   onClose,
 }: LitigationDetailModalProps) => {
-  const templates = useMemo(
-    () => (row ? getLitigationDocTemplates(nodeType) : []),
-    [row, nodeType],
+  const parsedResult = useMemo(
+    () => (row ? parseLitigationResult(row.result) : undefined),
+    [row],
+  );
+  const feeResult = useMemo(
+    () => (row ? parseFeeResult(row.result) : undefined),
+    [row],
   );
 
-  const [activeDocId, setActiveDocId] = useState('complaint');
+  const [ossMap, setOssMap] = useState<Map<string, OssItem>>(new Map());
 
   useEffect(() => {
-    if (open && templates.length > 0) {
-      setActiveDocId(templates[0]?.id ?? 'complaint');
+    if (!open || !parsedResult?.screenshots?.length) {
+      setOssMap(new Map());
+      return;
     }
-  }, [open, templates]);
 
-  const activeTemplate: LitigationDocTemplate | undefined = templates.find(
-    (item) => item.id === activeDocId,
-  );
+    const ossIds = parsedResult.screenshots
+      .map((item) => item.ossId)
+      .filter((id): id is string => Boolean(id));
 
-  const content =
-    row && activeTemplate ? renderDocContent(activeTemplate, row) : '';
+    if (!ossIds.length) {
+      setOssMap(new Map());
+      return;
+    }
+
+    void (async () => {
+      try {
+        const response = await listOssByIds(
+          Array.from(new Set(ossIds)).join(','),
+        );
+        const items = Array.isArray(response.data) ? response.data : [];
+        setOssMap(
+          new Map(
+            items
+              .filter((item) => item.ossId !== undefined && item.ossId !== null)
+              .map((item) => [String(item.ossId), item]),
+          ),
+        );
+      } catch {
+        setOssMap(new Map());
+      }
+    })();
+  }, [open, parsedResult]);
+
+  const handleCopyFailReason = async () => {
+    if (!row?.failReason) return;
+    try {
+      await navigator.clipboard.writeText(row.failReason);
+      message.success('失败原因已复制');
+    } catch {
+      message.error('复制失败，请手动选择文本复制');
+    }
+  };
 
   return (
     <Modal
       open={open}
       onCancel={onClose}
       footer={null}
-      width={860}
+      width={760}
       destroyOnHidden
       closable={false}
       styles={{
@@ -65,7 +120,7 @@ const LitigationDetailModal = ({
             </span>
             <div>
               <Title level={5} style={{ margin: 0 }}>
-                诉讼材料详情
+                诉讼详情
               </Title>
               {row ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>
@@ -86,76 +141,181 @@ const LitigationDetailModal = ({
       </div>
 
       {row ? (
-        <>
-          <div className="flex flex-wrap items-center gap-3.5 border-b border-[#e2e8f0] bg-white px-6 py-3.5">
-            <Text
-              type="secondary"
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-              }}
-            >
-              诉讼材料:
-            </Text>
-            <div className="flex flex-wrap gap-2">
-              {templates.map((tpl) => (
-                <button
-                  key={tpl.id}
-                  type="button"
-                  className={`h-[30px] rounded-lg border-0 px-3.5 text-[13px] font-bold transition-all ${
-                    activeDocId === tpl.id
-                      ? 'bg-gradient-to-br from-[#4f46e5] to-[#6366f1] text-white shadow-[0_6px_14px_rgba(79,70,229,0.25)]'
-                      : 'bg-transparent text-[#0f172a] hover:bg-[#f1f5f9]'
-                  }`}
-                  onClick={() => setActiveDocId(tpl.id)}
-                >
-                  {tpl.title}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="max-h-[72vh] overflow-y-auto bg-[#f8fafc] p-10">
-            <div className="relative mx-auto min-h-[800px] max-w-[680px] border border-[#e2e8f0] bg-white px-14 py-16 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
-              <h1
-                className="mb-10 text-center text-[22px] font-bold tracking-[0.2em] text-[#0f172a]"
-                style={{ fontFamily: 'SimSun, Songti SC, serif' }}
-              >
-                {activeTemplate?.title}
-              </h1>
-              <pre
-                className="whitespace-pre-wrap text-sm leading-8 text-[#334155]"
-                style={{ fontFamily: 'SimSun, Songti SC, serif' }}
-              >
-                {content}
-              </pre>
-              {activeTemplate ? (
-                <div className="pointer-events-none absolute bottom-20 right-[72px] h-[120px] w-[120px]">
-                  <div
-                    className={`flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-full border-[3px] border-[rgba(220,38,38,0.7)] ${
-                      activeTemplate.courtIssued ? '' : ''
-                    }`}
-                    style={{ transform: 'rotate(-12deg)' }}
+        <div className="max-h-[72vh] overflow-y-auto bg-[#f8fafc] p-6">
+          {row.status === '3' && row.failReason ? (
+            <Alert
+              type="error"
+              showIcon
+              className="mb-4"
+              message="节点处理失败"
+              description={
+                <Space direction="vertical" size={8} className="w-full">
+                  <Paragraph
+                    copyable={{ text: row.failReason }}
+                    style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
                   >
-                    <span className="max-w-[90px] text-center text-[9px] font-bold leading-snug text-[rgba(220,38,38,0.7)]">
-                      {activeTemplate.courtIssued
-                        ? (row.courtName ?? '人民法院')
-                        : '物业服务有限公司'}
-                    </span>
-                    <span className="text-base leading-none text-[rgba(220,38,38,0.7)]">
-                      ★
-                    </span>
-                    <span className="text-[9px] font-bold text-[rgba(220,38,38,0.7)]">
-                      {activeTemplate.courtIssued ? '立案专用章' : '电子专用章'}
-                    </span>
-                  </div>
-                </div>
+                    {row.failReason}
+                  </Paragraph>
+                  <Button
+                    size="small"
+                    icon={<CopyOutlined />}
+                    onClick={() => void handleCopyFailReason()}
+                  >
+                    复制错误信息
+                  </Button>
+                </Space>
+              }
+            />
+          ) : null}
+
+          <Descriptions
+            bordered
+            size="small"
+            column={2}
+            title="基本信息"
+            className="mb-4 bg-white"
+          >
+            <Descriptions.Item label="诉讼记录 ID">{row.id}</Descriptions.Item>
+            <Descriptions.Item label="资产编号">
+              {formatDebtNumber(row.debtNumber)}
+            </Descriptions.Item>
+            <Descriptions.Item label="所属城市">{row.city}</Descriptions.Item>
+            <Descriptions.Item label="所属项目">
+              {row.organization}
+            </Descriptions.Item>
+            <Descriptions.Item label="当事人">
+              {row.debtorName}
+            </Descriptions.Item>
+            <Descriptions.Item label="节点状态">
+              <Tag color={getLitigationStatusColor(row.status)}>
+                {getLitigationStatusLabel(row.status)}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="债务金额">
+              {formatDisplayMoney(row.debtAmount)}
+            </Descriptions.Item>
+            <Descriptions.Item label="滞纳/违约金额">
+              {formatDisplayMoney(row.overdueAmount)}
+            </Descriptions.Item>
+            <Descriptions.Item label="逾期天数">
+              {row.overdueDays} 天
+            </Descriptions.Item>
+            <Descriptions.Item label="案号">
+              {formatText(row.caseNo)}
+            </Descriptions.Item>
+            <Descriptions.Item label="立案法院" span={2}>
+              {formatText(row.courtName)}
+            </Descriptions.Item>
+          </Descriptions>
+
+          {feeResult ? (
+            <Descriptions
+              bordered
+              size="small"
+              column={2}
+              title="缴费信息"
+              className="mb-4 bg-white"
+            >
+              <Descriptions.Item label="缴费金额">
+                {formatDisplayMoney(feeResult.paymentAmount)}
+              </Descriptions.Item>
+              <Descriptions.Item label="缴费截止日期">
+                {formatText(feeResult.paymentDeadline)}
+              </Descriptions.Item>
+              <Descriptions.Item label="剩余天数">
+                {feeResult.remainingDays} 天
+              </Descriptions.Item>
+              <Descriptions.Item label="缴费状态">
+                <Tag color={getFeeStatusColor(feeResult.paid)}>
+                  {getFeeStatusLabel(feeResult.paid)}
+                </Tag>
+              </Descriptions.Item>
+              {feeResult.warningMessage ? (
+                <Descriptions.Item label="预警信息" span={2}>
+                  {feeResult.warningMessage}
+                </Descriptions.Item>
               ) : null}
+            </Descriptions>
+          ) : null}
+
+          {parsedResult?.rawSummary ? (
+            <div className="mb-4 rounded-lg border border-[#e2e8f0] bg-white p-4">
+              <Text strong>业务摘要</Text>
+              <Paragraph style={{ marginBottom: 0, marginTop: 8 }}>
+                {parsedResult.rawSummary}
+              </Paragraph>
             </div>
-          </div>
-        </>
+          ) : null}
+
+          {parsedResult?.attributes &&
+          Object.keys(parsedResult.attributes).length > 0 ? (
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              title="扩展属性"
+              className="mb-4 bg-white"
+            >
+              {Object.entries(parsedResult.attributes).map(([key, value]) => (
+                <Descriptions.Item key={key} label={key}>
+                  {typeof value === 'object'
+                    ? JSON.stringify(value)
+                    : String(value)}
+                </Descriptions.Item>
+              ))}
+            </Descriptions>
+          ) : null}
+
+          {parsedResult?.screenshots && parsedResult.screenshots.length > 0 ? (
+            <div className="rounded-lg border border-[#e2e8f0] bg-white p-4">
+              <Text strong>相关截图</Text>
+              <div className="mt-3 flex flex-col gap-3">
+                {parsedResult.screenshots.map((shot) => {
+                  const ossId = shot.ossId ? String(shot.ossId) : '';
+                  const oss = ossId ? ossMap.get(ossId) : undefined;
+                  const label =
+                    shot.name ||
+                    oss?.originalName ||
+                    `附件_${ossId || 'unknown'}`;
+
+                  return (
+                    <div
+                      key={ossId || label}
+                      className="flex flex-col gap-2 rounded-lg border border-[#f1f5f9] p-3"
+                    >
+                      <Text style={{ fontSize: 12 }}>{label}</Text>
+                      {oss?.url ? (
+                        <Image
+                          src={oss.url}
+                          alt={label}
+                          style={{ maxHeight: 240, objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          ossId: {ossId || '-'}
+                        </Text>
+                      )}
+                      {oss?.url ? (
+                        <a href={oss.url} target="_blank" rel="noreferrer">
+                          <LinkOutlined /> 打开原图
+                        </a>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {row.result && !parsedResult ? (
+            <div className="rounded-lg border border-[#e2e8f0] bg-white p-4">
+              <Text strong>节点结果（原始）</Text>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-[#475569]">
+                {row.result}
+              </pre>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </Modal>
   );

@@ -1,5 +1,5 @@
 import { ProCard } from '@ant-design/pro-components';
-import { Col, Row, Space, Tooltip, Typography } from 'antd';
+import { Space, Tooltip, Typography } from 'antd';
 import type { LitigationOverviewVO } from '@/services/ruoyi/litigation-process';
 import {
   formatCompactCurrencyDisplay,
@@ -21,7 +21,7 @@ type OverviewCardsProps = {
 };
 
 const OverviewCards = ({ overview }: OverviewCardsProps) => (
-  <Row gutter={[12, 12]}>
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
     {OVERVIEW_CARD_METAS.map((meta) => {
       const raw = overview[meta.key];
       const isCurrency = meta.format === 'currency';
@@ -51,50 +51,46 @@ const OverviewCards = ({ overview }: OverviewCardsProps) => (
       );
 
       return (
-        <Col key={meta.key} xs={24} sm={12} lg={8} xl={24 / 5} flex="1 1 180px">
-          <ProCard
-            size="small"
-            style={{ minWidth: 0, height: '100%' }}
-            styles={statCardStyles}
+        <ProCard
+          key={meta.key}
+          size="small"
+          style={{ minWidth: 0, height: '100%' }}
+          styles={statCardStyles}
+        >
+          <div
+            style={{
+              minHeight: 62,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
           >
-            <div
-              style={{
-                minHeight: 62,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}
-            >
-              <Space align="center" size={8}>
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
-                  style={{
-                    color: meta.color,
-                    backgroundColor: `${meta.color}14`,
-                  }}
-                  aria-hidden
-                >
-                  {meta.icon}
-                </span>
-                <Text
-                  type="secondary"
-                  style={{ fontSize: 12, lineHeight: 1.3 }}
-                >
-                  {meta.label}
-                </Text>
-              </Space>
-              {hasTooltip ? (
-                <Tooltip title={tooltip}>{valueNode}</Tooltip>
-              ) : (
-                valueNode
-              )}
-            </div>
-          </ProCard>
-        </Col>
+            <Space align="center" size={8}>
+              <span
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
+                style={{
+                  color: meta.color,
+                  backgroundColor: `${meta.color}14`,
+                }}
+                aria-hidden
+              >
+                {meta.icon}
+              </span>
+              <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
+                {meta.label}
+              </Text>
+            </Space>
+            {hasTooltip ? (
+              <Tooltip title={tooltip}>{valueNode}</Tooltip>
+            ) : (
+              valueNode
+            )}
+          </div>
+        </ProCard>
       );
     })}
-  </Row>
+  </div>
 );
 
 export default OverviewCards;

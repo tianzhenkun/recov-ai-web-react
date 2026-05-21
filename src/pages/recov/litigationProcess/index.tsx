@@ -1,35 +1,34 @@
 import { PageContainer } from '@ant-design/pro-components';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  getLitigationNodeStats,
-  getLitigationOverview,
-  getLitigationPage,
-  type LitigationNodeStatVO,
-  type LitigationNodeType,
-  type LitigationOverviewVO,
-  type LitigationPageQuery,
-  unwrapLitigationNodeStats,
-  unwrapLitigationOverview,
-  unwrapLitigationPage,
+import type {
+  LitigationNodeStatVO,
+  LitigationNodeType,
+  LitigationOverviewVO,
+  LitigationStatus,
 } from '@/services/ruoyi/litigation-process';
 import {
   DEFAULT_NODE_TYPE,
   DEFAULT_PAGE_SIZE,
   type DisplayRow,
   PAGE_TITLE,
-  parseFeeResult,
 } from './_shared';
 import CaseMonitorTable from './components/CaseMonitorTable';
 import LitigationDetailModal from './components/LitigationDetailModal';
 import NodeRail from './components/NodeRail';
 import OverviewCards from './components/OverviewCards';
+import {
+  fetchLitigationNodeStats,
+  fetchLitigationOverview,
+  fetchLitigationPage,
+  type LitigationListQuery,
+} from './service';
 
 const defaultOverview: LitigationOverviewVO = {
   totalCount: 0,
   materialSubmittedCount: 0,
   courtAcceptedCount: 0,
-  nodeDebtAmount: 0,
-  nodeRepaymentAmount: 0,
+  nodeDebtAmount: '0',
+  nodeRepaymentAmount: '0',
 };
 
 const LitigationProcessPage = () => {
@@ -45,6 +44,7 @@ const LitigationProcessPage = () => {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [cityFilter, setCityFilter] = useState('');
   const [organizationFilter, setOrganizationFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<LitigationStatus | ''>('');
 
   const [nodesLoading, setNodesLoading] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -58,12 +58,24 @@ const LitigationProcessPage = () => {
     [nodes, nodeType],
   );
 
+  const buildListQuery = useCallback(
+    (overrides: Partial<LitigationListQuery> = {}): LitigationListQuery => ({
+      pageNum,
+      pageSize,
+      nodeType,
+      city: cityFilter || undefined,
+      organization: organizationFilter || undefined,
+      status: statusFilter || undefined,
+      ...overrides,
+    }),
+    [pageNum, pageSize, nodeType, cityFilter, organizationFilter, statusFilter],
+  );
+
   const fetchOverview = useCallback(
     async (currentNodeType: LitigationNodeType) => {
       setOverviewLoading(true);
       try {
-        const response = await getLitigationOverview(currentNodeType);
-        setOverview(unwrapLitigationOverview(response));
+        setOverview(await fetchLitigationOverview(currentNodeType));
       } catch {
         setOverview(defaultOverview);
       } finally {
@@ -76,8 +88,7 @@ const LitigationProcessPage = () => {
   const fetchNodes = useCallback(async () => {
     setNodesLoading(true);
     try {
-      const response = await getLitigationNodeStats();
-      setNodes(unwrapLitigationNodeStats(response));
+      setNodes(await fetchLitigationNodeStats());
     } catch {
       setNodes([]);
     } finally {
@@ -85,20 +96,11 @@ const LitigationProcessPage = () => {
     }
   }, []);
 
-  const fetchList = useCallback(async (query: LitigationPageQuery) => {
+  const fetchList = useCallback(async (query: LitigationListQuery) => {
     setListLoading(true);
     try {
-      const response = await getLitigationPage(query);
-      const page = unwrapLitigationPage(response);
-      setRows(
-        page.rows.map((row) => ({
-          ...row,
-          _fee:
-            query.nodeType === 'FEE_MANAGEMENT'
-              ? parseFeeResult(row.result)
-              : undefined,
-        })),
-      );
+      const page = await fetchLitigationPage(query);
+      setRows(page.rows);
       setTotal(page.total);
     } catch {
       setRows([]);
@@ -126,6 +128,7 @@ const LitigationProcessPage = () => {
     if (nextNodeType === nodeType) return;
     setNodeType(nextNodeType);
     setPageNum(1);
+    setStatusFilter('');
     await Promise.all([
       fetchOverview(nextNodeType),
       fetchList({
@@ -141,37 +144,29 @@ const LitigationProcessPage = () => {
   const handleCityFilterChange = async (city: string) => {
     setCityFilter(city);
     setPageNum(1);
-    await fetchList({
-      pageNum: 1,
-      pageSize,
-      nodeType,
-      city: city || undefined,
-      organization: organizationFilter || undefined,
-    });
+    await fetchList(buildListQuery({ pageNum: 1, city: city || undefined }));
   };
 
   const handleOrganizationFilterChange = async (organization: string) => {
     setOrganizationFilter(organization);
     setPageNum(1);
-    await fetchList({
-      pageNum: 1,
-      pageSize,
-      nodeType,
-      city: cityFilter || undefined,
-      organization: organization || undefined,
-    });
+    await fetchList(
+      buildListQuery({ pageNum: 1, organization: organization || undefined }),
+    );
+  };
+
+  const handleStatusFilterChange = async (status: LitigationStatus | '') => {
+    setStatusFilter(status);
+    setPageNum(1);
+    await fetchList(
+      buildListQuery({ pageNum: 1, status: status || undefined }),
+    );
   };
 
   const handlePageChange = async (nextPage: number, nextSize: number) => {
     setPageNum(nextPage);
     setPageSize(nextSize);
-    await fetchList({
-      pageNum: nextPage,
-      pageSize: nextSize,
-      nodeType,
-      city: cityFilter || undefined,
-      organization: organizationFilter || undefined,
-    });
+    await fetchList(buildListQuery({ pageNum: nextPage, pageSize: nextSize }));
   };
 
   const handleViewDetail = (row: DisplayRow) => {
@@ -209,8 +204,10 @@ const LitigationProcessPage = () => {
           loading={tableLoading}
           cityFilter={cityFilter}
           organizationFilter={organizationFilter}
+          statusFilter={statusFilter}
           onCityFilterChange={handleCityFilterChange}
           onOrganizationFilterChange={handleOrganizationFilterChange}
+          onStatusFilterChange={handleStatusFilterChange}
           onPageChange={handlePageChange}
           onViewDetail={handleViewDetail}
         />
@@ -219,7 +216,6 @@ const LitigationProcessPage = () => {
       <LitigationDetailModal
         open={detailOpen}
         row={detailRow}
-        nodeType={nodeType}
         onClose={handleCloseDetail}
       />
     </PageContainer>
