@@ -841,7 +841,7 @@ const CollectionStrategyFlowEditor = () => {
                         ),
                         children: (
                           <div className="rounded-lg bg-zinc-50 px-3 pt-3 pb-1">
-                            <Form.Item label="等待时间（分钟）" required>
+                            <Form.Item label="触发前等待（分钟）" required>
                               <InputNumber
                                 value={selectedNodeForm.waitMinutes}
                                 min={0}

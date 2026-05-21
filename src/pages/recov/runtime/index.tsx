@@ -116,8 +116,20 @@ const RuntimeSettingsPage = () => {
 
     const values = form.getFieldsValue();
     if (values.timeEnabled === '1' && (!values.startTime || !values.endTime)) {
-      messageApi.warning('开启时段限制时，请填写完整的工作时间段');
+      messageApi.warning('开启时段限制时，请填写完整的外呼时间段');
       return;
+    }
+    if (values.timeEnabled === '1') {
+      const startTime = parseTimeValue(values.startTime);
+      const endTime = parseTimeValue(values.endTime);
+      if (!startTime || !endTime) {
+        messageApi.warning('外呼时间段格式不正确');
+        return;
+      }
+      if (!endTime.isAfter(startTime)) {
+        messageApi.warning('结束时间必须晚于开始时间');
+        return;
+      }
     }
 
     setSaving(true);
@@ -129,7 +141,7 @@ const RuntimeSettingsPage = () => {
         holidayPolicy: values.holidayPolicy,
       };
       await saveTimeConfig(payload);
-      messageApi.success('工作时间配置保存成功');
+      messageApi.success('运营时间配置保存成功');
       await fetchTimeConfig();
     } catch {
       messageApi.error('保存失败，请稍后重试');
@@ -143,7 +155,7 @@ const RuntimeSettingsPage = () => {
       {messageContextHolder}
 
       <ProCard
-        title="AI 智能体工作时间"
+        title="AI 外呼运营时间"
         extra={
           <div className="flex items-center gap-2">
             {runningStatus ? (
@@ -178,7 +190,7 @@ const RuntimeSettingsPage = () => {
               </Form.Item>
 
               {timeEnabled ? (
-                <Form.Item label="工作时间段" required>
+                <Form.Item label="外呼时间段" required>
                   <div className="flex flex-wrap items-center gap-3">
                     <Form.Item
                       name="startTime"

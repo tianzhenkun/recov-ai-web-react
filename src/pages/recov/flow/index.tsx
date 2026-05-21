@@ -106,15 +106,13 @@ const flowRuntimeStatusMeta = (status: unknown, statusName?: string) => {
   const fallbackText = statusName || (value ? value : '-');
 
   if (!value) return { text: fallbackText, color: 'default' };
-  if (value === '0')
-    return { text: statusName || '执行中', color: 'processing' };
-  if (value === '1')
-    return { text: statusName || '等待回调', color: 'processing' };
-  if (value === '2') return { text: statusName || '已完成', color: 'success' };
-  if (value === '3') return { text: statusName || '节点失败', color: 'error' };
-  if (value === '4') return { text: statusName || '已终止', color: 'default' };
-  if (value === '5') return { text: statusName || '已跳过', color: 'default' };
-  if (value === '6') return { text: statusName || '已失败', color: 'error' };
+  if (value === '0') return { text: '待触发', color: 'processing' };
+  if (value === '1') return { text: '等待回调', color: 'processing' };
+  if (value === '2') return { text: '已完成', color: 'success' };
+  if (value === '3') return { text: '节点失败', color: 'error' };
+  if (value === '4') return { text: '人工终止', color: 'default' };
+  if (value === '5') return { text: '已还款终止', color: 'default' };
+  if (value === '6') return { text: '条件不满足终止', color: 'default' };
   return { text: fallbackText, color: 'default' };
 };
 
@@ -593,6 +591,19 @@ const FlowPage = () => {
           toText(value || record.currentNodeCode || record.currentStepId),
       },
       {
+        title: '下次触发',
+        dataIndex: 'wakeUpTime',
+        width: 170,
+        render: (value, record) =>
+          String(record.flowStatus ?? '').trim() === '0' ? (
+            <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
+              {toText(value)}
+            </Text>
+          ) : (
+            '-'
+          ),
+      },
+      {
         title: '步骤进度',
         dataIndex: 'completedStepCount',
         width: 120,
@@ -823,13 +834,13 @@ const FlowPage = () => {
                     placeholder="流程状态"
                     style={{ width: 150 }}
                     options={[
-                      { label: '执行中', value: 0 },
+                      { label: '待触发', value: 0 },
                       { label: '等待回调', value: 1 },
                       { label: '已完成', value: 2 },
                       { label: '节点失败', value: 3 },
-                      { label: '已终止', value: 4 },
-                      { label: '已跳过', value: 5 },
-                      { label: '已失败', value: 6 },
+                      { label: '人工终止', value: 4 },
+                      { label: '已还款终止', value: 5 },
+                      { label: '条件不满足终止', value: 6 },
                     ]}
                   />
                 </Form.Item>
@@ -874,7 +885,7 @@ const FlowPage = () => {
             dataSource={instanceRows}
             loading={instanceLoading}
             rowKey={getInstanceRowKey}
-            scroll={{ x: 1440 }}
+            scroll={{ x: 1620 }}
             locale={{
               emptyText: <Empty description="暂无流程实例" />,
             }}

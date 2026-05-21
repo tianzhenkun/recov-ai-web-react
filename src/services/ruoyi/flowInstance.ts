@@ -31,6 +31,7 @@ export type FlowInstanceItem = {
   currentNodeCode?: string;
   currentIdentity?: string;
   currentTaskId?: number | string;
+  wakeUpTime?: string;
   canRetryCurrentStep?: boolean;
   canTerminate?: boolean;
   totalStepCount?: number;
@@ -116,6 +117,7 @@ export type FlowExecutionTrace = {
   currentNodeCode?: string;
   currentIdentity?: string;
   currentTaskId?: number | string;
+  wakeUpTime?: string;
   canRetryCurrentStep?: boolean;
   canTerminate?: boolean;
   totalStepCount?: number;

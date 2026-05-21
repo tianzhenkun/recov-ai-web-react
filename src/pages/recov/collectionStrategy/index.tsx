@@ -404,6 +404,7 @@ const CollectionStrategyPage = () => {
           {row.map((step, stepIdx) => {
             const meta = getFlowModuleMeta(flowModuleMap, step.nodeCode);
             const IconCmp = getFlowIconComponent(meta.icon);
+            const waitMinutes = Number(step.config.waitMinutes || 0);
             return (
               <div
                 key={step.id || `${rowIdx}-${stepIdx}-${step.nodeCode}`}
@@ -416,8 +417,12 @@ const CollectionStrategyPage = () => {
                     <div className="min-w-[220px] text-sm">
                       <div className="mb-2 font-semibold">执行参数</div>
                       <div className="mb-1 flex justify-between gap-3">
-                        <span className="text-zinc-500">等待时间</span>
-                        <strong>{step.config.waitMinutes} 分钟后继续</strong>
+                        <span className="text-zinc-500">触发前等待</span>
+                        <strong>
+                          {waitMinutes > 0
+                            ? `触发前等待 ${waitMinutes} 分钟`
+                            : '到期立即触发'}
+                        </strong>
                       </div>
                       <div className="mb-1 flex justify-between gap-3">
                         <span className="text-zinc-500">失败策略</span>

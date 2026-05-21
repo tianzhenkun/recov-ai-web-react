@@ -47,6 +47,12 @@ const isPollingFlowStatus = (value: unknown) => {
   return status === '0' || status === '1';
 };
 
+const isPendingTriggerStatus = (value: unknown) =>
+  normalizeStatus(value) === '0';
+
+const isWaitingCallbackStatus = (value: unknown) =>
+  normalizeStatus(value) === '1';
+
 const isNodeFailedStatus = (value: unknown) => normalizeStatus(value) === '3';
 
 const isTerminalFlowStatus = (value: unknown) => {
@@ -61,6 +67,18 @@ const flowStatusColor = (value: unknown) => {
   if (status === '4' || status === '5' || status === '6') return 'default';
   if (status === '0' || status === '1') return 'processing';
   return 'default';
+};
+
+const flowStatusText = (value: unknown, statusName?: string) => {
+  const status = normalizeStatus(value);
+  if (status === '0') return '待触发';
+  if (status === '1') return '等待回调';
+  if (status === '2') return '已完成';
+  if (status === '3') return '节点失败';
+  if (status === '4') return '人工终止';
+  if (status === '5') return '已还款终止';
+  if (status === '6') return '条件不满足终止';
+  return statusName || toText(value);
 };
 
 const stepStatusColor = (status?: string) => {
@@ -386,7 +404,18 @@ const FlowTraceDrawer = ({
                   '请到业务资料归属模块修复资料后，再重试当前节点。'
                 }
               />
-            ) : shouldPollTrace ? (
+            ) : isPendingTriggerStatus(trace.flowStatus) ? (
+              <Alert
+                showIcon
+                type="info"
+                title="等待节点触发"
+                description={
+                  trace.wakeUpTime
+                    ? `下次触发时间：${trace.wakeUpTime}`
+                    : '当前节点已进入待触发队列，等待调度器扫描。'
+                }
+              />
+            ) : isWaitingCallbackStatus(trace.flowStatus) ? (
               <Alert
                 showIcon
                 type="info"
@@ -413,9 +442,10 @@ const FlowTraceDrawer = ({
                         trace.flowStatus ?? detail?.flowStatus,
                       )}
                     >
-                      {trace.flowStatusName ||
-                        detail?.flowStatusName ||
-                        toText(trace.flowStatus ?? detail?.flowStatus)}
+                      {flowStatusText(
+                        trace.flowStatus ?? detail?.flowStatus,
+                        trace.flowStatusName ?? detail?.flowStatusName,
+                      )}
                     </Tag>
                   ),
                 },
@@ -435,6 +465,11 @@ const FlowTraceDrawer = ({
                   children: toText(
                     trace.currentTaskId ?? detail?.currentTaskId,
                   ),
+                },
+                {
+                  key: 'wakeUpTime',
+                  label: '下次触发时间',
+                  children: toText(trace.wakeUpTime ?? detail?.wakeUpTime),
                 },
                 {
                   key: 'debtRecordId',

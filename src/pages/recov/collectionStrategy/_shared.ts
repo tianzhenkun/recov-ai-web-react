@@ -385,7 +385,7 @@ export const validateStrategySteps = (
     if (!step.id) return '步骤实例 ID 不能为空';
     if (seenIds.has(step.id)) return `步骤实例 ID 重复：${step.id}`;
     seenIds.add(step.id);
-    if (step.config.waitMinutes < 0) return '等待时间不能小于 0';
+    if (step.config.waitMinutes < 0) return '触发前等待不能小于 0';
     if (step.nodeCode === 'ai_call' && !step.params?.aiRole) {
       return 'AI 电话催收步骤必须配置催收角色';
     }

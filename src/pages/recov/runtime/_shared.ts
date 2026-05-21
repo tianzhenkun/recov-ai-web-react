@@ -39,5 +39,5 @@ export const isTimeConfigDirty = (
 export const HOLIDAY_POLICY_OPTIONS = [
   { label: '正常运行', value: '0' },
   { label: '停止所有', value: '1' },
-  { label: '执行外呼外工作', value: '2' },
+  { label: '仅停止外呼', value: '2' },
 ] as const;
