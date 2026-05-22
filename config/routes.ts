@@ -502,6 +502,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/test11',
+    component: './recov/lawyerCourt',
+    hideInMenu: true,
+  },
+  {
     path: '/',
     component: './ruoyi/landing',
   },
