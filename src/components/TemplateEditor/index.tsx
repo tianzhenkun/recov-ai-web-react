@@ -27,6 +27,7 @@ import {
   useReducer,
   useRef,
 } from 'react';
+import SealPlaceholder from './extensions/SealPlaceholder';
 import Variable, { buildVariableAttrs } from './extensions/Variable';
 import './templateEditor.css';
 import type {
@@ -156,6 +157,7 @@ const TemplateEditor = ({
         BackgroundColor.configure({ types: ['textStyle'] }),
         TextAlign.configure({ types: ['paragraph'] }),
         Variable,
+        SealPlaceholder,
       ],
       editable: !disabled,
       content: toEditorContent(value),

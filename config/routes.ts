@@ -467,6 +467,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/instrument-standing',
+    component: './recov/standing',
+    hideInMenu: true,
+  },
+  {
     path: '/sys/delivery-strategy',
     component: './recov/deliveryStrategy',
     hideInMenu: true,
