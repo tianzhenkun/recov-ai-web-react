@@ -10,6 +10,7 @@
     "includes": [
       "**/*",
       "!**/.umi",
+      "!**/.umi-undefined",
       "!**/.umi-production",
       "!**/.umi-test",
       "!**/.umi-test-production",
