@@ -141,26 +141,31 @@ const LitigationProcessPage = () => {
     ]);
   };
 
-  const handleCityFilterChange = async (city: string) => {
-    setCityFilter(city);
-    setPageNum(1);
-    await fetchList(buildListQuery({ pageNum: 1, city: city || undefined }));
-  };
-
-  const handleOrganizationFilterChange = async (organization: string) => {
-    setOrganizationFilter(organization);
+  const handleFilterSearch = async (filters: {
+    city: string;
+    organization: string;
+    status: LitigationStatus | '';
+  }) => {
+    setCityFilter(filters.city);
+    setOrganizationFilter(filters.organization);
+    setStatusFilter(filters.status);
     setPageNum(1);
     await fetchList(
-      buildListQuery({ pageNum: 1, organization: organization || undefined }),
+      buildListQuery({
+        pageNum: 1,
+        city: filters.city || undefined,
+        organization: filters.organization || undefined,
+        status: filters.status || undefined,
+      }),
     );
   };
 
-  const handleStatusFilterChange = async (status: LitigationStatus | '') => {
-    setStatusFilter(status);
-    setPageNum(1);
-    await fetchList(
-      buildListQuery({ pageNum: 1, status: status || undefined }),
-    );
+  const handleFilterReset = async () => {
+    await handleFilterSearch({
+      city: '',
+      organization: '',
+      status: '',
+    });
   };
 
   const handlePageChange = async (nextPage: number, nextSize: number) => {
@@ -205,9 +210,8 @@ const LitigationProcessPage = () => {
           cityFilter={cityFilter}
           organizationFilter={organizationFilter}
           statusFilter={statusFilter}
-          onCityFilterChange={handleCityFilterChange}
-          onOrganizationFilterChange={handleOrganizationFilterChange}
-          onStatusFilterChange={handleStatusFilterChange}
+          onFilterSearch={handleFilterSearch}
+          onFilterReset={handleFilterReset}
           onPageChange={handlePageChange}
           onViewDetail={handleViewDetail}
         />

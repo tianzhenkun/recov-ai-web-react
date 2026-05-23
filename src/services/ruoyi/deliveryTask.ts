@@ -6,6 +6,7 @@ export type DeliveryTaskItem = {
   taskId: string;
   deliveryId?: string | null;
   debtId?: string | null;
+  businessId?: string | null;
   debtorName?: string | null;
   debtorPhone?: string | null;
   debtorEmail?: string | null;
@@ -17,6 +18,8 @@ export type DeliveryTaskItem = {
   errorMessage?: string | null;
   sceneCode?: string | null;
   sceneName?: string | null;
+  fileOssId?: string | null;
+  fileName?: string | null;
   publicUrl?: string | null;
   wayCode?: string | null;
   wayName?: string | null;
@@ -63,7 +66,8 @@ export type DeliveryTaskPageResult = {
 export type CreateDeliveryTaskPayload = {
   sceneCode: string;
   debtId: string;
-  publicUrl?: string;
+  businessId: string;
+  ossId: string;
 };
 
 export type CreateDeliveryTaskResult = {

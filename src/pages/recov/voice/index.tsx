@@ -1,61 +1,42 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
   Button,
-  Col,
-  Drawer,
   Empty,
   Form,
-  Input,
   InputNumber,
   Modal,
   message,
   Pagination,
   Popover,
-  Row,
   Select,
-  Slider,
   Spin,
   Tabs,
   Tag,
-  Tooltip,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import { useRuoyiDict } from '@/hooks/useRuoyiDict';
 import {
-  type AddVoiceDTO,
-  addVoice,
   type ConcurrencyConfigVo,
-  deleteVoices,
   getConcurrencyConfig,
   getVoiceConfigList,
   getVoiceLibraryPage,
   type SaveConfigDTO,
   saveConfig,
-  updateVoice,
   type VoiceConfigVo,
   type VoiceLibraryItem,
 } from '@/services/ruoyi/voice';
 import {
   buildVoiceQuery,
   defaultConcurrencyForm,
-  defaultVoiceForm,
   getVoiceAvatarBg,
   getVoiceGenderLabel,
   getVoiceGenderTagColor,
   isConcurrencySnapshotEqual,
   RETRY_INTERVAL_FALLBACK_OPTIONS,
   VOICE_TAB_OPTIONS,
-  type VoiceFormState,
   type VoiceListTab,
 } from './_shared';
 import IdentityConfigCard from './IdentityConfigCard';
-
-type VoiceDialogMode = 'add' | 'edit';
-
-const sliderPercentTip = (value?: number) =>
-  value === undefined ? '' : `${value}x`;
 
 const VOICE_PAGE_SIZE = 18;
 
@@ -97,7 +78,7 @@ const VoiceEngineConfigPage = () => {
     [concurrencyCurrent, concurrencyOriginal],
   );
 
-  const [voiceTab, setVoiceTab] = useState<VoiceListTab>('MALE');
+  const [voiceTab, setVoiceTab] = useState<VoiceListTab>('男');
   const [voicePageNum, setVoicePageNum] = useState(1);
   const [voiceList, setVoiceList] = useState<VoiceLibraryItem[]>([]);
   const [voiceTotal, setVoiceTotal] = useState(0);
@@ -112,20 +93,11 @@ const VoiceEngineConfigPage = () => {
     [],
   );
 
-  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
-  const [voiceDialogMode, setVoiceDialogMode] =
-    useState<VoiceDialogMode>('add');
-  const [voiceEditId, setVoiceEditId] = useState<string | null>(null);
-  const [savingVoice, setSavingVoice] = useState(false);
-  const [voiceForm] = Form.useForm<VoiceFormState>();
-
   const [identityList, setIdentityList] = useState<VoiceConfigVo[]>([]);
   const [allVoiceOptions, setAllVoiceOptions] = useState<VoiceLibraryItem[]>(
     [],
   );
   const [loadingIdentity, setLoadingIdentity] = useState(false);
-
-  const confirmDelete = useDeleteConfirm({ modal: modalApi, messageApi });
 
   const fetchConcurrencyConfig = useCallback(async () => {
     setConcurrencyLoading(true);
@@ -183,7 +155,7 @@ const VoiceEngineConfigPage = () => {
 
   useEffect(() => {
     void fetchConcurrencyConfig();
-    void fetchVoiceList('MALE', 1);
+    void fetchVoiceList('男', 1);
     void fetchIdentityList();
   }, [fetchConcurrencyConfig, fetchVoiceList, fetchIdentityList]);
 
@@ -219,22 +191,6 @@ const VoiceEngineConfigPage = () => {
     }
   };
 
-  const confirmDiscardConcurrency = useCallback((): Promise<boolean> => {
-    if (!isConcurrencyDirty) return Promise.resolve(true);
-    return new Promise<boolean>((resolve) => {
-      modalApi.confirm({
-        title: '未保存修改',
-        content:
-          '当前并发与重拨策略有未保存修改，切换后会丢弃这些改动。是否继续切换？',
-        okText: '继续切换',
-        cancelText: '留在当前',
-        autoFocusButton: 'cancel',
-        onOk: () => resolve(true),
-        onCancel: () => resolve(false),
-      });
-    });
-  }, [isConcurrencyDirty, modalApi]);
-
   const handleVoiceTabChange = (next: VoiceListTab) => {
     if (next === voiceTab) return;
     setVoiceTab(next);
@@ -245,84 +201,6 @@ const VoiceEngineConfigPage = () => {
   const handleVoicePageChange = (page: number) => {
     setVoicePageNum(page);
     void fetchVoiceList(voiceTab, page);
-  };
-
-  const openVoiceDialog = (mode: VoiceDialogMode, row?: VoiceLibraryItem) => {
-    setVoiceDialogMode(mode);
-    if (mode === 'edit' && row) {
-      setVoiceEditId(row.id);
-      voiceForm.setFieldsValue({
-        voiceName: row.voiceName ?? '',
-        baseVoiceId: row.baseVoiceId ?? '',
-        gender: row.gender ?? '0',
-        language: row.language ?? '',
-        dialect: row.dialect ?? '',
-        emotion: row.emotion ?? '',
-        style: row.style ?? '',
-        speechRate: Number.parseFloat(row.speechRate) || 1,
-        pitch: Number.parseFloat(row.pitch) || 1,
-        volume: Number(row.volume) || 0,
-        description: row.description ?? '',
-        sampleAudioUrl: row.sampleAudioUrl ?? '',
-        isCustom: row.isCustom ?? '0',
-      });
-    } else {
-      setVoiceEditId(null);
-      voiceForm.setFieldsValue({ ...defaultVoiceForm });
-    }
-    setVoiceDialogOpen(true);
-  };
-
-  const closeVoiceDialog = () => {
-    setVoiceDialogOpen(false);
-    setVoiceEditId(null);
-    voiceForm.resetFields();
-    voiceForm.setFieldsValue({ ...defaultVoiceForm });
-  };
-
-  const handleSaveVoice = async () => {
-    let values: VoiceFormState;
-    try {
-      values = await voiceForm.validateFields();
-    } catch {
-      return;
-    }
-    setSavingVoice(true);
-    try {
-      const payload: AddVoiceDTO = {
-        ...defaultVoiceForm,
-        ...values,
-      };
-      if (voiceDialogMode === 'add') {
-        await addVoice(payload);
-        messageApi.success('音色新增成功');
-      } else {
-        await updateVoice({ id: voiceEditId ?? undefined, ...payload });
-        messageApi.success('音色修改成功');
-      }
-      setVoiceDialogOpen(false);
-      setVoiceEditId(null);
-      voiceForm.resetFields();
-      voiceForm.setFieldsValue({ ...defaultVoiceForm });
-      void fetchVoiceList(voiceTab, voicePageNum);
-    } finally {
-      setSavingVoice(false);
-    }
-  };
-
-  const handleDeleteVoice = (voice: VoiceLibraryItem) => {
-    confirmDelete({
-      records: [voice],
-      entityName: '音色',
-      getName: (record) => record.voiceName,
-      description: '此操作不可恢复。',
-      onConfirm: async () => {
-        await deleteVoices(voice.id);
-      },
-      onSuccess: () => {
-        void fetchVoiceList(voiceTab, voicePageNum);
-      },
-    });
   };
 
   const renderVoiceCard = (voice: VoiceLibraryItem) => {
@@ -347,9 +225,7 @@ const VoiceEngineConfigPage = () => {
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
           {[
             { label: '语言', value: voice.language },
-            { label: '方言', value: voice.dialect },
-            { label: '情感', value: voice.emotion },
-            { label: '风格', value: voice.style },
+            { label: '音色性别', value: voice.gender },
           ].map((item) => (
             <div key={item.label} className="min-w-0">
               <div className="text-zinc-500">{item.label}</div>
@@ -359,9 +235,9 @@ const VoiceEngineConfigPage = () => {
             </div>
           ))}
         </div>
-        <Tag color={voice.isCustom === '1' ? 'orange' : 'blue'}>
-          {voice.isCustom === '1' ? '自定义' : '系统内置'}
-        </Tag>
+        <div className="text-xs leading-5 text-zinc-500">
+          {voice.description || '-'}
+        </div>
       </div>
     );
     return (
@@ -391,31 +267,6 @@ const VoiceEngineConfigPage = () => {
                 {getVoiceGenderLabel(voice.gender)}
               </Tag>
             </div>
-          </div>
-          <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <Tooltip title="编辑" placement="top">
-              <Button
-                size="small"
-                shape="circle"
-                icon={<EditOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openVoiceDialog('edit', voice);
-                }}
-              />
-            </Tooltip>
-            <Tooltip title="删除" placement="top">
-              <Button
-                size="small"
-                shape="circle"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleDeleteVoice(voice);
-                }}
-              />
-            </Tooltip>
           </div>
         </div>
       </Popover>
@@ -491,22 +342,7 @@ const VoiceEngineConfigPage = () => {
           </Spin>
         </ProCard>
 
-        <ProCard
-          title="音色资产库"
-          extra={
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={async () => {
-                const canSwitch = await confirmDiscardConcurrency();
-                if (!canSwitch) return;
-                openVoiceDialog('add');
-              }}
-            >
-              新增音色
-            </Button>
-          }
-        >
+        <ProCard title="音色资产库">
           <div className="flex flex-col gap-4">
             <Tabs
               activeKey={voiceTab}
@@ -567,130 +403,6 @@ const VoiceEngineConfigPage = () => {
           </Spin>
         </ProCard>
       </div>
-
-      <Drawer
-        title={voiceDialogMode === 'add' ? '新增音色' : '编辑音色'}
-        size={560}
-        open={voiceDialogOpen}
-        destroyOnHidden
-        onClose={closeVoiceDialog}
-        footer={
-          <div className="flex justify-end gap-3">
-            <Button onClick={closeVoiceDialog}>取消</Button>
-            <Button
-              type="primary"
-              loading={savingVoice}
-              onClick={() => void handleSaveVoice()}
-            >
-              确定
-            </Button>
-          </div>
-        }
-      >
-        <Form<VoiceFormState>
-          form={voiceForm}
-          layout="vertical"
-          initialValues={defaultVoiceForm}
-          preserve={false}
-        >
-          <Row gutter={[24, 0]}>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                label="音色名称"
-                name="voiceName"
-                rules={[{ required: true, message: '请输入音色名称' }]}
-              >
-                <Input placeholder="请输入音色名称" maxLength={30} showCount />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                label="基础音色ID"
-                name="baseVoiceId"
-                rules={[{ required: true, message: '请输入基础音色ID' }]}
-              >
-                <Input placeholder="如 longxiaochun" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                label="性别"
-                name="gender"
-                rules={[{ required: true, message: '请选择性别' }]}
-              >
-                <Select
-                  options={[
-                    { label: '男声', value: '0' },
-                    { label: '女声', value: '1' },
-                    { label: '自定义', value: 'CUSTOM' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="语言" name="language">
-                <Input placeholder="zh-CN" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="方言" name="dialect">
-                <Input placeholder="普通话" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="情感" name="emotion">
-                <Input placeholder="gentle" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="风格" name="style">
-                <Input placeholder="温柔" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="语速" name="speechRate">
-                <Slider
-                  min={0.5}
-                  max={2}
-                  step={0.1}
-                  tooltip={{ formatter: sliderPercentTip }}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="音调" name="pitch">
-                <Slider
-                  min={0.5}
-                  max={2}
-                  step={0.1}
-                  tooltip={{ formatter: sliderPercentTip }}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item label="音量" name="volume">
-                <Slider min={0} max={100} />
-              </Form.Item>
-            </Col>
-            <Col xs={24}>
-              <Form.Item label="描述" name="description">
-                <Input.TextArea
-                  rows={2}
-                  maxLength={200}
-                  showCount
-                  placeholder="音色描述"
-                />
-              </Form.Item>
-            </Col>
-            <Form.Item name="sampleAudioUrl" hidden>
-              <Input />
-            </Form.Item>
-            <Form.Item name="isCustom" hidden>
-              <Input />
-            </Form.Item>
-          </Row>
-        </Form>
-      </Drawer>
     </PageContainer>
   );
 };

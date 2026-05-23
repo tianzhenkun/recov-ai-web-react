@@ -22,7 +22,9 @@ import {
   ErrorBoundary,
   Footer,
   LangDropdown,
+  NotificationCenter,
   OfflineBanner,
+  SseBootstrap,
   TenantSwitch,
 } from '@/components';
 import { getInfo, type UserInfo } from '@/services/ruoyi/user';
@@ -165,6 +167,15 @@ export const layout: RunTimeLayoutConfig = ({
     },
     actionsRender: () => [
       <TenantSwitch key="tenant" />,
+      <NotificationCenter
+        key="notification"
+        contextKey={[
+          initialState?.currentUser?.userid || 'anonymous',
+          initialState?.dynamicTenantId || 'default',
+          initialState?.tenantSwitchVersion || 0,
+        ].join(':')}
+        enabled={Boolean(initialState?.currentUser)}
+      />,
       // 使用文档入口暂时隐藏。
       // <DocLink key="doc" />,
       // 历史版本入口暂时隐藏。
@@ -231,8 +242,17 @@ export const layout: RunTimeLayoutConfig = ({
     // 增加一个 loading 的状态
     childrenRender: (children) => {
       // if (initialState?.loading) return <PageLoading />;
+      const sseConnectionKey = [
+        initialState?.currentUser?.userid || 'anonymous',
+        initialState?.dynamicTenantId || 'default',
+        initialState?.tenantSwitchVersion || 0,
+      ].join(':');
       return (
         <>
+          <SseBootstrap
+            connectionKey={sseConnectionKey}
+            enabled={Boolean(initialState?.currentUser)}
+          />
           <React.Fragment
             key={`${initialState?.dynamicTenantId || 'default'}-${initialState?.tenantSwitchVersion || 0}`}
           >

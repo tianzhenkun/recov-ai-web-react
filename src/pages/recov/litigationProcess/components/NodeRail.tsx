@@ -1,16 +1,15 @@
 import { ProCard } from '@ant-design/pro-components';
-import { Spin, Typography } from 'antd';
-import type { CSSProperties } from 'react';
+import { Badge, Spin, Typography, theme } from 'antd';
 import type {
   LitigationNodeStatVO,
   LitigationNodeType,
 } from '@/services/ruoyi/litigation-process';
 import { DEFAULT_NODE_TYPE, NODE_VISUAL_MAP } from '../_shared';
 
+const { Text } = Typography;
+
 const getNodeVisual = (nodeType: LitigationNodeType) =>
   NODE_VISUAL_MAP[nodeType] ?? NODE_VISUAL_MAP[DEFAULT_NODE_TYPE];
-
-const { Text } = Typography;
 
 type NodeRailProps = {
   nodes: LitigationNodeStatVO[];
@@ -21,16 +20,6 @@ type NodeRailProps = {
   onNodeChange: (nodeType: LitigationNodeType) => void;
 };
 
-const getNodeThemeStyle = (nodeType: LitigationNodeType): CSSProperties => {
-  const visual = getNodeVisual(nodeType);
-  return {
-    ['--node-accent' as string]: visual.accent,
-    ['--node-line' as string]: visual.line,
-    ['--node-soft' as string]: visual.soft,
-    ['--node-shadow' as string]: visual.shadow,
-  };
-};
-
 const NodeRail = ({
   nodes,
   activeNodeType,
@@ -39,6 +28,8 @@ const NodeRail = ({
   loading,
   onNodeChange,
 }: NodeRailProps) => {
+  const { token } = theme.useToken();
+
   return (
     <ProCard
       title="案件推进节点"
@@ -49,67 +40,61 @@ const NodeRail = ({
       }
     >
       <Spin spinning={loading}>
-        <div className="overflow-x-auto pb-2">
-          <div className="inline-flex min-w-max items-start gap-0 pr-2">
-            {nodes.map((node, index) => {
+        <div className="relative pb-1 pt-3">
+          <div
+            className="absolute left-[3.8%] right-[3.8%] top-[34px] h-px"
+            style={{ background: '#eef0f4' }}
+          />
+          <div
+            aria-label="案件推进节点"
+            className="relative grid grid-cols-12 items-start gap-0"
+            role="tablist"
+          >
+            {nodes.map((node) => {
               const isCurrent = activeNodeType === node.nodeType;
               const visual = getNodeVisual(node.nodeType);
 
               return (
-                <div key={node.nodeType} className="inline-flex items-center">
-                  <button
-                    type="button"
-                    className="group w-[108px] border-0 bg-transparent p-0 text-center md:w-[120px]"
-                    style={getNodeThemeStyle(node.nodeType)}
-                    onClick={() => onNodeChange(node.nodeType)}
+                <button
+                  key={node.nodeType}
+                  aria-selected={isCurrent}
+                  role="tab"
+                  type="button"
+                  className="min-w-0 border-0 bg-transparent px-0.5 text-center"
+                  onClick={() => onNodeChange(node.nodeType)}
+                >
+                  <Badge count={node.count} showZero size="small">
+                    <span
+                      className="relative mx-auto flex h-11 w-11 items-center justify-center rounded-full border text-[20px] transition-colors"
+                      style={{
+                        background: isCurrent
+                          ? token.colorPrimaryBg
+                          : token.colorBgContainer,
+                        borderColor: isCurrent
+                          ? token.colorPrimaryBorder
+                          : token.colorBorderSecondary,
+                        boxShadow: isCurrent
+                          ? token.boxShadowSecondary
+                          : '0 2px 8px rgba(15, 23, 42, 0.04)',
+                        color: isCurrent
+                          ? token.colorPrimary
+                          : token.colorTextTertiary,
+                      }}
+                    >
+                      <span className="leading-none">{visual.icon}</span>
+                    </span>
+                  </Badge>
+                  <span
+                    className="mt-3 block break-words px-0.5 text-sm font-bold leading-snug transition-colors"
+                    style={{
+                      color: isCurrent
+                        ? token.colorPrimary
+                        : token.colorTextHeading,
+                    }}
                   >
-                    <span
-                      className="inline-flex h-[26px] min-w-[42px] items-center justify-center rounded-full px-2.5 text-xs font-bold transition-all"
-                      style={{
-                        background: isCurrent
-                          ? `linear-gradient(135deg, ${visual.accent} 0%, ${visual.line} 100%)`
-                          : visual.soft,
-                        color: isCurrent ? '#fff' : visual.accent,
-                        boxShadow: isCurrent
-                          ? `0 10px 18px ${visual.shadow}`
-                          : undefined,
-                      }}
-                    >
-                      {node.count}
-                    </span>
-                    <span
-                      className="mx-auto mt-3 flex h-[52px] w-[52px] items-center justify-center rounded-[18px] border border-white/70 text-[22px] transition-all"
-                      style={{
-                        background: isCurrent
-                          ? `linear-gradient(135deg, ${visual.accent} 0%, ${visual.line} 100%)`
-                          : visual.soft,
-                        color: isCurrent ? '#fff' : visual.accent,
-                        boxShadow: isCurrent
-                          ? `0 16px 28px ${visual.shadow}`
-                          : '0 12px 24px rgba(148, 163, 184, 0.12)',
-                      }}
-                    >
-                      {visual.icon}
-                    </span>
-                    <span
-                      className="mt-3.5 block px-1.5 text-[13px] font-extrabold leading-snug transition-colors"
-                      style={{
-                        color: isCurrent ? '#0f172a' : '#475569',
-                      }}
-                    >
-                      {node.nodeDesc}
-                    </span>
-                  </button>
-                  {index !== nodes.length - 1 ? (
-                    <span
-                      className="mx-1 mt-[37px] hidden h-0.5 w-10 rounded-full md:inline-block md:w-14"
-                      style={{
-                        background:
-                          'linear-gradient(90deg, #dbeafe 0%, #c7d2fe 100%)',
-                      }}
-                    />
-                  ) : null}
-                </div>
+                    {node.nodeDesc}
+                  </span>
+                </button>
               );
             })}
           </div>

@@ -1,6 +1,7 @@
 type ClientEnvKey =
   | 'UMI_APP_BASE_API'
   | 'UMI_APP_ADMIN_API'
+  | 'UMI_APP_SSE'
   | 'UMI_APP_ENCRYPT'
   | 'UMI_APP_RSA_PUBLIC_KEY'
   | 'UMI_APP_RSA_PRIVATE_KEY'
@@ -9,6 +10,7 @@ type ClientEnvKey =
 const clientEnv: Record<ClientEnvKey, unknown> = {
   UMI_APP_BASE_API: process.env.UMI_APP_BASE_API,
   UMI_APP_ADMIN_API: process.env.UMI_APP_ADMIN_API,
+  UMI_APP_SSE: process.env.UMI_APP_SSE,
   UMI_APP_ENCRYPT: process.env.UMI_APP_ENCRYPT,
   UMI_APP_RSA_PUBLIC_KEY: process.env.UMI_APP_RSA_PUBLIC_KEY,
   UMI_APP_RSA_PRIVATE_KEY: process.env.UMI_APP_RSA_PRIVATE_KEY,
@@ -38,6 +40,8 @@ export const getBaseApi = () => getClientEnv('UMI_APP_BASE_API', '/dev-api');
 
 export const getAdminApi = () =>
   getClientEnv('UMI_APP_ADMIN_API', '/admin-api');
+
+export const getSseApi = () => getClientEnv('UMI_APP_SSE', '/resource/sse');
 
 export const getClientId = () => getClientEnv('UMI_APP_CLIENT_ID');
 

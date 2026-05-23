@@ -6,8 +6,11 @@
  * 布局组件
  */
 import Footer from './Footer';
+import NotificationCenter from './NotificationCenter';
 import { DocLink, LangDropdown, VersionDropdown } from './RightContent';
 import { AvatarDropdown } from './RightContent/AvatarDropdown';
+import SafeHtml from './SafeHtml';
+import SseBootstrap from './SseBootstrap';
 import TenantSwitch from './TenantSwitch';
 
 /**
@@ -27,6 +30,9 @@ export {
   DocLink,
   Footer,
   LangDropdown,
+  NotificationCenter,
+  SafeHtml,
+  SseBootstrap,
   TenantSwitch,
   VersionDropdown,
 };

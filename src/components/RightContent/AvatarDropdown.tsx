@@ -9,6 +9,7 @@ import { Spin } from 'antd';
 import React, { startTransition } from 'react';
 import { clearStoredDynamicTenantId } from '@/adapters/ruoyi/dynamicTenant';
 import { clearCachedRuoyiMenuData } from '@/adapters/ruoyi/menu';
+import { stopSse } from '@/adapters/ruoyi/sse';
 import { removeToken } from '@/adapters/ruoyi/token';
 import { logout } from '@/services/ruoyi/auth';
 import HeaderDropdown from '../HeaderDropdown';
@@ -26,6 +27,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
     try {
       await logout();
     } finally {
+      stopSse();
       removeToken();
       clearStoredDynamicTenantId();
       clearCachedRuoyiMenuData();

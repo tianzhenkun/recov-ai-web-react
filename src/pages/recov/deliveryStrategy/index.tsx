@@ -128,6 +128,9 @@ const getTemplateContent = (
   return templates.call.script;
 };
 
+const needsProviderTemplateReview = (tab: DeliveryTemplateTabId) =>
+  tab === 'sms' || tab === 'email';
+
 const buildSavePayload = (
   templates: DeliveryContentTemplates,
   tab: DeliveryTemplateTabId,
@@ -276,7 +279,14 @@ const DeliveryStrategyPage = () => {
         buildSavePayload(current, activeTab, way),
       );
       await refreshWays();
-      messageApi.success('送达模板已保存');
+      if (needsProviderTemplateReview(activeTab)) {
+        messageApi.success(
+          '本地模板已保存；腾讯云模板需同步并审核通过后才会生效',
+          5,
+        );
+      } else {
+        messageApi.success('送达模板已保存');
+      }
       return true;
     } catch {
       messageApi.error('保存失败，请稍后重试');

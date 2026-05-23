@@ -36,7 +36,7 @@ const { Text } = Typography;
 
 type AddEmployeeForm = {
   name: string;
-  voiceId?: string;
+  voiceId: string;
 };
 
 export type IdentityConfigCardProps = {
@@ -49,9 +49,14 @@ export type IdentityConfigCardProps = {
 
 const snapshotFromConfig = (config: VoiceConfigVo): IdentityConfigSnapshot => ({
   genderMatch: config.genderMatch,
-  maleVoiceId: config.maleVoiceId ?? null,
-  femaleVoiceId: config.femaleVoiceId ?? null,
+  maleVoiceGender: config.maleVoiceGender ?? null,
+  femaleVoiceGender: config.femaleVoiceGender ?? null,
 });
+
+const voiceGenderOptions = [
+  { label: '男声', value: '男' },
+  { label: '女声', value: '女' },
+];
 
 const IdentityConfigCard = ({
   config,
@@ -88,26 +93,22 @@ const IdentityConfigCard = ({
 
   const genderMatchEnabled = localConfig.genderMatch === '1';
 
-  const maleVoiceOptions = useMemo(
+  const employeeVoiceOptions = useMemo(
     () =>
-      voiceOptions
-        .filter((v) => v.gender === '0' || v.gender === 'CUSTOM')
-        .map((v) => ({ label: v.voiceName, value: v.id })),
+      voiceOptions.map((v) => ({
+        label: `${v.voiceName}（${v.gender}）`,
+        value: v.id,
+      })),
     [voiceOptions],
   );
 
-  const femaleVoiceOptions = useMemo(
-    () =>
-      voiceOptions
-        .filter((v) => v.gender === '1' || v.gender === 'CUSTOM')
-        .map((v) => ({ label: v.voiceName, value: v.id })),
-    [voiceOptions],
-  );
-
-  const allVoiceOptions = useMemo(
-    () => voiceOptions.map((v) => ({ label: v.voiceName, value: v.id })),
-    [voiceOptions],
-  );
+  const voiceNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    voiceOptions.forEach((voice) => {
+      map.set(String(voice.id), voice.voiceName);
+    });
+    return map;
+  }, [voiceOptions]);
 
   const hasChanges = useMemo(
     () => !isIdentityConfigSnapshotEqual(localConfig, originalConfig),
@@ -123,28 +124,28 @@ const IdentityConfigCard = ({
       return {
         ...prev,
         genderMatch: nextGenderMatch,
-        maleVoiceId:
-          prev.maleVoiceId ??
-          originalConfig.maleVoiceId ??
-          config.maleVoiceId ??
-          null,
-        femaleVoiceId:
-          prev.femaleVoiceId ??
-          originalConfig.femaleVoiceId ??
-          config.femaleVoiceId ??
-          null,
+        maleVoiceGender:
+          prev.maleVoiceGender ??
+          originalConfig.maleVoiceGender ??
+          config.maleVoiceGender ??
+          '男',
+        femaleVoiceGender:
+          prev.femaleVoiceGender ??
+          originalConfig.femaleVoiceGender ??
+          config.femaleVoiceGender ??
+          '女',
       };
     });
   };
 
   const handleSave = async () => {
     if (localConfig.genderMatch === '1') {
-      if (!localConfig.maleVoiceId) {
-        messageApi.warning('启用性别匹配时，男性音色不能为空');
+      if (!localConfig.maleVoiceGender) {
+        messageApi.warning('启用性别匹配时，男性逾期客户匹配声线不能为空');
         return;
       }
-      if (!localConfig.femaleVoiceId) {
-        messageApi.warning('启用性别匹配时，女性音色不能为空');
+      if (!localConfig.femaleVoiceGender) {
+        messageApi.warning('启用性别匹配时，女性逾期客户匹配声线不能为空');
         return;
       }
     }
@@ -154,8 +155,8 @@ const IdentityConfigCard = ({
         identityName: config.identityName,
         voiceId: config.voiceId,
         genderMatch: localConfig.genderMatch,
-        maleVoiceId: localConfig.maleVoiceId,
-        femaleVoiceId: localConfig.femaleVoiceId,
+        maleVoiceGender: localConfig.maleVoiceGender,
+        femaleVoiceGender: localConfig.femaleVoiceGender,
       };
       await updateVoiceConfig(payload);
       messageApi.success('配置保存成功');
@@ -167,7 +168,10 @@ const IdentityConfigCard = ({
 
   const openAddDialog = () => {
     addForm.resetFields();
-    addForm.setFieldsValue({ name: '', voiceId: undefined });
+    addForm.setFieldsValue({
+      name: '',
+      voiceId: config.voiceId ?? voiceOptions[0]?.id,
+    });
     setAddOpen(true);
   };
 
@@ -193,7 +197,7 @@ const IdentityConfigCard = ({
     try {
       const data: AddEmployeeDTO = {
         name: `${employeeNamePrefix}${trimmed}`,
-        voiceId: values.voiceId || undefined,
+        voiceId: values.voiceId,
       };
       await addEmployee(config.identityName, data);
       messageApi.success('员工添加成功');
@@ -247,15 +251,15 @@ const IdentityConfigCard = ({
           <div className="rounded-lg border border-solid border-pink-100 bg-pink-50/50 p-3">
             <div className="mb-2 text-xs text-pink-600">针对女性逾期客户</div>
             <Select
-              placeholder="请选择女声"
+              placeholder="请选择匹配声线"
               style={{ width: '100%' }}
               allowClear
-              value={localConfig.femaleVoiceId ?? undefined}
-              options={femaleVoiceOptions}
+              value={localConfig.femaleVoiceGender ?? undefined}
+              options={voiceGenderOptions}
               onChange={(value) =>
                 setLocalConfig((prev) => ({
                   ...prev,
-                  femaleVoiceId: (value as string | undefined) ?? null,
+                  femaleVoiceGender: (value as string | undefined) ?? null,
                 }))
               }
             />
@@ -263,15 +267,15 @@ const IdentityConfigCard = ({
           <div className="rounded-lg border border-solid border-blue-100 bg-blue-50/50 p-3">
             <div className="mb-2 text-xs text-blue-600">针对男性逾期客户</div>
             <Select
-              placeholder="请选择男声"
+              placeholder="请选择匹配声线"
               style={{ width: '100%' }}
               allowClear
-              value={localConfig.maleVoiceId ?? undefined}
-              options={maleVoiceOptions}
+              value={localConfig.maleVoiceGender ?? undefined}
+              options={voiceGenderOptions}
               onChange={(value) =>
                 setLocalConfig((prev) => ({
                   ...prev,
-                  maleVoiceId: (value as string | undefined) ?? null,
+                  maleVoiceGender: (value as string | undefined) ?? null,
                 }))
               }
             />
@@ -315,7 +319,12 @@ const IdentityConfigCard = ({
                   handleDeleteEmployee(emp);
                 }}
               >
-                {emp.name}-{emp.voiceName || '默认音色'}
+                {emp.name}
+                {emp.voiceName || emp.voiceId ? (
+                  <span className="ml-1 text-zinc-400">
+                    {emp.voiceName ?? voiceNameById.get(String(emp.voiceId))}
+                  </span>
+                ) : null}
               </Tag>
             ))}
           </div>
@@ -371,7 +380,6 @@ const IdentityConfigCard = ({
             label="员工姓名"
             name="name"
             rules={[
-              { required: true, message: '请输入员工姓名' },
               {
                 validator: (_rule, value: string | undefined) => {
                   const validation = validateEmployeeName(
@@ -401,15 +409,15 @@ const IdentityConfigCard = ({
             />
           </Form.Item>
           <Form.Item
-            label="关联音色"
+            label="员工音色"
             name="voiceId"
-            rules={[{ required: true, message: '请选择音色' }]}
+            rules={[{ required: true, message: '请选择员工音色' }]}
           >
             <Select
-              placeholder="请选择关联音色"
-              allowClear
-              showSearch={{ optionFilterProp: 'label' }}
-              options={allVoiceOptions}
+              placeholder="请选择员工音色"
+              options={employeeVoiceOptions}
+              showSearch
+              optionFilterProp="label"
             />
           </Form.Item>
         </Form>

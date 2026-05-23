@@ -28,10 +28,15 @@ import {
   retryFlowCurrentStep,
   terminateFlowInstance,
 } from '@/services/ruoyi/flowInstance';
+import {
+  buildInitialFlowModuleMap,
+  getFlowModuleMeta,
+} from '../../collectionStrategy/_shared';
 
 const { Paragraph, Text, Title } = Typography;
 
 const TRACE_POLLING_INTERVAL = 4000;
+const flowModuleMap = buildInitialFlowModuleMap();
 
 type FlowTraceDrawerProps = {
   open: boolean;
@@ -42,6 +47,15 @@ type FlowTraceDrawerProps = {
 
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
+
+const formatNodeName = (nodeCode?: string | null, identity?: string | null) => {
+  if (!nodeCode && !identity) return '-';
+  if (!nodeCode) return toText(identity);
+  const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
+  const label = meta.label || nodeCode;
+  if (identity && identity !== label) return `${label}（${identity}）`;
+  return label;
+};
 
 const normalizeStatus = (value: unknown) => String(value ?? '').trim();
 
@@ -330,23 +344,31 @@ const FlowTraceDrawer = ({
     });
   };
 
-  const stepItems = (trace?.steps ?? []).map((step) => ({
-    title: step.identity || step.nodeCode || `步骤 ${toText(step.stepIndex)}`,
-    status: toStepStatus(step.stepStatus),
-    description: (
-      <div className="flex flex-col gap-1">
-        <Space size={6} wrap>
-          <Tag color={stepStatusColor(step.stepStatus)}>
-            {step.stepStatusName || step.stepStatus || '未开始'}
-          </Tag>
-          <Text type="secondary">{step.nodeCode || '-'}</Text>
-          {step.current ? <Tag color="blue">当前节点</Tag> : null}
-        </Space>
-        {renderMessage(step.latestProgressMessage)}
-        {renderMessage(step.latestResultMessage, 'danger')}
-      </div>
-    ),
-  }));
+  const stepItems = (trace?.steps ?? []).map((step) => {
+    const nodeTitle = step.nodeCode
+      ? formatNodeName(step.nodeCode)
+      : step.identity || `步骤 ${toText(step.stepIndex)}`;
+    return {
+      title: nodeTitle,
+      status: toStepStatus(step.stepStatus),
+      description: (
+        <div className="flex flex-col gap-1">
+          <Space size={6} wrap>
+            <Tag color={stepStatusColor(step.stepStatus)}>
+              {step.stepStatusName || step.stepStatus || '未开始'}
+            </Tag>
+            {step.identity && step.identity !== nodeTitle ? (
+              <Tag color="geekblue">{step.identity}</Tag>
+            ) : null}
+            <Text type="secondary">{step.nodeCode || '-'}</Text>
+            {step.current ? <Tag color="blue">当前节点</Tag> : null}
+          </Space>
+          {renderMessage(step.latestProgressMessage)}
+          {renderMessage(step.latestResultMessage, 'danger')}
+        </div>
+      ),
+    };
+  });
 
   const attemptColumns = useMemo<ColumnsType<FlowTraceAttempt>>(
     () => [
@@ -411,7 +433,7 @@ const FlowTraceDrawer = ({
           <Text strong>
             {event.eventTitle || event.eventType || '流程事件'}
           </Text>
-          {event.nodeCode ? <Tag>{event.nodeCode}</Tag> : null}
+          {event.nodeCode ? <Tag>{formatNodeName(event.nodeCode)}</Tag> : null}
         </Space>
         {event.eventContent ? (
           <Paragraph style={{ marginBottom: 0, marginTop: 4 }}>
@@ -535,12 +557,10 @@ const FlowTraceDrawer = ({
                 {
                   key: 'currentNode',
                   label: '当前节点',
-                  children:
-                    trace.currentIdentity ||
-                    detail?.currentIdentity ||
-                    trace.currentNodeCode ||
-                    detail?.currentNodeCode ||
-                    '-',
+                  children: formatNodeName(
+                    trace.currentNodeCode ?? detail?.currentNodeCode,
+                    trace.currentIdentity ?? detail?.currentIdentity,
+                  ),
                 },
                 {
                   key: 'currentTaskId',

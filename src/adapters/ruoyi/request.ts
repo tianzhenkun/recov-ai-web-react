@@ -19,6 +19,7 @@ import {
   RuoyiError,
   type RuoyiResponse,
 } from './response';
+import { stopSse } from './sse';
 import { getToken, removeToken } from './token';
 
 const encryptHeader = 'encrypt-key';
@@ -176,6 +177,7 @@ const decryptResponseData = (encryptedKey: string, data: unknown) => {
 };
 
 const redirectToLogin = () => {
+  stopSse();
   removeToken();
   const { pathname, search, hash } = history.location;
   if (pathname !== loginPath) {

@@ -16,7 +16,6 @@ export interface VoiceLibraryQuery {
   pageNum: number;
   pageSize: number;
   gender?: string;
-  isCustom?: string;
 }
 
 export interface VoiceLibraryItem {
@@ -25,42 +24,15 @@ export interface VoiceLibraryItem {
   baseVoiceId: string;
   gender: string;
   language: string;
-  dialect: string;
-  emotion: string;
-  style: string;
-  speechRate: string;
-  pitch: string;
-  volume: number;
   description: string;
-  sampleAudioUrl: string;
-  isCustom: string;
-}
-
-export interface AddVoiceDTO {
-  voiceName: string;
-  baseVoiceId: string;
-  gender: string;
-  language?: string;
-  dialect?: string;
-  emotion?: string;
-  style?: string;
-  speechRate?: number;
-  pitch?: number;
-  volume?: number;
-  description?: string;
-  sampleAudioUrl?: string;
-  isCustom?: string;
-}
-
-export interface UpdateVoiceDTO extends Partial<AddVoiceDTO> {
-  id?: string;
+  status: string;
 }
 
 export interface EmployeeNameItem {
   id: string;
   name: string;
   voiceId: string | null;
-  voiceName: string | null;
+  voiceName?: string | null;
   sortOrder: number;
 }
 
@@ -68,8 +40,8 @@ export interface VoiceConfigVo {
   identityName: string;
   voiceId: string | null;
   genderMatch: '0' | '1';
-  maleVoiceId: string | null;
-  femaleVoiceId: string | null;
+  maleVoiceGender: string | null;
+  femaleVoiceGender: string | null;
   employeeNames: EmployeeNameItem[];
 }
 
@@ -77,13 +49,13 @@ export interface UpdateVoiceConfigDTO {
   identityName: string;
   voiceId?: string | null;
   genderMatch: string;
-  maleVoiceId?: string | null;
-  femaleVoiceId?: string | null;
+  maleVoiceGender?: string | null;
+  femaleVoiceGender?: string | null;
 }
 
 export interface AddEmployeeDTO {
   name: string;
-  voiceId?: string;
+  voiceId: string;
   sortOrder?: number;
 }
 
@@ -112,32 +84,6 @@ export const getVoiceLibraryPage = (params: VoiceLibraryQuery) =>
   ruoyiRequest<VoiceLibraryItem>('/system/recov/call-config/voice/page', {
     method: 'get',
     params: params as unknown as Record<string, unknown>,
-  });
-
-/**
- * 新增音色。
- */
-export const addVoice = (data: AddVoiceDTO) =>
-  ruoyiRequest('/system/recov/call-config/voice', {
-    method: 'post',
-    data,
-  });
-
-/**
- * 更新音色。
- */
-export const updateVoice = (data: UpdateVoiceDTO) =>
-  ruoyiRequest('/system/recov/call-config/voice', {
-    method: 'put',
-    data,
-  });
-
-/**
- * 删除音色。ids 为逗号分隔的字符串。
- */
-export const deleteVoices = (ids: string) =>
-  ruoyiRequest(`/system/recov/call-config/voice/${ids}`, {
-    method: 'delete',
   });
 
 /**

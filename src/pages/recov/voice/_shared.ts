@@ -57,19 +57,17 @@ export const EMPLOYEE_NAME_PREFIX: Record<string, string> = {
 export const getEmployeeNamePrefix = (identityName: string): string =>
   EMPLOYEE_NAME_PREFIX[identityName] ?? '';
 
-export type VoiceListTab = 'MALE' | 'FEMALE' | 'CUSTOM';
+export type VoiceListTab = '男' | '女';
 
 export const VOICE_TAB_OPTIONS: Array<{ label: string; value: VoiceListTab }> =
   [
-    { label: '系统内置男声', value: 'MALE' },
-    { label: '系统内置女声', value: 'FEMALE' },
-    { label: '自定义类型', value: 'CUSTOM' },
+    { label: '男声', value: '男' },
+    { label: '女声', value: '女' },
   ];
 
 export const VOICE_TAB_TITLE: Record<VoiceListTab, string> = {
-  MALE: '系统内置男声',
-  FEMALE: '系统内置女声',
-  CUSTOM: '自定义类型',
+  男: '男声',
+  女: '女声',
 };
 
 export const buildVoiceQuery = (
@@ -77,64 +75,29 @@ export const buildVoiceQuery = (
   pageNum: number,
   pageSize: number,
 ): VoiceLibraryQuery => {
-  const base = { pageNum, pageSize };
-  if (tab === 'CUSTOM') return { ...base, isCustom: '1' };
   return {
-    ...base,
-    gender: tab === 'MALE' ? '0' : '1',
-    isCustom: '0',
+    pageNum,
+    pageSize,
+    gender: tab,
   };
 };
 
 export const getVoiceGenderLabel = (gender: string): string => {
-  if (gender === '0') return '男声';
-  if (gender === '1') return '女声';
-  if (gender === 'CUSTOM') return '自定义';
+  if (gender === '男') return '男声';
+  if (gender === '女') return '女声';
   return '未标注';
 };
 
 export const getVoiceGenderTagColor = (gender: string): string | undefined => {
-  if (gender === '0') return 'processing';
-  if (gender === '1') return 'magenta';
+  if (gender === '男') return 'processing';
+  if (gender === '女') return 'magenta';
   return 'default';
 };
 
 export const getVoiceAvatarBg = (gender: string): string => {
-  if (gender === '1') return '#f472b6';
-  if (gender === '0') return '#3b82f6';
+  if (gender === '女') return '#f472b6';
+  if (gender === '男') return '#3b82f6';
   return '#94a3b8';
-};
-
-export type VoiceFormState = {
-  voiceName: string;
-  baseVoiceId: string;
-  gender: string;
-  language: string;
-  dialect: string;
-  emotion: string;
-  style: string;
-  speechRate: number;
-  pitch: number;
-  volume: number;
-  description: string;
-  sampleAudioUrl: string;
-  isCustom: string;
-};
-
-export const defaultVoiceForm: VoiceFormState = {
-  voiceName: '',
-  baseVoiceId: '',
-  gender: '0',
-  language: 'zh-CN',
-  dialect: '普通话',
-  emotion: '',
-  style: '',
-  speechRate: 1,
-  pitch: 1,
-  volume: 50,
-  description: '',
-  sampleAudioUrl: '',
-  isCustom: '0',
 };
 
 export type ConcurrencyFormState = ConcurrencyConfigVo;
@@ -163,8 +126,8 @@ export const isConcurrencySnapshotEqual = (
 
 export type IdentityConfigSnapshot = {
   genderMatch: string;
-  maleVoiceId: string | null;
-  femaleVoiceId: string | null;
+  maleVoiceGender: string | null;
+  femaleVoiceGender: string | null;
 };
 
 export const isIdentityConfigSnapshotEqual = (
@@ -172,8 +135,8 @@ export const isIdentityConfigSnapshotEqual = (
   b: IdentityConfigSnapshot,
 ): boolean =>
   a.genderMatch === b.genderMatch &&
-  (a.maleVoiceId ?? null) === (b.maleVoiceId ?? null) &&
-  (a.femaleVoiceId ?? null) === (b.femaleVoiceId ?? null);
+  (a.maleVoiceGender ?? null) === (b.maleVoiceGender ?? null) &&
+  (a.femaleVoiceGender ?? null) === (b.femaleVoiceGender ?? null);
 
 export type EmployeeNameValidationResult = {
   valid: boolean;

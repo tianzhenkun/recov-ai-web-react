@@ -1,57 +1,48 @@
 import {
-  BarChartOutlined,
   MessageOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
+  ReloadOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Flex, message, Space, Typography } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import { Button, Flex, message, Pagination, Space } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  buildCommunicationDetail,
+  buildOutboundOverview,
+  DEFAULT_FEEDBACK_PAGE_SIZE,
+  emptyDashboard,
   type FeedbackItem,
-  MOCK_FEEDBACK,
-  MOCK_IDENTITIES,
-  MOCK_LIVE_STATS,
-  MOCK_METRICS,
-  MOCK_REJECT_REASONS,
-  type OutboundOverview,
+  FIXED_DIGITAL_IDENTITIES,
   type OwnerCommunicationDetail,
   PAGE_TITLE,
-  type RejectReasonStat,
+  toFeedbackItem,
 } from './_shared';
 import CommunicationLogModal from './CommunicationLogModal';
 import FeedbackFeed from './FeedbackFeed';
 import IdentityGrid from './IdentityGrid';
 import LiveMonitorCard from './LiveMonitorCard';
 import MetricsRow from './MetricsRow';
-import RejectReasonChart from './RejectReasonChart';
 import {
-  fetchCommunicationLogs,
-  fetchOutboundOverview,
-  fetchRejectReasonStats,
+  type AiCallDashboard,
+  getAiCallDashboard,
+  getAiCallDebtTimeline,
+  getAiCallRecordDetail,
+  getAiCallRecordPage,
 } from './service';
-
-const { Text } = Typography;
-
-const defaultOverview: OutboundOverview = {
-  metrics: MOCK_METRICS,
-  liveStats: MOCK_LIVE_STATS,
-  identities: MOCK_IDENTITIES,
-  feedback: MOCK_FEEDBACK,
-};
 
 const IntelligentOutboundPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
 
-  const [overview, setOverview] = useState<OutboundOverview>(defaultOverview);
-  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [dashboard, setDashboard] = useState<AiCallDashboard>(emptyDashboard);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
 
-  const [rejectReasons, setRejectReasons] =
-    useState<RejectReasonStat[]>(MOCK_REJECT_REASONS);
-  const [rejectLoading, setRejectLoading] = useState(false);
-
-  const [isCalling, setIsCalling] = useState(false);
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
+  const [feedbackTotal, setFeedbackTotal] = useState(0);
+  const [feedbackPage, setFeedbackPage] = useState({
+    pageNum: 1,
+    pageSize: DEFAULT_FEEDBACK_PAGE_SIZE,
+  });
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logDetail, setLogDetail] = useState<OwnerCommunicationDetail | null>(
@@ -59,56 +50,91 @@ const IntelligentOutboundPage = () => {
   );
   const [logLoading, setLogLoading] = useState(false);
 
-  const loadOverview = useCallback(async () => {
-    setOverviewLoading(true);
+  const overview = useMemo(() => buildOutboundOverview(dashboard), [dashboard]);
+
+  const loadDashboard = useCallback(async () => {
+    setDashboardLoading(true);
     try {
-      const data = await fetchOutboundOverview();
-      setOverview(data);
+      const res = await getAiCallDashboard();
+      setDashboard(res.data || emptyDashboard);
     } catch {
-      setOverview(defaultOverview);
+      setDashboard(emptyDashboard);
     } finally {
-      setOverviewLoading(false);
+      setDashboardLoading(false);
     }
   }, []);
 
-  const loadRejectReasons = useCallback(async () => {
-    setRejectLoading(true);
-    try {
-      const data = await fetchRejectReasonStats();
-      setRejectReasons(data);
-    } catch {
-      setRejectReasons(MOCK_REJECT_REASONS);
-    } finally {
-      setRejectLoading(false);
-    }
-  }, []);
+  const loadFeedback = useCallback(
+    async (pageNum: number, pageSize: number) => {
+      setFeedbackLoading(true);
+      try {
+        const res = await getAiCallRecordPage({
+          pageNum,
+          pageSize,
+          analysisStatus: '2',
+        });
+        setFeedbackItems((res.rows || []).map(toFeedbackItem));
+        setFeedbackTotal(Number(res.total || 0));
+      } catch {
+        setFeedbackItems([]);
+        setFeedbackTotal(0);
+      } finally {
+        setFeedbackLoading(false);
+      }
+    },
+    [],
+  );
+
+  const refreshAll = useCallback(() => {
+    void loadDashboard();
+    void loadFeedback(feedbackPage.pageNum, feedbackPage.pageSize);
+  }, [
+    feedbackPage.pageNum,
+    feedbackPage.pageSize,
+    loadDashboard,
+    loadFeedback,
+  ]);
 
   useEffect(() => {
-    void loadOverview();
-    void loadRejectReasons();
-  }, [loadOverview, loadRejectReasons]);
+    void loadDashboard();
+  }, [loadDashboard]);
 
-  const handleToggleCalling = () => {
-    const next = !isCalling;
-    setIsCalling(next);
-    if (next) {
-      messageApi.success('AI 外呼已启动，数字员工开始按策略进行外呼。');
-    } else {
-      messageApi.info('AI 外呼已暂停，将不再发起新一轮通话。');
-    }
-  };
+  useEffect(() => {
+    void loadFeedback(feedbackPage.pageNum, feedbackPage.pageSize);
+  }, [feedbackPage.pageNum, feedbackPage.pageSize, loadFeedback]);
 
-  const handleFeedbackClick = useCallback(async (item: FeedbackItem) => {
-    setLogModalOpen(true);
-    setLogDetail(null);
-    setLogLoading(true);
-    try {
-      const detail = await fetchCommunicationLogs(item.ownerName);
-      setLogDetail(detail);
-    } finally {
-      setLogLoading(false);
-    }
-  }, []);
+  const handleFeedbackClick = useCallback(
+    async (item: FeedbackItem) => {
+      if (!item.callRecordId) {
+        messageApi.warning('通话记录 ID 为空，无法查看详情');
+        return;
+      }
+
+      setLogModalOpen(true);
+      setLogDetail(null);
+      setLogLoading(true);
+      try {
+        const [detailResult, timelineResult] = await Promise.allSettled([
+          getAiCallRecordDetail(item.callRecordId),
+          item.debtId
+            ? getAiCallDebtTimeline(item.debtId)
+            : Promise.resolve(null),
+        ]);
+        const detail =
+          detailResult.status === 'fulfilled' ? detailResult.value.data : null;
+        const timeline =
+          timelineResult.status === 'fulfilled'
+            ? timelineResult.value?.data
+            : null;
+        setLogDetail(buildCommunicationDetail(timeline, detail));
+      } catch {
+        messageApi.error('加载沟通记录失败');
+      } finally {
+        setLogLoading(false);
+      }
+    },
+    [messageApi],
+  );
 
   const handleCloseLogModal = () => {
     setLogModalOpen(false);
@@ -121,61 +147,26 @@ const IntelligentOutboundPage = () => {
       title={PAGE_TITLE}
       extra={
         <Button
-          type="primary"
-          size="large"
-          icon={isCalling ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-          onClick={handleToggleCalling}
-          danger={isCalling}
+          icon={<ReloadOutlined />}
+          loading={dashboardLoading || feedbackLoading}
+          onClick={refreshAll}
         >
-          {isCalling ? '暂停 AI 外呼' : '启动 AI 外呼'}
+          刷新
         </Button>
       }
     >
       {messageContextHolder}
       <Flex vertical gap={16} style={{ width: '100%' }}>
-        <MetricsRow metrics={overview.metrics} loading={overviewLoading} />
+        <MetricsRow metrics={overview.metrics} loading={dashboardLoading} />
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-stretch">
-          <ProCard
-            className="flex h-full min-h-0 flex-col lg:col-span-1"
-            title={
-              <Space>
-                <MessageOutlined />
-                用户反馈与语义分析
-              </Space>
-            }
-            style={{ height: '100%' }}
-            styles={{
-              body: {
-                flex: 1,
-                minHeight: 0,
-                overflowY: 'auto',
-                paddingRight: 4,
-              },
-            }}
-          >
-            <FeedbackFeed
-              items={overview.feedback}
-              loading={overviewLoading}
-              onItemClick={handleFeedbackClick}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <LiveMonitorCard
+              stats={overview.liveStats}
+              loading={dashboardLoading}
             />
-          </ProCard>
 
-          <div className="flex h-full min-h-0 flex-col gap-3 lg:col-span-2">
-            <div className="flex min-h-[200px] flex-[2] flex-col">
-              <LiveMonitorCard
-                stats={overview.liveStats}
-                loading={overviewLoading}
-                fillHeight
-              />
-            </div>
             <ProCard
-              className="flex min-h-[280px] flex-[3] flex-col"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                minHeight: 0,
-              }}
               title={
                 <Space>
                   <TeamOutlined />
@@ -184,36 +175,53 @@ const IntelligentOutboundPage = () => {
               }
               styles={{
                 body: {
-                  flex: 1,
                   minHeight: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
                 },
               }}
             >
-              <IdentityGrid
-                identities={overview.identities}
-                loading={overviewLoading}
-                fillHeight
-              />
+              <IdentityGrid identities={FIXED_DIGITAL_IDENTITIES} />
             </ProCard>
           </div>
 
           <ProCard
-            className="lg:col-span-3"
+            className="h-full min-w-0"
             title={
               <Space>
-                <BarChartOutlined />
-                拒缴原因分布
+                <MessageOutlined />
+                用户反馈与语义分析
               </Space>
             }
-            extra={
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                语义引擎数据源
-              </Text>
-            }
+            styles={{
+              body: {
+                display: 'flex',
+                height: '100%',
+                minHeight: 0,
+                flexDirection: 'column',
+                gap: 12,
+              },
+            }}
           >
-            <RejectReasonChart data={rejectReasons} loading={rejectLoading} />
+            <FeedbackFeed
+              items={feedbackItems}
+              loading={feedbackLoading}
+              onItemClick={handleFeedbackClick}
+            />
+            {feedbackTotal > 0 ? (
+              <Pagination
+                align="end"
+                current={feedbackPage.pageNum}
+                pageSize={feedbackPage.pageSize}
+                total={feedbackTotal}
+                showSizeChanger
+                style={{ marginTop: 'auto' }}
+                showTotal={(total, range) =>
+                  `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`
+                }
+                onChange={(pageNum, pageSize) => {
+                  setFeedbackPage({ pageNum, pageSize });
+                }}
+              />
+            ) : null}
           </ProCard>
         </div>
       </Flex>

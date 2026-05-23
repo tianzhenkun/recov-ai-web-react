@@ -12,6 +12,7 @@ import {
   TruckOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { useSearchParams } from '@umijs/max';
 import {
   Alert,
   Button,
@@ -65,6 +66,7 @@ type StatCardProps = {
 };
 
 const DEFAULT_PAGE_SIZE = 20;
+const LIST_REFRESH_INTERVAL_MS = 5000;
 
 const STATUS_META: Record<
   DeliveryTaskStatus,
@@ -115,6 +117,11 @@ const toNumber = (value: unknown) => {
 
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
+
+const normalizeQueryParam = (value: string | null) => {
+  const next = value?.trim();
+  return next || undefined;
+};
 
 const normalizeStatus = (value: unknown): DeliveryTaskStatus | undefined => {
   const n = Number(value);
@@ -182,14 +189,19 @@ const ContentBlock = ({
 
 const DeliveryPage = () => {
   const [form] = Form.useForm<QueryFormValues>();
+  const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
+  const initialKeyword = normalizeQueryParam(searchParams.get('keyword'));
+  const initialSceneCode = normalizeQueryParam(searchParams.get('sceneCode'));
 
   const [overview, setOverview] =
     useState<Required<DeliveryOverview>>(defaultOverview);
   const [query, setQuery] = useState<ListDeliveryTasksParams>({
     pageNum: 1,
     pageSize: DEFAULT_PAGE_SIZE,
+    keyword: initialKeyword,
+    sceneCode: initialSceneCode,
   });
   const [rows, setRows] = useState<DeliveryTaskItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -205,6 +217,27 @@ const DeliveryPage = () => {
 
   const queryRef = useRef(query);
   queryRef.current = query;
+
+  useEffect(() => {
+    form.setFieldsValue({
+      keyword: initialKeyword,
+      sceneCode: initialSceneCode,
+    });
+    setQuery((prev) => {
+      if (
+        prev.keyword === initialKeyword &&
+        prev.sceneCode === initialSceneCode
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        pageNum: 1,
+        keyword: initialKeyword,
+        sceneCode: initialSceneCode,
+      };
+    });
+  }, [form, initialKeyword, initialSceneCode]);
 
   const loadOptions = useCallback(async () => {
     setOptionLoading(true);
@@ -247,28 +280,12 @@ const DeliveryPage = () => {
     void loadList(query);
   }, [loadList, query]);
 
-  const hasRunningTask = rows.some((item) => {
-    const status = normalizeStatus(item.taskStatus);
-    return status === 0 || status === 1;
-  });
-  const currentDetailStatus = normalizeStatus(currentRow?.taskStatus);
-  const hasRunningDetail =
-    detailOpen && (currentDetailStatus === 0 || currentDetailStatus === 1);
-
   useEffect(() => {
-    if (!hasRunningTask && !hasRunningDetail) return;
     const timer = window.setInterval(() => {
-      if (hasRunningTask) {
-        void loadList(queryRef.current, true);
-      }
-      if (hasRunningDetail && currentRow?.taskId) {
-        void getDeliveryTask(currentRow.taskId).then((detail) => {
-          if (detail) setCurrentRow(detail);
-        });
-      }
-    }, 3000);
+      void loadList(queryRef.current, true);
+    }, LIST_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [currentRow?.taskId, hasRunningDetail, hasRunningTask, loadList]);
+  }, [loadList]);
 
   const statCards = useMemo(
     () => [
@@ -422,6 +439,17 @@ const DeliveryPage = () => {
         render: toText,
       },
       {
+        title: '送达文件',
+        dataIndex: 'fileName',
+        width: 180,
+        ellipsis: true,
+        render: (value, record) => (
+          <Text title={toText(value ?? record.fileOssId)}>
+            {toText(value ?? record.fileOssId)}
+          </Text>
+        ),
+      },
+      {
         title: '送达渠道',
         dataIndex: 'wayCode',
         width: 120,
@@ -552,7 +580,7 @@ const DeliveryPage = () => {
                 <Input
                   allowClear
                   prefix={<SearchOutlined />}
-                  placeholder="搜索客户 / 手机号 / 项目 / 场景"
+                  placeholder="搜索客户 / 手机号 / 项目 / 场景 / 业务ID"
                   style={{ width: 260 }}
                   onPressEnter={handleSearch}
                 />
@@ -624,7 +652,7 @@ const DeliveryPage = () => {
             dataSource={rows}
             loading={loading}
             rowKey="taskId"
-            scroll={{ x: 1540 }}
+            scroll={{ x: 1720 }}
             locale={{
               emptyText: <Empty description="暂无送达任务" />,
             }}
@@ -689,6 +717,9 @@ const DeliveryPage = () => {
               <Descriptions.Item label="债务编号" span={2}>
                 <Text code>{toText(currentRow.debtId)}</Text>
               </Descriptions.Item>
+              <Descriptions.Item label="来源业务编号" span={2}>
+                <Text code>{toText(currentRow.businessId)}</Text>
+              </Descriptions.Item>
               <Descriptions.Item label="客户名称">
                 {toText(currentRow.debtorName)}
               </Descriptions.Item>
@@ -722,14 +753,18 @@ const DeliveryPage = () => {
               <Descriptions.Item label="创建时间" span={2}>
                 {toText(currentRow.createTime ?? currentRow.taskCreateTime)}
               </Descriptions.Item>
-              <Descriptions.Item label="公网访问地址" span={2}>
-                {currentRow.publicUrl ? (
-                  <Paragraph copyable style={{ marginBottom: 0 }}>
-                    {currentRow.publicUrl}
-                  </Paragraph>
-                ) : (
-                  '-'
-                )}
+              <Descriptions.Item label="送达文件" span={2}>
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  <Text>{toText(currentRow.fileName)}</Text>
+                  <Text type="secondary">
+                    OSS ID：{toText(currentRow.fileOssId)}
+                  </Text>
+                  {currentRow.publicUrl ? (
+                    <Paragraph copyable style={{ marginBottom: 0 }}>
+                      {currentRow.publicUrl}
+                    </Paragraph>
+                  ) : null}
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="服务商请求 ID" span={2}>
                 {toText(currentRow.providerRequestId)}

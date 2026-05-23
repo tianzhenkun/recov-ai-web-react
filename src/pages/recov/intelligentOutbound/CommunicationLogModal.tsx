@@ -1,13 +1,14 @@
 import {
-  BulbOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
+  MessageOutlined,
   MinusCircleOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import {
   Button,
+  Empty,
   Modal,
   Skeleton,
   Space,
@@ -18,6 +19,7 @@ import {
 } from 'antd';
 import type { ReactNode } from 'react';
 import type { CommunicationLog, OwnerCommunicationDetail } from './_shared';
+import { formatDuration } from './_shared';
 
 const { Text, Paragraph } = Typography;
 
@@ -36,12 +38,12 @@ const sentimentMeta: Record<
     icon: ReactNode;
   }
 > = {
-  负面: {
+  负向: {
     color: '#cf1322',
     tagColor: 'error',
     icon: <ExclamationCircleOutlined />,
   },
-  正面: {
+  正向: {
     color: '#389e0d',
     tagColor: 'success',
     icon: <CheckCircleOutlined />,
@@ -58,6 +60,37 @@ const sentimentMeta: Record<
   },
 };
 
+const firstText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+};
+
+const getTranscriptTurns = (transcript?: Record<string, unknown>) => {
+  if (!transcript || !Array.isArray(transcript.turns)) return [];
+  return transcript.turns
+    .map((turn) => {
+      if (!turn || typeof turn !== 'object') return null;
+      const source = turn as Record<string, unknown>;
+      const speaker = firstText(
+        source.speaker,
+        source.role,
+        source.name,
+        source.from,
+      );
+      const content = firstText(source.text, source.content, source.message);
+      if (!content) return null;
+      return {
+        speaker: speaker || '对话',
+        content,
+      };
+    })
+    .filter(Boolean) as Array<{ speaker: string; content: string }>;
+};
+
 const CommunicationLogModal = ({
   open,
   loading,
@@ -68,13 +101,14 @@ const CommunicationLogModal = ({
 
   const timelineItems = (detail?.logs || []).map((log) => {
     const meta = sentimentMeta[log.sentiment];
+    const transcriptTurns = getTranscriptTurns(log.transcript);
     return {
       color: meta.color,
       dot: <ClockCircleOutlined style={{ color: meta.color }} />,
       children: (
         <div className="flex flex-col gap-2 pb-2">
           <Space size={8} align="center" wrap>
-            <Text strong>{log.date}</Text>
+            <Text strong>{log.date || '未记录时间'}</Text>
             <Tag color="processing" style={{ marginInlineEnd: 0 }}>
               {log.channel}
             </Tag>
@@ -85,6 +119,9 @@ const CommunicationLogModal = ({
             >
               {log.sentiment}
             </Tag>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatDuration(log.durationSeconds)}
+            </Text>
           </Space>
           <Paragraph
             style={{
@@ -95,23 +132,40 @@ const CommunicationLogModal = ({
             }}
           >
             <Text strong style={{ marginInlineEnd: 6 }}>
-              沟通摘要：
+              语义摘要：
             </Text>
             {log.summary}
           </Paragraph>
-          <Space size={[6, 4]} wrap>
-            {log.keywords.map((keyword) => (
-              <Tag key={keyword} style={{ marginInlineEnd: 0 }}>
-                {keyword}
-              </Tag>
-            ))}
-          </Space>
-          <Space size={6} align="start">
-            <BulbOutlined style={{ color: token.colorPrimary, marginTop: 3 }} />
-            <Text style={{ color: token.colorPrimary, fontSize: 13 }}>
-              {log.suggestion}
-            </Text>
-          </Space>
+          {log.keywords.length > 0 ? (
+            <Space size={[6, 4]} wrap>
+              {log.keywords.map((keyword) => (
+                <Tag key={keyword} style={{ marginInlineEnd: 0 }}>
+                  {keyword}
+                </Tag>
+              ))}
+            </Space>
+          ) : null}
+          {transcriptTurns.length > 0 ? (
+            <div
+              className="flex flex-col gap-2 rounded-lg p-3"
+              style={{
+                backgroundColor: token.colorFillAlter,
+                border: `1px solid ${token.colorBorderSecondary}`,
+              }}
+            >
+              {transcriptTurns.slice(0, 6).map((turn) => (
+                <div
+                  key={`${turn.speaker}-${turn.content}`}
+                  className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-sm"
+                >
+                  <Text type="secondary">{turn.speaker}</Text>
+                  <Text style={{ color: token.colorTextSecondary }}>
+                    {turn.content}
+                  </Text>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ),
     };
@@ -123,7 +177,7 @@ const CommunicationLogModal = ({
       title={
         detail ? `${detail.ownerName} · 智能外呼沟通记录` : '智能外呼沟通记录'
       }
-      width={720}
+      width={760}
       destroyOnHidden
       onCancel={onClose}
       footer={
@@ -143,9 +197,15 @@ const CommunicationLogModal = ({
               border: `1px solid ${token.colorPrimary}22`,
             }}
           >
-            <Space size={6} align="center" style={{ marginBottom: 6 }}>
-              <BulbOutlined style={{ color: token.colorPrimary }} />
+            <Space size={6} align="center" wrap style={{ marginBottom: 6 }}>
+              <MessageOutlined style={{ color: token.colorPrimary }} />
               <Text strong>沟通语义分析总结</Text>
+              {detail.organization ? (
+                <Tag style={{ marginInlineEnd: 0 }}>{detail.organization}</Tag>
+              ) : null}
+              {detail.debtorPhone ? (
+                <Tag style={{ marginInlineEnd: 0 }}>{detail.debtorPhone}</Tag>
+              ) : null}
             </Space>
             <Paragraph
               style={{
@@ -158,7 +218,11 @@ const CommunicationLogModal = ({
               {detail.semanticSummary}
             </Paragraph>
           </div>
-          <Timeline items={timelineItems} />
+          {timelineItems.length > 0 ? (
+            <Timeline items={timelineItems} />
+          ) : (
+            <Empty description="暂无沟通记录" />
+          )}
         </div>
       )}
     </Modal>

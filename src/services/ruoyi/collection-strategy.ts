@@ -26,6 +26,7 @@ export interface StrategyStep {
 export interface FlowNodeTypeVO {
   code: string;
   label: string;
+  description?: string;
 }
 
 /**

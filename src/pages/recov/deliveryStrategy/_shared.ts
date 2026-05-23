@@ -76,7 +76,7 @@ export const isDeliveryWayEnabled = (
 };
 
 export const TEMPLATE_VARS_FALLBACK: TemplateVariable[] = [
-  { label: '客户名称', value: 'name' },
+  { label: '客户称谓', value: 'name' },
   { label: '账单金额', value: 'debt_amount' },
   { label: '截止日期', value: 'deadline_time' },
   { label: '企业名称', value: 'organization' },

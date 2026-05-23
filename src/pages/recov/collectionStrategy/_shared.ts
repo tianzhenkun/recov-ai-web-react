@@ -1,6 +1,7 @@
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
+  FileDoneOutlined,
   FilePdfOutlined,
   MailOutlined,
   PhoneOutlined,
@@ -48,12 +49,14 @@ export type FlowModuleMeta = {
   bgColor: string;
   iconColor: string;
   defaultIdentity: string;
+  description?: string;
 };
 
 export const FLOW_ICON_MAP: Record<string, AntdIcon> = {
   phone: PhoneOutlined,
   email: MailOutlined,
   pdf: FilePdfOutlined,
+  filing: FileDoneOutlined,
   upload: UploadOutlined,
   finish: CheckCircleOutlined,
   workflow: ApartmentOutlined,
@@ -97,6 +100,16 @@ export const buildInitialFlowModuleMap = (): Record<
     bgColor: '#FF9800',
     iconColor: '#ffffff',
     defaultIdentity: '律师',
+  },
+  filing_material_submit: {
+    code: 'filing_material_submit',
+    label: '立案材料提交',
+    icon: 'filing',
+    bgColor: '#0F766E',
+    iconColor: '#ffffff',
+    defaultIdentity: '立案专员',
+    description:
+      '生成并盖章立案材料，校验原告主体资格材料，提交 RPA 后等待外部回调。',
   },
   litigation_screenshot: {
     code: 'litigation_screenshot',
@@ -355,6 +368,7 @@ export const upsertNodeTypeMeta = (
       }),
       code: nodeType.code,
       label: nodeType.label || current?.label || nodeType.code,
+      description: nodeType.description || current?.description,
     },
   };
 };

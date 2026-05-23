@@ -9,6 +9,7 @@ import {
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import {
+  Alert,
   Button,
   Collapse,
   Drawer,
@@ -600,7 +601,12 @@ const CollectionStrategyFlowEditor = () => {
               />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-800">
-              {module.label}
+              <span className="block truncate">{module.label}</span>
+              {module.description ? (
+                <span className="mt-0.5 block truncate text-xs font-normal text-zinc-500">
+                  {module.description}
+                </span>
+              ) : null}
             </span>
             <span
               className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-solid text-xs transition-colors ${
@@ -804,6 +810,16 @@ const CollectionStrategyFlowEditor = () => {
                 </div>
 
                 <Form layout="vertical">
+                  {selectedNode.nodeCode === 'filing_material_submit' ? (
+                    <Alert
+                      showIcon
+                      type="info"
+                      className="mb-3"
+                      message="节点职责"
+                      description="该节点会生成并盖章当前债务的立案类文书，校验原告主体资格上传材料，提交 RPA 受理后等待外部系统回调；只有 RPA 终态成功后才进入下一节点。"
+                    />
+                  ) : null}
+
                   {selectedNode.nodeCode === 'ai_call' ? (
                     <Form.Item label="催收角色" required>
                       <Select<AiCallRole>
