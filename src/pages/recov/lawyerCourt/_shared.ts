@@ -7,6 +7,7 @@ import {
   UserSwitchOutlined,
 } from '@ant-design/icons';
 import { createElement, type ReactNode } from 'react';
+import type { MetricTone } from '@/pages/recov/components/MetricIcon';
 import {
   formatCompactCurrencyDisplay,
   formatCurrencyDisplay,
@@ -35,7 +36,7 @@ export type OverviewCardMeta = {
   format: 'count' | 'currency';
   unit?: string;
   icon: ReactNode;
-  color: string;
+  tone: MetricTone;
 };
 
 export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
@@ -45,7 +46,7 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '个',
     icon: createElement(FileSearchOutlined),
-    color: '#1677ff',
+    tone: 'primary',
   },
   {
     key: 'coveredCityCount',
@@ -53,7 +54,7 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '个',
     icon: createElement(EnvironmentOutlined),
-    color: '#722ed1',
+    tone: 'info',
   },
   {
     key: 'matchedCaseCount',
@@ -61,7 +62,7 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '个案件',
     icon: createElement(TeamOutlined),
-    color: '#52c41a',
+    tone: 'success',
   },
   {
     key: 'unmatchedCaseCount',
@@ -69,21 +70,21 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '个案件',
     icon: createElement(UserSwitchOutlined),
-    color: '#fa8c16',
+    tone: 'warning',
   },
   {
     key: 'totalCaseAmount',
     label: '涉案总金额',
     format: 'currency',
     icon: createElement(DollarOutlined),
-    color: '#6366f1',
+    tone: 'primary',
   },
   {
     key: 'avgCaseAmount',
     label: '件均标的额',
     format: 'currency',
     icon: createElement(BankOutlined),
-    color: '#eb2f96',
+    tone: 'neutral',
   },
 ];
 

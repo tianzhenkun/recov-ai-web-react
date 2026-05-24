@@ -87,6 +87,16 @@ export const getSmartReconciliationList = (params: ReconciliationQuery) =>
     params,
   });
 
+export const listReconciliationCities = () =>
+  ruoyiRequest<string[]>('/system/recov/debt/cities', {
+    method: 'get',
+  });
+
+export const listReconciliationOrganizations = () =>
+  ruoyiRequest<string[]>('/system/recov/debt/organizations', {
+    method: 'get',
+  });
+
 export const handleDifference = (data: DifferencePayload) =>
   ruoyiRequest('/system/recov/repayment/difference', {
     method: 'put',

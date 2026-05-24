@@ -16,6 +16,7 @@ import {
   Modal,
   message,
   Row,
+  Select,
   Space,
   Table,
   Tag,
@@ -25,6 +26,9 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import {
   addRepayment,
   confirmRepayment,
@@ -32,6 +36,8 @@ import {
   getSmartReconciliationStatistics,
   getSystemMode,
   handleDifference,
+  listReconciliationCities,
+  listReconciliationOrganizations,
   type ReconciliationItem,
   type ReconciliationQuery,
   type ReconciliationStatistics,
@@ -116,6 +122,11 @@ const getStatusText = (status: unknown) => {
   return map[value] || '未知';
 };
 
+const getModeInfo = (mode: unknown) =>
+  Number(mode) === 1
+    ? { label: '系统对账', color: 'blue' }
+    : { label: '人工对账', color: 'default' };
+
 const getRowDifference = (record?: ReconciliationItem | null) =>
   toNumber(record?.systemAmount) - toNumber(record?.recordedAmount);
 
@@ -128,7 +139,7 @@ const getRowKey = (record: ReconciliationItem) =>
 type StatCardProps = {
   title: string;
   value: StatDisplayValue;
-  color: string;
+  tone: MetricTone;
   icon: React.ReactNode;
 };
 
@@ -162,7 +173,7 @@ const statCardStyles = {
   },
 };
 
-const StatCard = ({ title, value, color, icon }: StatCardProps) => {
+const StatCard = ({ title, value, tone, icon }: StatCardProps) => {
   const hasTooltip = Boolean(value.tooltip && value.tooltip !== value.primary);
   const valueNode = (
     <span
@@ -209,13 +220,11 @@ const StatCard = ({ title, value, color, icon }: StatCardProps) => {
         }}
       >
         <Space align="center" size={10} wrap={false}>
-          <span
+          <MetricIcon
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
-            style={{ color, backgroundColor: `${color}14` }}
-            aria-hidden
-          >
-            {icon}
-          </span>
+            icon={icon}
+            tone={tone}
+          />
           <Text type="secondary" style={{ lineHeight: 1.4 }} ellipsis>
             {title}
           </Text>
@@ -247,9 +256,14 @@ const ReconciliationPage = () => {
   const [tableData, setTableData] = useState<ReconciliationItem[]>([]);
   const [total, setTotal] = useState(0);
   const [statistics, setStatistics] = useState<ReconciliationStatistics>({});
+  const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [organizationOptions, setOrganizationOptions] = useState<string[]>([]);
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false);
   const [currentRow, setCurrentRow] = useState<ReconciliationItem | null>(null);
   const [repaymentOpen, setRepaymentOpen] = useState(false);
   const [differenceOpen, setDifferenceOpen] = useState(false);
+
+  const modeInfo = useMemo(() => getModeInfo(systemMode), [systemMode]);
 
   const fetchStatistics = useCallback(async () => {
     try {
@@ -283,6 +297,28 @@ const ReconciliationPage = () => {
   );
 
   useEffect(() => {
+    const loadFilterOptions = async () => {
+      setFilterOptionsLoading(true);
+      try {
+        const [citiesRes, organizationsRes] = await Promise.all([
+          listReconciliationCities(),
+          listReconciliationOrganizations(),
+        ]);
+
+        setCityOptions(citiesRes.data || []);
+        setOrganizationOptions(organizationsRes.data || []);
+      } catch {
+        setCityOptions([]);
+        setOrganizationOptions([]);
+      } finally {
+        setFilterOptionsLoading(false);
+      }
+    };
+
+    void loadFilterOptions();
+  }, []);
+
+  useEffect(() => {
     const initPage = async () => {
       setLoading(true);
       try {
@@ -309,21 +345,21 @@ const ReconciliationPage = () => {
         key: 'totalSystemAmount',
         title: 'RECOV回款统计',
         value: formatStatValue(statistics.totalSystemAmount, 'currency'),
-        color: '#1677ff',
+        tone: 'primary' as const,
         icon: <WalletOutlined />,
       },
       {
         key: 'totalRecordedAmount',
         title: '客户回款统计',
         value: formatStatValue(statistics.totalRecordedAmount, 'currency'),
-        color: '#13c2c2',
+        tone: 'info' as const,
         icon: <WalletOutlined />,
       },
       {
         key: 'totalDifferenceAmount',
         title: '待处理差异金额',
         value: formatStatValue(statistics.totalDifferenceAmount, 'currency'),
-        color: '#ff4d4f',
+        tone: 'error' as const,
         icon: <ExclamationCircleOutlined />,
       },
       {
@@ -334,7 +370,7 @@ const ReconciliationPage = () => {
           'count',
           '笔',
         ),
-        color: '#fa8c16',
+        tone: 'warning' as const,
         icon: <FieldTimeOutlined />,
       },
     ],
@@ -352,8 +388,8 @@ const ReconciliationPage = () => {
       ...query,
       pageNum: 1,
       debtNumber: values.debtNumber?.trim() || undefined,
-      city: values.city?.trim() || undefined,
-      organization: values.organization?.trim() || undefined,
+      city: values.city || undefined,
+      organization: values.organization || undefined,
     });
   };
 
@@ -633,14 +669,17 @@ const ReconciliationPage = () => {
                 key={card.key}
                 title={card.title}
                 value={card.value}
-                color={card.color}
+                tone={card.tone}
                 icon={card.icon}
               />
             ))}
           </div>
         )}
 
-        <ProCard title="对账差异明细">
+        <ProCard
+          title="对账差异明细"
+          extra={<Tag color={modeInfo.color}>当前模式：{modeInfo.label}</Tag>}
+        >
           <Form
             form={queryForm}
             style={{ marginBottom: 16 }}
@@ -665,16 +704,30 @@ const ReconciliationPage = () => {
                   />
                 </Form.Item>
                 <Form.Item name="city" noStyle>
-                  <Input
+                  <Select
                     allowClear
+                    loading={filterOptionsLoading}
+                    optionFilterProp="label"
+                    options={cityOptions.map((item) => ({
+                      label: item,
+                      value: item,
+                    }))}
                     placeholder="所属城市"
+                    showSearch
                     style={{ width: 150 }}
                   />
                 </Form.Item>
                 <Form.Item name="organization" noStyle>
-                  <Input
+                  <Select
                     allowClear
+                    loading={filterOptionsLoading}
+                    optionFilterProp="label"
+                    options={organizationOptions.map((item) => ({
+                      label: item,
+                      value: item,
+                    }))}
                     placeholder="所属项目"
+                    showSearch
                     style={{ width: 170 }}
                   />
                 </Form.Item>
@@ -689,22 +742,12 @@ const ReconciliationPage = () => {
                   重置
                 </Button>
               </Space>
-              <Space wrap size={8}>
-                <Button
-                  icon={<ReloadOutlined />}
-                  loading={loading}
-                  onClick={() => {
-                    void reloadData();
-                  }}
-                >
-                  刷新
-                </Button>
-              </Space>
             </div>
           </Form>
 
           <Table<ReconciliationItem>
             bordered
+            className="recov-stable-pagination-table"
             columns={columns}
             dataSource={tableData}
             loading={loading}

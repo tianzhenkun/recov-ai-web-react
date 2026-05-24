@@ -23,10 +23,12 @@ import {
   Table,
   Tag,
   Typography,
-  theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import {
   getDebtCityOptions,
   getDebtOrganizationOptions,
@@ -65,7 +67,7 @@ type StatCardProps = {
   title: string;
   value: string;
   unit?: string;
-  color: string;
+  tone: MetricTone;
   icon: React.ReactNode;
 };
 
@@ -141,7 +143,7 @@ const calcProgressPercent = (progress?: FlowBatchProgress | null) => {
 const hasPending = (progress?: FlowBatchProgress | null) =>
   toNumber(progress?.pendingCount) > 0;
 
-const StatCard = ({ title, value, unit, color, icon }: StatCardProps) => (
+const StatCard = ({ title, value, unit, tone, icon }: StatCardProps) => (
   <ProCard
     size="small"
     style={{ minWidth: 0 }}
@@ -149,13 +151,11 @@ const StatCard = ({ title, value, unit, color, icon }: StatCardProps) => (
   >
     <div className="flex min-h-[62px] min-w-0 flex-col justify-between gap-2">
       <Space align="center" size={8}>
-        <span
+        <MetricIcon
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm"
-          style={{ color, backgroundColor: `${color}14` }}
-          aria-hidden
-        >
-          {icon}
-        </span>
+          icon={icon}
+          tone={tone}
+        />
         <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
           {title}
         </Text>
@@ -179,7 +179,6 @@ const FlowPage = () => {
   const [instanceForm] = Form.useForm<InstanceQueryFormValues>();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
-  const { token } = theme.useToken();
 
   const [instanceQuery, setInstanceQuery] = useState<FlowInstanceQuery>({
     pageNum: 1,
@@ -713,21 +712,21 @@ const FlowPage = () => {
       title: '已受理数量',
       value: numberFormatter.format(toNumber(startResult?.acceptedCount)),
       unit: '条',
-      color: token.colorInfo,
+      tone: 'info' as const,
       icon: <SyncOutlined />,
     },
     {
       title: '发起成功',
       value: numberFormatter.format(toNumber(batchProgress?.successCount)),
       unit: '条',
-      color: token.colorSuccess,
+      tone: 'success' as const,
       icon: <CheckCircleOutlined />,
     },
     {
       title: '发起失败',
       value: numberFormatter.format(toNumber(batchProgress?.failedCount)),
       unit: '条',
-      color: token.colorError,
+      tone: 'error' as const,
       icon: <CloseCircleOutlined />,
     },
   ];
@@ -881,6 +880,7 @@ const FlowPage = () => {
 
           <Table<FlowInstanceItem>
             bordered
+            className="recov-stable-pagination-table"
             columns={instanceColumns}
             dataSource={instanceRows}
             loading={instanceLoading}

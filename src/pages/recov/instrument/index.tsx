@@ -49,6 +49,10 @@ import type {
   TemplateVariable,
 } from '@/components/TemplateEditor/types';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
+import MetricIcon, {
+  type MetricTone,
+  useMetricToneColors,
+} from '@/pages/recov/components/MetricIcon';
 import {
   addSupplementalInstrumentTask,
   deleteInstrumentTask,
@@ -428,18 +432,6 @@ const normalizeDebtPage = (response: unknown) => {
   };
 };
 
-const statIconStyle = (color: string, bg: string): CSSProperties => ({
-  display: 'inline-flex',
-  width: 32,
-  height: 32,
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: 8,
-  color,
-  background: bg,
-  fontSize: 14,
-});
-
 type StatDisplayValue = {
   primary: string;
   unit?: string;
@@ -449,11 +441,12 @@ type StatDisplayValue = {
 type StatCardProps = {
   title: string;
   value: StatDisplayValue;
-  color: string;
+  tone: MetricTone;
   icon: ReactNode;
 };
 
-const StatCard = ({ title, value, color, icon }: StatCardProps) => {
+const StatCard = ({ title, value, tone, icon }: StatCardProps) => {
+  const toneColors = useMetricToneColors(tone);
   const hasTooltip = Boolean(value.tooltip && value.tooltip !== value.primary);
   const valueNode = (
     <span
@@ -466,7 +459,7 @@ const StatCard = ({ title, value, color, icon }: StatCardProps) => {
         <Text
           strong
           style={{
-            color,
+            color: toneColors.color,
             cursor: 'inherit',
             fontSize: 22,
             lineHeight: 1.2,
@@ -501,7 +494,7 @@ const StatCard = ({ title, value, color, icon }: StatCardProps) => {
         }}
       >
         <Space align="center" size={8}>
-          {icon}
+          <MetricIcon icon={icon} tone={tone} />
           <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
             {title}
           </Text>
@@ -721,42 +714,26 @@ const InstrumentListPage = () => {
     {
       title: '文书总数',
       value: getMetricValue('total'),
-      color: '#1677ff',
-      icon: (
-        <span style={statIconStyle('#1677ff', '#eaf2ff')}>
-          <FileTextOutlined />
-        </span>
-      ),
+      tone: 'primary',
+      icon: <FileTextOutlined />,
     },
     {
       title: '已盖章',
       value: getMetricValue('sealed'),
-      color: '#52c41a',
-      icon: (
-        <span style={statIconStyle('#52c41a', '#f6ffed')}>
-          <FileProtectOutlined />
-        </span>
-      ),
+      tone: 'success',
+      icon: <FileProtectOutlined />,
     },
     {
       title: '处理中',
       value: getMetricValue('processing'),
-      color: '#13c2c2',
-      icon: (
-        <span style={statIconStyle('#13c2c2', '#e6fffb')}>
-          <SyncOutlined />
-        </span>
-      ),
+      tone: 'info',
+      icon: <SyncOutlined />,
     },
     {
       title: '失败/阻塞',
       value: getMetricValue('failed'),
-      color: '#fa8c16',
-      icon: (
-        <span style={statIconStyle('#fa8c16', '#fff7e6')}>
-          <FileDoneOutlined />
-        </span>
-      ),
+      tone: 'warning',
+      icon: <FileDoneOutlined />,
     },
   ];
 
@@ -2242,6 +2219,7 @@ const InstrumentListPage = () => {
               </Form>
 
               <Table
+                className="recov-stable-pagination-table"
                 rowKey={getGroupRowKey}
                 loading={loading}
                 columns={groupColumns}

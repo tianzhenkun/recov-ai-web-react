@@ -56,6 +56,9 @@ import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile, UploadProps } from 'antd/es/upload';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TableActions from '@/components/TableActions';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   type DebtAttachmentItem,
@@ -378,7 +381,7 @@ type StatCardProps = {
   title: string;
   value: StatDisplayValue;
   icon: React.ReactNode;
-  color: string;
+  tone: MetricTone;
 };
 
 const statCardStyles = {
@@ -387,7 +390,7 @@ const statCardStyles = {
   },
 };
 
-const StatCard = ({ title, value, icon, color }: StatCardProps) => {
+const StatCard = ({ title, value, icon, tone }: StatCardProps) => {
   const hasTooltip = Boolean(value.tooltip && value.tooltip !== value.primary);
   const valueNode = (
     <span
@@ -434,16 +437,11 @@ const StatCard = ({ title, value, icon, color }: StatCardProps) => {
         }}
       >
         <Space align="center" size={10} wrap={false}>
-          <span
+          <MetricIcon
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
-            style={{
-              color,
-              backgroundColor: `${color}14`,
-            }}
-            aria-hidden
-          >
-            {icon}
-          </span>
+            icon={icon}
+            tone={tone}
+          />
           <Text type="secondary" style={{ lineHeight: 1.4 }} ellipsis>
             {title}
           </Text>
@@ -982,7 +980,7 @@ const DatelligencePage = () => {
         value: formatStatValue(stats.totalOverdueAmount, 'currency'),
         hint: '逾期金额汇总',
         icon: <WalletOutlined />,
-        color: '#1677ff',
+        tone: 'primary' as const,
       },
       {
         key: 'totalDebtorCount',
@@ -990,7 +988,7 @@ const DatelligencePage = () => {
         value: formatStatValue(stats.totalDebtorCount, 'count', '户'),
         hint: '按债务人维度统计',
         icon: <TeamOutlined />,
-        color: '#13c2c2',
+        tone: 'info' as const,
       },
       {
         key: 'avgBillAmount',
@@ -998,7 +996,7 @@ const DatelligencePage = () => {
         value: formatStatValue(stats.avgBillAmount, 'currency'),
         hint: '逾期金额平均值',
         icon: <BarChartOutlined />,
-        color: '#faad14',
+        tone: 'warning' as const,
       },
       {
         key: 'avgOverdueDays',
@@ -1006,7 +1004,7 @@ const DatelligencePage = () => {
         value: formatStatValue(stats.avgOverdueDays, 'count', '天'),
         hint: '按金额加权统计',
         icon: <FieldTimeOutlined />,
-        color: '#fa8c16',
+        tone: 'error' as const,
       },
       {
         key: 'projectCount',
@@ -1014,7 +1012,7 @@ const DatelligencePage = () => {
         value: formatStatValue(stats.projectCount, 'count', '个'),
         hint: '去重后的项目数',
         icon: <ProjectOutlined />,
-        color: '#722ed1',
+        tone: 'neutral' as const,
       },
     ],
     [stats],
@@ -2882,7 +2880,7 @@ const DatelligencePage = () => {
               title={card.title}
               value={card.value}
               icon={card.icon}
-              color={card.color}
+              tone={card.tone}
             />
           ))}
         </div>
@@ -2968,6 +2966,7 @@ const DatelligencePage = () => {
 
           <Table<DebtRecordItem>
             bordered
+            className="recov-stable-pagination-table"
             columns={columns}
             dataSource={recordList}
             loading={loading}

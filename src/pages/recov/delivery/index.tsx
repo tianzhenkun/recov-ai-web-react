@@ -33,6 +33,9 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import {
   type DeliveryStrategyRow,
   type DeliveryWayListRow,
@@ -62,7 +65,7 @@ type StatCardProps = {
   title: string;
   value: string;
   icon: ReactNode;
-  color: string;
+  tone: MetricTone;
 };
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -144,7 +147,7 @@ const getStatusText = (record: DeliveryTaskItem) => {
   );
 };
 
-const StatCard = ({ title, value, icon, color }: StatCardProps) => (
+const StatCard = ({ title, value, icon, tone }: StatCardProps) => (
   <ProCard
     size="small"
     style={{ minWidth: 0 }}
@@ -152,13 +155,7 @@ const StatCard = ({ title, value, icon, color }: StatCardProps) => (
   >
     <div className="flex min-h-[62px] min-w-0 flex-col justify-between gap-2">
       <Space align="center" size={8}>
-        <span
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
-          style={{ color, backgroundColor: `${color}14` }}
-          aria-hidden
-        >
-          {icon}
-        </span>
+        <MetricIcon icon={icon} tone={tone} />
         <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
           {title}
         </Text>
@@ -294,56 +291,56 @@ const DeliveryPage = () => {
         title: '待发送',
         value: numberFormatter.format(overview.pendingCount),
         icon: <ClockCircleOutlined />,
-        color: '#fa8c16',
+        tone: 'warning' as const,
       },
       {
         key: 'sending',
         title: '发送中',
         value: numberFormatter.format(overview.sendingCount),
         icon: <SyncOutlined />,
-        color: '#1677ff',
+        tone: 'primary' as const,
       },
       {
         key: 'success',
         title: '送达成功',
         value: numberFormatter.format(overview.successCount),
         icon: <CheckCircleOutlined />,
-        color: '#52c41a',
+        tone: 'success' as const,
       },
       {
         key: 'failed',
         title: '送达失败',
         value: numberFormatter.format(overview.failedCount),
         icon: <CloseCircleOutlined />,
-        color: '#ff4d4f',
+        tone: 'error' as const,
       },
       {
         key: 'sms',
         title: '短信任务',
         value: numberFormatter.format(overview.smsTotal),
         icon: <MessageOutlined />,
-        color: '#1677ff',
+        tone: 'primary' as const,
       },
       {
         key: 'email',
         title: '邮件任务',
         value: numberFormatter.format(overview.emailTotal),
         icon: <MailOutlined />,
-        color: '#13c2c2',
+        tone: 'info' as const,
       },
       {
         key: 'express',
         title: '快递任务',
         value: numberFormatter.format(overview.expressTotal),
         icon: <TruckOutlined />,
-        color: '#722ed1',
+        tone: 'neutral' as const,
       },
       {
         key: 'call',
         title: '电话任务',
         value: numberFormatter.format(overview.callTotal),
         icon: <PhoneOutlined />,
-        color: '#faad14',
+        tone: 'warning' as const,
       },
     ],
     [overview],
@@ -568,7 +565,7 @@ const DeliveryPage = () => {
               title={card.title}
               value={card.value}
               icon={card.icon}
-              color={card.color}
+              tone={card.tone}
             />
           ))}
         </div>
@@ -648,6 +645,7 @@ const DeliveryPage = () => {
 
           <Table<DeliveryTaskItem>
             bordered
+            className="recov-stable-pagination-table"
             columns={columns}
             dataSource={rows}
             loading={loading}

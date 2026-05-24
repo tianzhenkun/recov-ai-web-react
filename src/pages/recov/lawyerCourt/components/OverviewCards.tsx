@@ -1,5 +1,6 @@
 import { ProCard } from '@ant-design/pro-components';
 import { Space, Tooltip, Typography } from 'antd';
+import MetricIcon from '@/pages/recov/components/MetricIcon';
 import type { LawyerCourtOverviewVO } from '@/services/ruoyi/lawyer-court';
 import { formatOverviewValue, OVERVIEW_CARD_METAS } from '../_shared';
 
@@ -62,16 +63,7 @@ const OverviewCards = ({ overview, loading }: OverviewCardsProps) => (
             }}
           >
             <Space align="center" size={8}>
-              <span
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
-                style={{
-                  color: meta.color,
-                  backgroundColor: `${meta.color}14`,
-                }}
-                aria-hidden
-              >
-                {meta.icon}
-              </span>
+              <MetricIcon icon={meta.icon} tone={meta.tone} />
               <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
                 {meta.label}
               </Text>

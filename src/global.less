@@ -128,6 +128,46 @@ ol {
   list-style: none;
 }
 
+.recov-stable-pagination-table.ant-table-wrapper {
+  display: flex;
+  height: clamp(420px, calc(100vh - 300px), 560px);
+  flex-direction: column;
+  min-height: 0;
+}
+
+.recov-stable-pagination-table.ant-table-wrapper > .ant-spin,
+.recov-stable-pagination-table.ant-table-wrapper > .ant-spin-nested-loading {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.recov-stable-pagination-table.ant-table-wrapper
+  > .ant-spin
+  > .ant-spin-container,
+.recov-stable-pagination-table.ant-table-wrapper
+  > .ant-spin-nested-loading
+  > .ant-spin-container {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.recov-stable-pagination-table.ant-table-wrapper .ant-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.recov-stable-pagination-table.ant-table-wrapper
+  .ant-table-pagination.ant-pagination {
+  flex: 0 0 auto;
+  margin-top: 16px !important;
+  margin-bottom: 0 !important;
+}
+
 @media (max-width: 768px) {
   .ant-pro-global-header-header-actions-avatar {
     width: 40px;

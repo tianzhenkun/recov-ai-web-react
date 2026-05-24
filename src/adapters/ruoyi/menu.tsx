@@ -292,6 +292,26 @@ export const findRuoyiMenuByPath = (
   );
 };
 
+export const isRuoyiDirectoryMenuPath = (
+  pathname?: string,
+  menuData = getCachedRuoyiMenuData(),
+) => {
+  if (!pathname || isExternal(pathname)) return false;
+
+  const normalizedPathname = normalizeComparablePath(pathname);
+  const item = flattenMenuData(menuData).find(
+    (entry) =>
+      entry.path &&
+      !isExternal(entry.path) &&
+      normalizeComparablePath(entry.path) === normalizedPathname,
+  );
+
+  return Boolean(
+    item?.ruoyiComponent === 'Layout' &&
+      item.children?.some((child) => !child.hideInMenu),
+  );
+};
+
 export const getFirstVisibleRuoyiPath = (menuData = getCachedRuoyiMenuData()) =>
   flattenMenuData(menuData).find(
     (item) =>

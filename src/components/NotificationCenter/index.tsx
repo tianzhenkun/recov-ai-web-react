@@ -20,7 +20,6 @@ import dayjs from 'dayjs';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { subscribeSseMessage } from '@/adapters/ruoyi/sse';
 import {
-  getUnreadMessageCount,
   listMessages,
   type MessageItem,
   readAllMessages,
@@ -38,20 +37,39 @@ type FilterKey = 'all' | 'unread';
 const pageSize = 10;
 
 const useStyles = createStyles(({ token, css }) => ({
-  action: css`
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    height: 36px !important;
-    min-width: 36px;
-    padding-inline: 8px !important;
-    padding-block: 0 !important;
-    border-radius: ${token.borderRadius}px !important;
-  `,
   triggerWrap: css`
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 36px;
+    height: 36px;
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: ${token.colorText};
+    font: inherit;
+    cursor: pointer;
+    transition: color ${token.motionDurationMid};
+
+    &:hover {
+      color: ${token.colorPrimary};
+    }
+
+    &:focus-visible {
+      outline: 2px solid ${token.colorPrimaryBorder};
+      outline-offset: 2px;
+      border-radius: ${token.borderRadius}px;
+    }
+  `,
+  triggerIcon: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    font-size: 15px;
+    line-height: 1;
   `,
   panel: css`
     width: 380px;
@@ -245,9 +263,16 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     if (!enabled) return;
 
     try {
-      const response = await getUnreadMessageCount({ skipErrorHandler: true });
+      const response = await listMessages(
+        {
+          pageNum: 1,
+          pageSize: 1,
+          readStatus: '0',
+        },
+        { skipErrorHandler: true },
+      );
       if (!mountedRef.current) return;
-      setUnreadCount(toCount(response.data));
+      setUnreadCount(toCount(response.total));
     } catch (error) {
       console.warn('[NotificationCenter] unread count failed:', error);
     }
@@ -444,17 +469,18 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const emptyText = activeFilter === 'unread' ? '暂无未读通知' : '暂无通知';
 
   const renderTrigger = (onClick?: () => void) => (
-    <span className={styles.triggerWrap}>
+    <button
+      aria-label="通知中心"
+      className={styles.triggerWrap}
+      type="button"
+      onClick={onClick}
+    >
       <Badge count={unreadCount} overflowCount={99} size="small">
-        <Button
-          aria-label="通知中心"
-          className={styles.action}
-          icon={<BellOutlined />}
-          type="text"
-          onClick={onClick}
-        />
+        <span className={styles.triggerIcon}>
+          <BellOutlined />
+        </span>
       </Badge>
-    </span>
+    </button>
   );
 
   const renderList = (drawerMode = false) => {

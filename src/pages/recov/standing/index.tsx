@@ -433,6 +433,7 @@ const SmartStandingPage = () => {
 
       <ProCard>
         <Table<StandingVO>
+          className="recov-stable-pagination-table"
           rowKey="id"
           loading={loading}
           columns={columns}

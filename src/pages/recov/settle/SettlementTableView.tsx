@@ -180,6 +180,7 @@ const SettlementTableView = ({
       styles={{ body: { padding: 0 } }}
     >
       <Table<SettlementRecord>
+        className="recov-stable-pagination-table"
         rowKey="id"
         loading={loading}
         size="middle"

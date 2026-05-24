@@ -4,6 +4,7 @@ import {
   buildRuoyiMenuData,
   findRuoyiMenuByPath,
   getFirstVisibleRuoyiPath,
+  isRuoyiDirectoryMenuPath,
 } from './menu';
 
 jest.mock('@/services/ruoyi/menu', () => ({
@@ -105,6 +106,13 @@ describe('RuoYi menu transform', () => {
     const matched = findRuoyiMenuByPath('/system/user-auth/role/100', menuData);
 
     expect(matched?.ruoyiName).toBe('User-auth/role/:userId131');
+  });
+
+  it('detects grouped Layout menu paths without direct page navigation', () => {
+    const menuData = buildRuoyiMenuData(ruoyiRoutes);
+
+    expect(isRuoyiDirectoryMenuPath('/system', menuData)).toBe(true);
+    expect(isRuoyiDirectoryMenuPath('/system/user', menuData)).toBe(false);
   });
 
   it('uses first visible leaf route as the landing path', () => {

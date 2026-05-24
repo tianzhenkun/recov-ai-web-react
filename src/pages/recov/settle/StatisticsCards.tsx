@@ -4,8 +4,11 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
-import { Space, Tooltip, Typography, theme } from 'antd';
+import { Space, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import type { ServiceFeeStatistics } from '@/services/ruoyi/settle';
 import { formatCompactCurrencyDisplay, formatCurrencyDisplay } from './_shared';
 
@@ -21,7 +24,7 @@ type MetricCard = {
   label: string;
   value: unknown;
   icon: ReactNode;
-  color: string;
+  tone: MetricTone;
   extra?: {
     label: string;
     value: unknown;
@@ -37,22 +40,20 @@ const cardStyles = {
 };
 
 const StatisticsCards = ({ statistics, onCardClick }: StatisticsCardsProps) => {
-  const { token } = theme.useToken();
-
   const cards: MetricCard[] = [
     {
       type: 'unpaid',
       label: '未支付服务费',
       value: statistics.unpaidServiceFeeTotal,
       icon: <WalletOutlined />,
-      color: token.colorPrimary,
+      tone: 'primary',
     },
     {
       type: 'currentWeek',
       label: '本周服务费',
       value: statistics.currentWeekServiceFee,
       icon: <BarChartOutlined />,
-      color: token.colorSuccess,
+      tone: 'success',
       extra: [
         {
           label: '本周回款',
@@ -65,7 +66,7 @@ const StatisticsCards = ({ statistics, onCardClick }: StatisticsCardsProps) => {
       label: '对账差异',
       value: statistics.processedDifferenceAmount,
       icon: <FieldTimeOutlined />,
-      color: token.colorWarning,
+      tone: 'warning',
       extra: [
         {
           label: '服务费',
@@ -86,16 +87,7 @@ const StatisticsCards = ({ statistics, onCardClick }: StatisticsCardsProps) => {
           >
             <div className="flex items-center justify-between gap-3">
               <Space align="center" size={8}>
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
-                  style={{
-                    color: card.color,
-                    backgroundColor: `${card.color}14`,
-                  }}
-                  aria-hidden
-                >
-                  {card.icon}
-                </span>
+                <MetricIcon icon={card.icon} tone={card.tone} />
                 <Text
                   type="secondary"
                   style={{ fontSize: 12, lineHeight: 1.3 }}

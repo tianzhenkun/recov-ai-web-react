@@ -5,9 +5,12 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
-import { Skeleton, Space, Tooltip, Typography, theme } from 'antd';
+import { Skeleton, Space, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import { buildMetricDisplay, type OutboundMetric } from './_shared';
 
 const { Text } = Typography;
@@ -25,34 +28,27 @@ type MetricsRowProps = {
 
 type MetricMeta = {
   icon: ReactNode;
-  color: string;
+  tone: MetricTone;
 };
 
 const MetricsRow = ({ metrics, loading }: MetricsRowProps) => {
-  const { token } = theme.useToken();
-
   const metaByKey = useMemo<Record<OutboundMetric['key'], MetricMeta>>(
     () => ({
-      totalCalls: { icon: <PhoneOutlined />, color: token.colorPrimary },
+      totalCalls: { icon: <PhoneOutlined />, tone: 'primary' },
       totalTalkHours: {
         icon: <ClockCircleOutlined />,
-        color: token.colorInfo,
+        tone: 'info',
       },
       currentRepayment: {
         icon: <WalletOutlined />,
-        color: token.colorSuccess,
+        tone: 'success',
       },
       feedbackCount: {
         icon: <MessageOutlined />,
-        color: token.colorWarning,
+        tone: 'warning',
       },
     }),
-    [
-      token.colorInfo,
-      token.colorPrimary,
-      token.colorSuccess,
-      token.colorWarning,
-    ],
+    [],
   );
 
   return (
@@ -121,16 +117,7 @@ const MetricsRow = ({ metrics, loading }: MetricsRowProps) => {
               }}
             >
               <Space align="center" size={8}>
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
-                  style={{
-                    color: meta.color,
-                    backgroundColor: `${meta.color}14`,
-                  }}
-                  aria-hidden
-                >
-                  {meta.icon}
-                </span>
+                <MetricIcon icon={meta.icon} tone={meta.tone} />
                 <Text
                   type="secondary"
                   style={{ fontSize: 12, lineHeight: 1.3 }}

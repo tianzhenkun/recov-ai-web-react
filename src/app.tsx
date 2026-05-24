@@ -6,7 +6,7 @@ import type {
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
-import { App as AntdApp } from 'antd';
+import { App as AntdApp, type BreadcrumbProps } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
@@ -15,7 +15,11 @@ import React from 'react';
 dayjs.extend(relativeTime);
 
 import { getStoredDynamicTenantId } from '@/adapters/ruoyi/dynamicTenant';
-import { buildLayoutMenuData, loadRuoyiMenuData } from '@/adapters/ruoyi/menu';
+import {
+  buildLayoutMenuData,
+  isRuoyiDirectoryMenuPath,
+  loadRuoyiMenuData,
+} from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
 import {
   AvatarDropdown,
@@ -34,6 +38,29 @@ import { errorConfig } from './requestErrorConfig';
 const loginPath = '/user/login';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
+
+type LayoutBreadcrumbItem = NonNullable<BreadcrumbProps['items']>[number] & {
+  linkPath?: string;
+  path?: string;
+};
+
+const breadcrumbRender = (
+  items: BreadcrumbProps['items'] = [],
+): BreadcrumbProps['items'] =>
+  items.map((item) => {
+    const breadcrumbItem = item as LayoutBreadcrumbItem;
+    const path = breadcrumbItem.linkPath || breadcrumbItem.path;
+
+    if (!isRuoyiDirectoryMenuPath(path)) {
+      return item;
+    }
+
+    return {
+      ...breadcrumbItem,
+      linkPath: undefined,
+      path: undefined,
+    };
+  });
 
 const RuoyiAppBridge = ({ children }: { children: React.ReactNode }) => {
   const { message } = AntdApp.useApp();
@@ -165,6 +192,7 @@ export const layout: RunTimeLayoutConfig = ({
         }
       },
     },
+    breadcrumbRender,
     actionsRender: () => [
       <TenantSwitch key="tenant" />,
       <NotificationCenter

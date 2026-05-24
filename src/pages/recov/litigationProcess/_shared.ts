@@ -15,6 +15,7 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { createElement, type ReactNode } from 'react';
+import type { MetricTone } from '@/pages/recov/components/MetricIcon';
 import {
   formatCompactCurrencyDisplay,
   formatCurrencyDisplay,
@@ -281,7 +282,7 @@ export type OverviewCardMeta = {
   format: 'count' | 'currency';
   unit?: string;
   icon: ReactNode;
-  color: string;
+  tone: MetricTone;
 };
 
 export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
@@ -291,7 +292,7 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '件',
     icon: createElement(UnorderedListOutlined),
-    color: '#1677ff',
+    tone: 'primary',
   },
   {
     key: 'materialSubmittedCount',
@@ -299,7 +300,7 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '件',
     icon: createElement(FileOutlined),
-    color: '#4f46e5',
+    tone: 'info',
   },
   {
     key: 'courtAcceptedCount',
@@ -307,21 +308,21 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
     format: 'count',
     unit: '件',
     icon: createElement(CheckCircleOutlined),
-    color: '#52c41a',
+    tone: 'success',
   },
   {
     key: 'nodeDebtAmount',
     label: '本阶段案涉金额',
     format: 'currency',
     icon: createElement(WalletOutlined),
-    color: '#faad14',
+    tone: 'warning',
   },
   {
     key: 'nodeRepaymentAmount',
     label: '本阶段回款金额',
     format: 'currency',
     icon: createElement(WalletOutlined),
-    color: '#722ed1',
+    tone: 'success',
   },
 ];
 

@@ -33,13 +33,13 @@ const FeedbackFeed = ({ items, loading, onItemClick }: FeedbackFeedProps) => {
   const sentimentMeta: Record<FeedbackSentiment, SentimentMeta> = {
     negative: {
       color: token.colorError,
-      iconBg: `${token.colorError}14`,
+      iconBg: token.colorErrorBg,
       tagColor: 'error',
       icon: <FrownOutlined />,
     },
     positive: {
       color: token.colorSuccess,
-      iconBg: `${token.colorSuccess}14`,
+      iconBg: token.colorSuccessBg,
       tagColor: 'success',
       icon: <SmileOutlined />,
     },

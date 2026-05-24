@@ -343,6 +343,7 @@ const MatchListSection = ({
 
       {tab === 'matched' ? (
         <Table<MatchedLawyerRowVO>
+          className="recov-stable-pagination-table"
           rowKey="id"
           size="small"
           loading={loading}
@@ -353,6 +354,7 @@ const MatchListSection = ({
         />
       ) : (
         <Table<UnmatchedCaseRowVO>
+          className="recov-stable-pagination-table"
           rowKey="id"
           size="small"
           loading={loading}

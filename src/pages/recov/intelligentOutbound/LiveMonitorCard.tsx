@@ -1,4 +1,4 @@
-import { Skeleton, Tooltip, Typography, theme } from 'antd';
+import { Badge, Skeleton, Tooltip, Typography, theme } from 'antd';
 import type { LiveMonitorStats } from './_shared';
 import { formatCompactCount, formatCount } from './_shared';
 
@@ -93,23 +93,11 @@ const LiveMonitorCard = ({
         boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)',
       }}
     >
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5 flex items-center justify-between gap-2">
         <Text strong style={{ fontSize: 18 }}>
           实时外呼监控
         </Text>
-        <span
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-          style={{
-            color: token.colorSuccess,
-            backgroundColor: token.colorSuccessBg,
-          }}
-        >
-          <span
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: token.colorSuccess }}
-          />
-          实时
-        </span>
+        <Badge status="processing" text="实时" />
       </div>
 
       <div className={fillHeight ? 'flex flex-1 flex-col justify-center' : ''}>

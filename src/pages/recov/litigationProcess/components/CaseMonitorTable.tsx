@@ -287,6 +287,7 @@ const CaseMonitorTable = ({
         </Space>
       </Form>
       <Table<DisplayRow>
+        className="recov-stable-pagination-table"
         rowKey="id"
         loading={loading}
         columns={columns}

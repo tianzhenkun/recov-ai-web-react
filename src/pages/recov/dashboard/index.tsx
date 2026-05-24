@@ -11,6 +11,9 @@ import { Column, Line } from '@ant-design/plots';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { Col, Empty, Row, Skeleton, Space, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import MetricIcon, {
+  type MetricTone,
+} from '@/pages/recov/components/MetricIcon';
 import {
   type DashboardIndicator,
   type DashboardOverview,
@@ -82,7 +85,7 @@ type StatMeta = {
   format: 'currency' | 'count' | 'duration';
   unit?: string;
   icon: React.ReactNode;
-  color: string;
+  tone: MetricTone;
 };
 
 const statMetas: StatMeta[] = [
@@ -91,7 +94,7 @@ const statMetas: StatMeta[] = [
     label: '逾期总金额',
     format: 'currency',
     icon: <WalletOutlined />,
-    color: '#1677ff',
+    tone: 'primary',
   },
   {
     key: 'totalDebtorCount',
@@ -99,14 +102,14 @@ const statMetas: StatMeta[] = [
     format: 'count',
     unit: '户',
     icon: <TeamOutlined />,
-    color: '#13c2c2',
+    tone: 'info',
   },
   {
     key: 'avgBillAmount',
     label: '平均单笔金额',
     format: 'currency',
     icon: <BarChartOutlined />,
-    color: '#faad14',
+    tone: 'warning',
   },
   {
     key: 'avgOverdueDays',
@@ -114,7 +117,7 @@ const statMetas: StatMeta[] = [
     format: 'duration',
     unit: '天',
     icon: <FieldTimeOutlined />,
-    color: '#fa8c16',
+    tone: 'error',
   },
   {
     key: 'collectionCycle',
@@ -122,14 +125,14 @@ const statMetas: StatMeta[] = [
     format: 'duration',
     unit: '天',
     icon: <ClockCircleOutlined />,
-    color: '#52c41a',
+    tone: 'neutral',
   },
   {
     key: 'totalRecoveredAmount',
     label: '累计回款',
     format: 'currency',
     icon: <LineChartOutlined />,
-    color: '#722ed1',
+    tone: 'success',
   },
 ];
 
@@ -215,16 +218,7 @@ const DashboardStatCard = ({ meta, value }: DashboardStatCardProps) => {
         }}
       >
         <Space align="center" size={8}>
-          <span
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm"
-            style={{
-              color: meta.color,
-              backgroundColor: `${meta.color}14`,
-            }}
-            aria-hidden
-          >
-            {meta.icon}
-          </span>
+          <MetricIcon icon={meta.icon} tone={meta.tone} />
           <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
             {meta.label}
           </Text>
