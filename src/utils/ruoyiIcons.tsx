@@ -76,7 +76,7 @@ import {
   UserOutlined,
   WechatOutlined,
 } from '@ant-design/icons';
-import type { ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 
 export const ruoyiMenuIconNames = [
   '404',
