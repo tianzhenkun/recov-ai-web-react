@@ -7,7 +7,7 @@ import {
   SearchOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import {
   Alert,
   Button,
@@ -29,6 +29,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import {
+  RecovListPage,
+  RecovListStack,
+  RecovStatsStrip,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
 import {
   getDebtCityOptions,
   getDebtOrganizationOptions,
@@ -732,15 +738,15 @@ const FlowPage = () => {
   ];
 
   return (
-    <PageContainer title="催收流程">
+    <RecovListPage title="催收流程">
       {messageContextHolder}
       {modalContextHolder}
-      <div className="flex flex-col gap-4 pb-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <RecovListStack>
+        <RecovStatsStrip className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {statCards.map((card) => (
             <StatCard key={card.title} {...card} />
           ))}
-        </div>
+        </RecovStatsStrip>
 
         <ProCard title="流程批量发起">
           <Form
@@ -793,11 +799,11 @@ const FlowPage = () => {
           </Form>
         </ProCard>
 
-        <ProCard title="流程实例">
+        <RecovTableCard title="流程实例">
           <Form
             form={instanceForm}
             initialValues={{ city: undefined, organization: undefined }}
-            style={{ marginBottom: 16 }}
+            className="recov-table-toolbar"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Space wrap size={12}>
@@ -905,8 +911,8 @@ const FlowPage = () => {
               },
             }}
           />
-        </ProCard>
-      </div>
+        </RecovTableCard>
+      </RecovListStack>
 
       <Modal
         title="批次发起进度"
@@ -1067,7 +1073,7 @@ const FlowPage = () => {
         onClose={() => setTraceOpen(false)}
         onChanged={refreshInstanceList}
       />
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

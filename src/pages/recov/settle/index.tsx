@@ -1,6 +1,9 @@
-import { PageContainer } from '@ant-design/pro-components';
 import { message } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  RecovListPage,
+  RecovListStack,
+} from '@/pages/recov/components/RecovListLayout';
 import {
   type DifferenceDetailQuery,
   type DifferenceServiceFeeDetail,
@@ -358,56 +361,61 @@ const ServiceFeeSettlePage = () => {
   };
 
   return (
-    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
+    <RecovListPage breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
 
-      <StatisticsCards statistics={statistics} onCardClick={handleCardClick} />
+      <RecovListStack>
+        <StatisticsCards
+          statistics={statistics}
+          onCardClick={handleCardClick}
+        />
 
-      <div className="mt-4">
-        {activeView === 'settlement' ? (
-          <SettlementTableView
-            loading={loadingSettlements}
-            list={settlementList}
-            total={settlementTotal}
-            query={settlementQuery}
-            onQueryChange={setSettlementQuery}
-            onSearch={querySettlements}
-            onReset={resetSettlementQuery}
-            onViewDetail={handleViewDetail}
-            onPay={handleOpenPay}
-          />
-        ) : null}
+        <div className="recov-list-fill">
+          {activeView === 'settlement' ? (
+            <SettlementTableView
+              loading={loadingSettlements}
+              list={settlementList}
+              total={settlementTotal}
+              query={settlementQuery}
+              onQueryChange={setSettlementQuery}
+              onSearch={querySettlements}
+              onReset={resetSettlementQuery}
+              onViewDetail={handleViewDetail}
+              onPay={handleOpenPay}
+            />
+          ) : null}
 
-        {activeView === 'currentWeek' ? (
-          <CurrentWeekDetailView
-            loading={loadingCurrentWeek}
-            list={currentWeekList}
-            total={currentWeekTotal}
-            query={currentWeekQuery}
-            rangeText={currentWeekRangeText}
-            periodLabel=""
-            onBack={() => setActiveView('settlement')}
-            onQueryChange={setCurrentWeekQuery}
-            onSearch={queryCurrentWeekDetails}
-            onReset={resetCurrentWeekQuery}
-          />
-        ) : null}
+          {activeView === 'currentWeek' ? (
+            <CurrentWeekDetailView
+              loading={loadingCurrentWeek}
+              list={currentWeekList}
+              total={currentWeekTotal}
+              query={currentWeekQuery}
+              rangeText={currentWeekRangeText}
+              periodLabel=""
+              onBack={() => setActiveView('settlement')}
+              onQueryChange={setCurrentWeekQuery}
+              onSearch={queryCurrentWeekDetails}
+              onReset={resetCurrentWeekQuery}
+            />
+          ) : null}
 
-        {activeView === 'difference' ? (
-          <DifferenceDetailView
-            loading={loadingDifference}
-            list={differenceList}
-            total={differenceTotal}
-            query={differenceQuery}
-            rangeText={differenceRangeText}
-            periodLabel=""
-            onBack={() => setActiveView('settlement')}
-            onQueryChange={setDifferenceQuery}
-            onSearch={queryDifferenceDetails}
-            onReset={resetDifferenceQuery}
-          />
-        ) : null}
-      </div>
+          {activeView === 'difference' ? (
+            <DifferenceDetailView
+              loading={loadingDifference}
+              list={differenceList}
+              total={differenceTotal}
+              query={differenceQuery}
+              rangeText={differenceRangeText}
+              periodLabel=""
+              onBack={() => setActiveView('settlement')}
+              onQueryChange={setDifferenceQuery}
+              onSearch={queryDifferenceDetails}
+              onReset={resetDifferenceQuery}
+            />
+          ) : null}
+        </div>
+      </RecovListStack>
 
       <SettlementDetailModal
         open={detailOpen}
@@ -432,7 +440,7 @@ const ServiceFeeSettlePage = () => {
         }}
         onSubmit={handleSubmitPay}
       />
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

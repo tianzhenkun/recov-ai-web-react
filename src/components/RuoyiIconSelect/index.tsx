@@ -1,6 +1,7 @@
 import { Select, type SelectProps, Space } from 'antd';
 import type React from 'react';
-import { RuoyiIcon, ruoyiMenuIconNames } from '@/utils/ruoyiIcons';
+import RuoyiIcon from '@/components/RuoyiIcon';
+import { ruoyiMenuIconNames } from '@/utils/ruoyiIcons';
 
 type IconOption = {
   value: string;

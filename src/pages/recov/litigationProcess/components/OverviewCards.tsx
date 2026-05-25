@@ -1,6 +1,7 @@
 import { ProCard } from '@ant-design/pro-components';
 import { Space, Tooltip, Typography } from 'antd';
 import MetricIcon from '@/pages/recov/components/MetricIcon';
+import { RecovStatsStrip } from '@/pages/recov/components/RecovListLayout';
 import type { LitigationOverviewVO } from '@/services/ruoyi/litigation-process';
 import {
   formatCompactCurrencyDisplay,
@@ -22,7 +23,7 @@ type OverviewCardsProps = {
 };
 
 const OverviewCards = ({ overview }: OverviewCardsProps) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+  <RecovStatsStrip className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
     {OVERVIEW_CARD_METAS.map((meta) => {
       const raw = overview[meta.key];
       const isCurrency = meta.format === 'currency';
@@ -82,7 +83,7 @@ const OverviewCards = ({ overview }: OverviewCardsProps) => (
         </ProCard>
       );
     })}
-  </div>
+  </RecovStatsStrip>
 );
 
 export default OverviewCards;

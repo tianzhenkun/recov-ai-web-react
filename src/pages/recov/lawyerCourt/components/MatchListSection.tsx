@@ -5,7 +5,6 @@ import {
   StopOutlined,
   UserAddOutlined,
 } from '@ant-design/icons';
-import { ProCard } from '@ant-design/pro-components';
 import {
   Button,
   Modal,
@@ -21,6 +20,7 @@ import {
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useMemo } from 'react';
 import TableActions from '@/components/TableActions';
+import { RecovTableCard } from '@/pages/recov/components/RecovListLayout';
 import {
   formatCompactCurrencyDisplay,
   formatCurrencyDisplay,
@@ -307,7 +307,7 @@ const MatchListSection = ({
   };
 
   return (
-    <ProCard size="small" styles={listCardStyles}>
+    <RecovTableCard size="small" styles={listCardStyles}>
       <div className="flex flex-col gap-3 border-b border-[#f0f0f0] px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <Segmented
@@ -364,7 +364,7 @@ const MatchListSection = ({
           pagination={pagination}
         />
       )}
-    </ProCard>
+    </RecovTableCard>
   );
 };
 

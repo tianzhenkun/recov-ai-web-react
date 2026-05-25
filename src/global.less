@@ -128,6 +128,151 @@ ol {
   list-style: none;
 }
 
+.recov-list-page.ant-pro-page-container {
+  display: flex;
+  height: calc(100dvh - 56px);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.recov-list-page.ant-pro-page-container > .ant-pro-page-container-warp {
+  flex: 0 0 auto;
+}
+
+.recov-list-page.ant-pro-page-container > .ant-pro-grid-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.recov-list-page.ant-pro-page-container
+  > .ant-pro-grid-content
+  > .ant-pro-grid-content-children {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.recov-list-page.ant-pro-page-container
+  > .ant-pro-grid-content
+  > .ant-pro-grid-content-children
+  > .ant-pro-page-container-children-container {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  padding-block-end: 16px;
+}
+
+.recov-list-stack {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.recov-list-fill {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.recov-stats-strip {
+  display: flex !important;
+  flex: 0 0 auto;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.recov-list-page .recov-stats-strip {
+  gap: 10px !important;
+}
+
+.recov-list-page .recov-stats-strip > .ant-pro-card {
+  min-width: 170px;
+  flex: 1 0 170px;
+}
+
+.recov-list-page .recov-stats-strip .ant-pro-card-body {
+  padding: 12px 14px !important;
+}
+
+.recov-list-page .recov-stats-strip .ant-pro-card-body > div,
+.recov-list-page .recov-stats-strip .ant-pro-card-body > button {
+  min-height: 58px !important;
+}
+
+.recov-list-page .ant-page-header-heading {
+  padding-block-start: 4px !important;
+}
+
+.recov-list-page .ant-page-header-heading-title {
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.recov-table-card.ant-pro-card {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.recov-table-card.ant-pro-card > .ant-pro-card-header {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding-block: 10px;
+}
+
+.recov-table-card.ant-pro-card > .ant-pro-card-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.recov-table-card-content {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.recov-table-toolbar {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+
+.recov-table-toolbar > div {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.recov-table-toolbar .ant-space {
+  max-width: 100%;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.recov-table-toolbar .ant-form-item,
+.recov-table-toolbar .ant-btn {
+  flex: 0 0 auto;
+}
+
 .recov-stable-pagination-table.ant-table-wrapper {
   display: flex;
   height: clamp(420px, calc(100vh - 300px), 560px);
@@ -135,12 +280,19 @@ ol {
   min-height: 0;
 }
 
+.recov-table-card .recov-stable-pagination-table.ant-table-wrapper {
+  flex: 1 1 0;
+  height: auto;
+  overflow: hidden;
+}
+
 .recov-stable-pagination-table.ant-table-wrapper > .ant-spin,
 .recov-stable-pagination-table.ant-table-wrapper > .ant-spin-nested-loading {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .recov-stable-pagination-table.ant-table-wrapper
@@ -150,13 +302,14 @@ ol {
   > .ant-spin-nested-loading
   > .ant-spin-container {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .recov-stable-pagination-table.ant-table-wrapper .ant-table {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow: auto;
 }

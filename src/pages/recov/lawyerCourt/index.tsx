@@ -1,6 +1,9 @@
-import { PageContainer } from '@ant-design/pro-components';
 import { App } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
+import {
+  RecovListPage,
+  RecovListStack,
+} from '@/pages/recov/components/RecovListLayout';
 import type {
   LawyerCourtOverviewVO,
   LawyerCourtTab,
@@ -237,8 +240,8 @@ const LawyerCourtPage = () => {
   };
 
   return (
-    <PageContainer title={PAGE_TITLE}>
-      <div className="flex flex-col gap-4">
+    <RecovListPage title={PAGE_TITLE}>
+      <RecovListStack>
         <OverviewCards overview={overview} loading={overviewLoading} />
 
         <MatchToolbar matching={matching} onAutoMatch={handleAutoMatch} />
@@ -266,14 +269,14 @@ const LawyerCourtPage = () => {
           onWithdrawCase={handleWithdrawCase}
           onExportUnmatched={handleExportUnmatched}
         />
-      </div>
+      </RecovListStack>
 
       <LawyerDetailDrawer
         open={detailOpen}
         row={detailRow}
         onClose={handleCloseDetail}
       />
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

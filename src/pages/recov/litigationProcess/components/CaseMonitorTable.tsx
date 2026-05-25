@@ -1,9 +1,9 @@
 import { EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { ProCard } from '@ant-design/pro-components';
 import { Button, Form, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useEffect, useMemo } from 'react';
 import TableActions from '@/components/TableActions';
+import { RecovTableCard } from '@/pages/recov/components/RecovListLayout';
 import type {
   LitigationNodeType,
   LitigationStatus,
@@ -232,7 +232,7 @@ const CaseMonitorTable = ({
   };
 
   return (
-    <ProCard title="案件进展监控">
+    <RecovTableCard title="案件进展监控">
       <Form
         form={form}
         initialValues={{
@@ -241,7 +241,7 @@ const CaseMonitorTable = ({
           status: statusFilter || undefined,
         }}
         onFinish={handleSearch}
-        style={{ marginBottom: 12 }}
+        className="recov-table-toolbar"
       >
         <Space wrap size={12}>
           <Form.Item name="city" noStyle>
@@ -296,7 +296,7 @@ const CaseMonitorTable = ({
         pagination={pagination}
         size="middle"
       />
-    </ProCard>
+    </RecovTableCard>
   );
 };
 

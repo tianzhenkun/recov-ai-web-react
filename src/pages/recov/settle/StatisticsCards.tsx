@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import { RecovStatsStrip } from '@/pages/recov/components/RecovListLayout';
 import type { ServiceFeeStatistics } from '@/services/ruoyi/settle';
 import { formatCompactCurrencyDisplay, formatCurrencyDisplay } from './_shared';
 
@@ -77,7 +78,7 @@ const StatisticsCards = ({ statistics, onCardClick }: StatisticsCardsProps) => {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+    <RecovStatsStrip className="grid grid-cols-1 gap-3 md:grid-cols-3">
       {cards.map((card) => (
         <ProCard key={card.type} size="small" styles={cardStyles}>
           <button
@@ -122,7 +123,7 @@ const StatisticsCards = ({ statistics, onCardClick }: StatisticsCardsProps) => {
           </button>
         </ProCard>
       ))}
-    </div>
+    </RecovStatsStrip>
   );
 };
 

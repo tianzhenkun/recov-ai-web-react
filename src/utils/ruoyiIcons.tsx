@@ -76,7 +76,7 @@ import {
   UserOutlined,
   WechatOutlined,
 } from '@ant-design/icons';
-import React from 'react';
+import type { ReactNode } from 'react';
 
 export const ruoyiMenuIconNames = [
   '404',
@@ -180,7 +180,7 @@ export const ruoyiMenuIconNames = [
   'zip',
 ] as const;
 
-const iconMap: Record<string, React.ReactNode> = {
+const iconMap: Record<string, ReactNode> = {
   '404': <FileUnknownOutlined />,
   bug: <BugOutlined />,
   build: <BuildOutlined />,
@@ -289,18 +289,6 @@ export const getRuoyiIconNode = (icon?: string) => {
   const key = normalizeRuoyiIconKey(icon);
   if (!key) return undefined;
   return iconMap[key] || <AppstoreOutlined />;
-};
-
-export const RuoyiIcon = ({
-  icon,
-  style,
-}: {
-  icon?: string;
-  style?: React.CSSProperties;
-}) => {
-  const iconNode = getRuoyiIconNode(icon);
-  if (!iconNode) return null;
-  return <span style={style}>{iconNode}</span>;
 };
 
 export const toRuoyiMenuIcon = (icon?: string) => getRuoyiIconNode(icon);

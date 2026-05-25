@@ -1,5 +1,8 @@
-import { PageContainer } from '@ant-design/pro-components';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  RecovListPage,
+  RecovListStack,
+} from '@/pages/recov/components/RecovListLayout';
 import type {
   LitigationNodeStatVO,
   LitigationNodeType,
@@ -187,8 +190,8 @@ const LitigationProcessPage = () => {
   const tableLoading = listLoading || overviewLoading;
 
   return (
-    <PageContainer title={PAGE_TITLE}>
-      <div className="flex flex-col gap-4">
+    <RecovListPage title={PAGE_TITLE}>
+      <RecovListStack>
         <OverviewCards overview={overview} />
 
         <NodeRail
@@ -215,14 +218,14 @@ const LitigationProcessPage = () => {
           onPageChange={handlePageChange}
           onViewDetail={handleViewDetail}
         />
-      </div>
+      </RecovListStack>
 
       <LitigationDetailModal
         open={detailOpen}
         row={detailRow}
         onClose={handleCloseDetail}
       />
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

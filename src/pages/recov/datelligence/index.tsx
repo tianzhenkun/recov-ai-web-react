@@ -27,7 +27,7 @@ import {
   UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import XMarkdown from '@ant-design/x-markdown';
 import {
   Alert,
@@ -59,6 +59,12 @@ import TableActions from '@/components/TableActions';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import {
+  RecovListPage,
+  RecovListStack,
+  RecovStatsStrip,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
 import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   type DebtAttachmentItem,
@@ -2835,9 +2841,9 @@ const DatelligencePage = () => {
   };
 
   return (
-    <PageContainer title="数据智能解析">
+    <RecovListPage title="数据智能解析">
       {messageContextHolder}
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <RecovListStack>
         {showImportTaskProgress && (
           <button
             type="button"
@@ -2873,7 +2879,7 @@ const DatelligencePage = () => {
           </button>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <RecovStatsStrip className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           {statCards.map((card) => (
             <StatCard
               key={card.key}
@@ -2883,13 +2889,13 @@ const DatelligencePage = () => {
               tone={card.tone}
             />
           ))}
-        </div>
+        </RecovStatsStrip>
 
-        <ProCard title="债务记录明细">
+        <RecovTableCard title="债务记录明细">
           <Form
             form={form}
             initialValues={{ city: undefined, organization: undefined }}
-            style={{ marginBottom: 16 }}
+            className="recov-table-toolbar"
           >
             <div
               style={{
@@ -2991,8 +2997,8 @@ const DatelligencePage = () => {
               },
             }}
           />
-        </ProCard>
-      </Space>
+        </RecovTableCard>
+      </RecovListStack>
 
       <Modal
         title="导入资产包"
@@ -3521,7 +3527,7 @@ const DatelligencePage = () => {
         onClose={() => setTraceOpen(false)}
         onChanged={refreshAll}
       />
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

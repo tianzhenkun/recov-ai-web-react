@@ -11,7 +11,7 @@ import {
   SyncOutlined,
   TruckOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { useSearchParams } from '@umijs/max';
 import {
   Alert,
@@ -36,6 +36,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import {
+  RecovListPage,
+  RecovListStack,
+  RecovStatsStrip,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
 import {
   type DeliveryStrategyRow,
   type DeliveryWayListRow,
@@ -553,12 +559,12 @@ const DeliveryPage = () => {
   const currentStatus = normalizeStatus(currentRow?.taskStatus);
 
   return (
-    <PageContainer title="全域智能送达">
+    <RecovListPage title="全域智能送达">
       {messageContextHolder}
       {modalContextHolder}
 
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4 xl:grid-cols-8">
+      <RecovListStack>
+        <RecovStatsStrip className="grid grid-cols-1 gap-4 md:grid-cols-4 xl:grid-cols-8">
           {statCards.map((card) => (
             <StatCard
               key={card.key}
@@ -568,10 +574,10 @@ const DeliveryPage = () => {
               tone={card.tone}
             />
           ))}
-        </div>
+        </RecovStatsStrip>
 
-        <ProCard title="送达任务列表">
-          <Form form={form} style={{ marginBottom: 16 }}>
+        <RecovTableCard title="送达任务列表">
+          <Form form={form} className="recov-table-toolbar">
             <Space wrap size={12}>
               <Form.Item name="keyword" noStyle>
                 <Input
@@ -670,8 +676,8 @@ const DeliveryPage = () => {
               },
             }}
           />
-        </ProCard>
-      </Space>
+        </RecovTableCard>
+      </RecovListStack>
 
       <Drawer
         title="送达任务详情"
@@ -795,7 +801,7 @@ const DeliveryPage = () => {
           <Empty description="暂无详情" />
         )}
       </Drawer>
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

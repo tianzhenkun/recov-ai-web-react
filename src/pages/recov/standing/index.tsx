@@ -8,7 +8,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { useLocation } from '@umijs/max';
 import type { TablePaginationConfig } from 'antd';
 import {
@@ -29,6 +29,11 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
+import {
+  RecovListPage,
+  RecovListStack,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
 import { downloadOss, listOssByIds } from '@/services/ruoyi/oss';
 import {
   delStanding,
@@ -71,7 +76,7 @@ const SmartStandingPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const [form] = Form.useForm<SearchForm>();
-  const location = useLocation();
+  const { search: locationSearch } = useLocation();
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<StandingVO[]>([]);
@@ -140,7 +145,7 @@ const SmartStandingPage = () => {
   );
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(locationSearch);
     const standingCode = params.get('standingCode') || undefined;
     const debtNumber = params.get('debtNumber');
     if (standingCode || debtNumber) {
@@ -151,7 +156,7 @@ const SmartStandingPage = () => {
     }
     void loadData(1, pagination.pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search]);
+  }, [locationSearch]);
 
   const handleSearch = () => {
     void loadData(1, pagination.pageSize);
@@ -352,7 +357,7 @@ const SmartStandingPage = () => {
   );
 
   return (
-    <PageContainer
+    <RecovListPage
       title="原告主体资格材料管理"
       extra={[
         <Button
@@ -374,81 +379,83 @@ const SmartStandingPage = () => {
     >
       {messageContextHolder}
       {modalContextHolder}
-      <ProCard className="mb-4">
-        <Form<SearchForm>
-          form={form}
-          layout="inline"
-          className="gap-y-3"
-          onFinish={handleSearch}
-        >
-          <Form.Item name="standingCode" label="材料类型">
-            <Select
-              allowClear
-              placeholder="全部类型"
-              style={{ width: 210 }}
-              options={STANDING_TYPES.map((item) => ({
-                label: item.label,
-                value: item.code,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="standingName" label="材料名称">
-            <Input
-              allowClear
-              placeholder="请输入材料名称"
-              style={{ width: 180 }}
-            />
-          </Form.Item>
-          <Form.Item name="debtNumber" label="资产编号">
-            <InputNumber
-              controls={false}
-              precision={0}
-              min={1}
-              placeholder="覆盖该编号"
-              style={{ width: 150 }}
-            />
-          </Form.Item>
-          <Form.Item name="status" label="状态">
-            <Select
-              allowClear
-              placeholder="全部状态"
-              style={{ width: 120 }}
-              options={statusOptions}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Space>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<SearchOutlined />}
-              >
-                查询
-              </Button>
-              <Button onClick={handleReset}>重置</Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </ProCard>
+      <RecovListStack>
+        <ProCard>
+          <Form<SearchForm>
+            form={form}
+            layout="inline"
+            className="gap-y-3"
+            onFinish={handleSearch}
+          >
+            <Form.Item name="standingCode" label="材料类型">
+              <Select
+                allowClear
+                placeholder="全部类型"
+                style={{ width: 210 }}
+                options={STANDING_TYPES.map((item) => ({
+                  label: item.label,
+                  value: item.code,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item name="standingName" label="材料名称">
+              <Input
+                allowClear
+                placeholder="请输入材料名称"
+                style={{ width: 180 }}
+              />
+            </Form.Item>
+            <Form.Item name="debtNumber" label="资产编号">
+              <InputNumber
+                controls={false}
+                precision={0}
+                min={1}
+                placeholder="覆盖该编号"
+                style={{ width: 150 }}
+              />
+            </Form.Item>
+            <Form.Item name="status" label="状态">
+              <Select
+                allowClear
+                placeholder="全部状态"
+                style={{ width: 120 }}
+                options={statusOptions}
+              />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SearchOutlined />}
+                >
+                  查询
+                </Button>
+                <Button onClick={handleReset}>重置</Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </ProCard>
 
-      <ProCard>
-        <Table<StandingVO>
-          className="recov-stable-pagination-table"
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={rows}
-          scroll={{ x: 1120 }}
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (count) => `共 ${count} 条`,
-          }}
-          onChange={handleTableChange}
-        />
-      </ProCard>
+        <RecovTableCard>
+          <Table<StandingVO>
+            className="recov-stable-pagination-table"
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={rows}
+            scroll={{ x: 1120 }}
+            pagination={{
+              current: pagination.current,
+              pageSize: pagination.pageSize,
+              total,
+              showSizeChanger: true,
+              showTotal: (count) => `共 ${count} 条`,
+            }}
+            onChange={handleTableChange}
+          />
+        </RecovTableCard>
+      </RecovListStack>
 
       <StandingFormDrawer
         open={drawerState.open}
@@ -459,7 +466,7 @@ const SmartStandingPage = () => {
         onSaved={handleDrawerSaved}
         messageApi={messageApi}
       />
-    </PageContainer>
+    </RecovListPage>
   );
 };
 

@@ -14,6 +14,7 @@ import { Modal, message, Tag, Tooltip, Tree, TreeSelect } from 'antd';
 import { type Key, useMemo, useRef, useState } from 'react';
 import { clearCachedRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { PermissionButton } from '@/components/Permission';
+import RuoyiIcon from '@/components/RuoyiIcon';
 import RuoyiIconSelect from '@/components/RuoyiIconSelect';
 import TableActions from '@/components/TableActions';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
@@ -31,7 +32,6 @@ import {
   menuTreeSelect,
   updateMenu,
 } from '@/services/ruoyi/system-menu';
-import { RuoyiIcon } from '@/utils/ruoyiIcons';
 import { toAntdTreeData, withRootTreeNode } from '@/utils/ruoyiTree';
 
 type MenuSearchParams = {

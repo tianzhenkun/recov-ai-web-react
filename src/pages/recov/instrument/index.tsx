@@ -54,6 +54,10 @@ import MetricIcon, {
   useMetricToneColors,
 } from '@/pages/recov/components/MetricIcon';
 import {
+  RecovStatsStrip,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
+import {
   addSupplementalInstrumentTask,
   deleteInstrumentTask,
   getInstrumentTaskDetail,
@@ -1734,7 +1738,10 @@ const InstrumentListPage = () => {
     );
 
   return (
-    <PageContainer title={groupVisible ? null : '智能法律文书管理'}>
+    <PageContainer
+      className={groupVisible ? undefined : 'recov-list-page'}
+      title={groupVisible ? null : '智能法律文书管理'}
+    >
       {messageContextHolder}
       {modalContextHolder}
       {groupVisible ? (
@@ -2099,10 +2106,10 @@ const InstrumentListPage = () => {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-4 pb-4">
-          <div
+        <div className="recov-list-stack">
+          <RecovStatsStrip
+            className="grid"
             style={{
-              display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
               gap: 10,
             }}
@@ -2110,9 +2117,9 @@ const InstrumentListPage = () => {
             {statCards.map((item) => (
               <StatCard key={item.title} {...item} />
             ))}
-          </div>
+          </RecovStatsStrip>
 
-          <ProCard
+          <RecovTableCard
             title="文书任务列表"
             extra={
               <Space size={8} wrap>
@@ -2154,7 +2161,7 @@ const InstrumentListPage = () => {
               </Space>
             }
           >
-            <div className="flex flex-col gap-4">
+            <div className="recov-table-card-content">
               <Tabs
                 activeKey={activeCategory}
                 items={[
@@ -2245,7 +2252,7 @@ const InstrumentListPage = () => {
                 }}
               />
             </div>
-          </ProCard>
+          </RecovTableCard>
         </div>
       )}
 

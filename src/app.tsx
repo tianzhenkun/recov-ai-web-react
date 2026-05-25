@@ -39,6 +39,21 @@ const loginPath = '/user/login';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
 
+const recovListPagePaths = new Set([
+  '/datelligence',
+  '/delivery',
+  '/flow-manager',
+  '/instrument-list',
+  '/litigation-process',
+  '/reconciliation',
+  '/sys/instrument-standing',
+  '/sys/settle',
+  '/test11',
+]);
+
+const isRecovListPagePath = (pathname: string) =>
+  recovListPagePaths.has(pathname);
+
 type LayoutBreadcrumbItem = NonNullable<BreadcrumbProps['items']>[number] & {
   linkPath?: string;
   path?: string;
@@ -220,7 +235,8 @@ export const layout: RunTimeLayoutConfig = ({
     // waterMarkProps: {
     //   content: initialState?.currentUser?.name,
     // },
-    footerRender: () => <Footer />,
+    footerRender: () =>
+      isRecovListPagePath(history.location.pathname) ? null : <Footer />,
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login

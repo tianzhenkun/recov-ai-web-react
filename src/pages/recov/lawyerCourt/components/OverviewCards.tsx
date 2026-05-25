@@ -1,6 +1,7 @@
 import { ProCard } from '@ant-design/pro-components';
 import { Space, Tooltip, Typography } from 'antd';
 import MetricIcon from '@/pages/recov/components/MetricIcon';
+import { RecovStatsStrip } from '@/pages/recov/components/RecovListLayout';
 import type { LawyerCourtOverviewVO } from '@/services/ruoyi/lawyer-court';
 import { formatOverviewValue, OVERVIEW_CARD_METAS } from '../_shared';
 
@@ -18,7 +19,7 @@ type OverviewCardsProps = {
 };
 
 const OverviewCards = ({ overview, loading }: OverviewCardsProps) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+  <RecovStatsStrip className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
     {OVERVIEW_CARD_METAS.map((meta) => {
       const raw = overview[meta.key];
       const display = formatOverviewValue(raw, meta.format, meta.unit);
@@ -77,7 +78,7 @@ const OverviewCards = ({ overview, loading }: OverviewCardsProps) => (
         </ProCard>
       );
     })}
-  </div>
+  </RecovStatsStrip>
 );
 
 export default OverviewCards;

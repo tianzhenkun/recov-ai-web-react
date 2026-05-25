@@ -4,10 +4,10 @@ import {
   SearchOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { ProCard } from '@ant-design/pro-components';
 import { Button, Select, Space, Table, Tag, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import TableActions from '@/components/TableActions';
+import { RecovTableCard } from '@/pages/recov/components/RecovListLayout';
 import type {
   SettlementQuery,
   SettlementRecord,
@@ -149,7 +149,7 @@ const SettlementTableView = ({
   ];
 
   return (
-    <ProCard
+    <RecovTableCard
       title="服务费结算记录"
       extra={
         <Space wrap>
@@ -197,7 +197,7 @@ const SettlementTableView = ({
         dataSource={list}
         columns={columns}
       />
-    </ProCard>
+    </RecovTableCard>
   );
 };
 

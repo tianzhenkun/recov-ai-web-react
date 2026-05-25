@@ -6,7 +6,7 @@ import {
   SearchOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import {
   Button,
   Col,
@@ -29,6 +29,12 @@ import TableActions from '@/components/TableActions';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import {
+  RecovListPage,
+  RecovListStack,
+  RecovStatsStrip,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
 import {
   addRepayment,
   confirmRepayment,
@@ -658,12 +664,12 @@ const ReconciliationPage = () => {
   const adjustedResult = toNumber(currentRow?.recordedAmount) + adjustedAmount;
 
   return (
-    <PageContainer title="智能对账与结算">
+    <RecovListPage title="智能对账与结算">
       {messageContextHolder}
       {modalContextHolder}
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <RecovListStack>
         {systemMode === 1 && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <RecovStatsStrip className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {statCards.map((card) => (
               <StatCard
                 key={card.key}
@@ -673,16 +679,16 @@ const ReconciliationPage = () => {
                 icon={card.icon}
               />
             ))}
-          </div>
+          </RecovStatsStrip>
         )}
 
-        <ProCard
+        <RecovTableCard
           title="对账差异明细"
           extra={<Tag color={modeInfo.color}>当前模式：{modeInfo.label}</Tag>}
         >
           <Form
             form={queryForm}
-            style={{ marginBottom: 16 }}
+            className="recov-table-toolbar"
             onFinish={handleSearch}
           >
             <div
@@ -769,8 +775,8 @@ const ReconciliationPage = () => {
               },
             }}
           />
-        </ProCard>
-      </Space>
+        </RecovTableCard>
+      </RecovListStack>
 
       <Modal
         title="录入回款金额"
@@ -938,7 +944,7 @@ const ReconciliationPage = () => {
           </Paragraph>
         </Space>
       </Modal>
-    </PageContainer>
+    </RecovListPage>
   );
 };
 
