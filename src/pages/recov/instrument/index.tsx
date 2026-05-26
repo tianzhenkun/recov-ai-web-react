@@ -44,11 +44,9 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
 import TemplateEditor from '@/components/TemplateEditor';
-import type {
-  TemplateEditorFeatures,
-  TemplateVariable,
-} from '@/components/TemplateEditor/types';
+import type { TemplateEditorFeatures } from '@/components/TemplateEditor/types';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
+import { useTemplateVariables } from '@/hooks/useTemplateVariables';
 import MetricIcon, {
   type MetricTone,
   useMetricToneColors,
@@ -187,17 +185,6 @@ const statusMap: Record<number, { label: string; color: string }> = {
   7: { label: '送达中', color: 'warning' },
   8: { label: '盖章阻塞', color: 'orange' },
 };
-
-const instrumentTemplateVariables: TemplateVariable[] = [
-  { label: '债务人姓名', value: 'debtorName' },
-  { label: '债务编号', value: 'debtNumber' },
-  { label: '债务金额', value: 'debtAmount' },
-  { label: '逾期金额', value: 'overdueAmount' },
-  { label: '逾期天数', value: 'overdueDays' },
-  { label: '所属城市', value: 'city' },
-  { label: '所属项目', value: 'organization' },
-  { label: '当前日期', value: 'currentDate' },
-];
 
 const instrumentEditorFeatures: TemplateEditorFeatures = {
   textStyle: true,
@@ -519,6 +506,7 @@ const InstrumentListPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const confirmDelete = useDeleteConfirm({ modal: modalApi, messageApi });
+  const { variables: templateVariables } = useTemplateVariables();
   const [queryForm] = Form.useForm<QueryValues>();
   const [editForm] = Form.useForm<EditFormValues>();
   const [debtForm] = Form.useForm<DebtSearchValues>();
@@ -1297,7 +1285,7 @@ const InstrumentListPage = () => {
     const debtNumber = groupDetail?.debtNumber ?? currentGroup?.debtNumber;
     if (debtNumber) params.set('debtNumber', String(debtNumber));
     if (item?.standingCode) params.set('standingCode', item.standingCode);
-    history.push(`/sys/instrument-standing?${params.toString()}`);
+    history.push(`/sys/standing?${params.toString()}`);
   };
 
   const handleDelete = (record: InstrumentTaskItem) => {
@@ -2065,7 +2053,7 @@ const InstrumentListPage = () => {
                                   value={editorValue}
                                   outputType="html"
                                   placeholder="请输入文书内容..."
-                                  variables={instrumentTemplateVariables}
+                                  variables={templateVariables}
                                   features={instrumentEditorFeatures}
                                   height={isNarrow ? 420 : 620}
                                   onChange={setEditorValue}

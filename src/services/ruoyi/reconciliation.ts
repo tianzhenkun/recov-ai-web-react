@@ -109,12 +109,11 @@ export const addRepayment = (data: RepaymentPayload) =>
     data,
   });
 
-export const updateAmount = (data: {
-  id: number | string;
-  recordedAmount: number;
-  systemAmount?: number;
+export const updateSystemAmount = (data: {
+  instanceId: string;
+  systemAmount: number;
 }) =>
-  ruoyiRequest('/system/recov/repayment/amount', {
+  ruoyiRequest('/system/recov/repayment/systemAmount', {
     method: 'put',
     data,
   });

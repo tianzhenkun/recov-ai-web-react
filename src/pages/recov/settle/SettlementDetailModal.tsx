@@ -1,4 +1,4 @@
-import { Modal, Table } from 'antd';
+import { Modal, Table, Typography } from 'antd';
 import type { ServiceFeeDetail } from '@/services/ruoyi/settle';
 import { serviceFeeDetailColumns } from './serviceFeeDetailColumns';
 import TablePaginationFooter from './TablePaginationFooter';
@@ -29,29 +29,38 @@ const SettlementDetailModal = ({
   onPageChange,
 }: SettlementDetailModalProps) => (
   <Modal
-    title={title}
+    title={
+      <div className="flex flex-col gap-1">
+        <span>结算明细</span>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {title}
+        </Typography.Text>
+      </div>
+    }
     open={open}
-    width={1200}
+    width={1180}
     destroyOnHidden
     footer={null}
     onCancel={onClose}
   >
-    <Table<ServiceFeeDetail>
-      rowKey="id"
-      loading={loading}
-      bordered
-      scroll={{ x: 1200 }}
-      pagination={false}
-      dataSource={list}
-      columns={serviceFeeDetailColumns}
-    />
-    <TablePaginationFooter
-      rangeText={rangeText}
-      pageNum={pageNum}
-      pageSize={pageSize}
-      total={total}
-      onChange={onPageChange}
-    />
+    <div className="overflow-hidden rounded-lg border border-solid border-zinc-100">
+      <Table<ServiceFeeDetail>
+        rowKey="id"
+        loading={loading}
+        size="middle"
+        scroll={{ x: 1080, y: 420 }}
+        pagination={false}
+        dataSource={list}
+        columns={serviceFeeDetailColumns}
+      />
+      <TablePaginationFooter
+        rangeText={rangeText}
+        pageNum={pageNum}
+        pageSize={pageSize}
+        total={total}
+        onChange={onPageChange}
+      />
+    </div>
   </Modal>
 );
 

@@ -1,5 +1,4 @@
-import { WarningFilled } from '@ant-design/icons';
-import { Button, InputNumber, Modal } from 'antd';
+import { Alert, Button, InputNumber, Modal, Typography, theme } from 'antd';
 import { useEffect, useState } from 'react';
 
 export type FeeEditFormState = {
@@ -28,6 +27,7 @@ const FeeEditModal = ({
   onCancel,
   onSave,
 }: FeeEditModalProps) => {
+  const { token } = theme.useToken();
   const [feeRate, setFeeRate] = useState(0);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ const FeeEditModal = ({
       <Modal
         title="修改费率规则"
         open={open}
-        width={480}
+        width={520}
         destroyOnHidden
         mask={{ closable: false }}
         onCancel={onCancel}
@@ -55,16 +55,31 @@ const FeeEditModal = ({
     );
   }
 
+  const summaryItems = [
+    { label: '逾期账龄', value: initial.periodName },
+    { label: '对应城市层级', value: initial.tierName },
+  ];
+
   return (
     <Modal
       title="修改费率规则"
       open={open}
-      width={480}
+      width={520}
       destroyOnHidden
       mask={{ closable: false }}
       onCancel={onCancel}
+      styles={{
+        body: { paddingTop: token.paddingSM },
+        footer: { marginTop: token.marginLG },
+      }}
       footer={
-        <div className="flex justify-end gap-3">
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: token.marginXS,
+          }}
+        >
           <Button onClick={onCancel}>取消</Button>
           <Button type="primary" loading={loading} onClick={handleOk}>
             保存规则
@@ -72,55 +87,99 @@ const FeeEditModal = ({
         </div>
       }
     >
-      <div className="space-y-4">
-        <div className="space-y-3 rounded-lg bg-gray-50 p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">逾期账龄</span>
-            <span className="font-medium text-gray-900">
-              {initial.periodName}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">对应城市层级</span>
-            <span className="font-medium text-indigo-600">
-              {initial.tierName}
-            </span>
-          </div>
-        </div>
-
-        <div>
-          <label
-            htmlFor="fee-rate-input"
-            className="mb-2 block text-sm font-medium text-gray-700"
-          >
-            服务费比例配置
-          </label>
-          <div>
-            <div className="text-xs text-gray-500">{currentRangeLabel}</div>
-            <div>
-              <InputNumber
-                id="fee-rate-input"
-                className="!w-full"
-                min={0}
-                max={100}
-                precision={1}
-                step={0.5}
-                value={feeRate}
-                onChange={(value) =>
-                  setFeeRate(typeof value === 'number' ? value : 0)
-                }
-              />
-              <span className="text-lg font-medium text-gray-700">%</span>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: token.marginLG,
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: token.marginSM,
+            padding: token.padding,
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: token.borderRadiusLG,
+            background: token.colorFillAlter,
+          }}
+        >
+          {summaryItems.map((item) => (
+            <div
+              key={item.label}
+              style={{
+                minWidth: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: token.marginXXS,
+              }}
+            >
+              <Typography.Text type="secondary">{item.label}</Typography.Text>
+              <Typography.Text
+                strong
+                style={{ color: token.colorText, wordBreak: 'break-word' }}
+              >
+                {item.value}
+              </Typography.Text>
             </div>
-          </div>
+          ))}
         </div>
 
-        <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <WarningFilled className="mt-0.5 shrink-0 text-amber-600" />
-          <p className="text-xs leading-relaxed text-amber-800">
-            修改费率规则将影响后续产生的服务费结算，历史已生成的账单将保持不变。
-          </p>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: token.marginXS,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: token.marginSM,
+            }}
+          >
+            <label htmlFor="fee-rate-input">
+              <Typography.Text strong>服务费比例配置</Typography.Text>
+            </label>
+            <Typography.Text
+              style={{
+                flexShrink: 0,
+                padding: `2px ${token.paddingXS}px`,
+                border: `1px solid ${token.colorPrimaryBorder}`,
+                borderRadius: token.borderRadiusSM,
+                color: token.colorPrimaryText,
+                background: token.colorPrimaryBg,
+                fontSize: token.fontSizeSM,
+              }}
+            >
+              {currentRangeLabel}
+            </Typography.Text>
+          </div>
+
+          <InputNumber
+            id="fee-rate-input"
+            style={{ width: '100%' }}
+            min={0}
+            max={100}
+            precision={1}
+            step={0.5}
+            size="large"
+            addonAfter="%"
+            value={feeRate}
+            onChange={(value) =>
+              setFeeRate(typeof value === 'number' ? value : 0)
+            }
+          />
         </div>
+
+        <Alert
+          showIcon
+          type="warning"
+          message="修改费率规则将影响后续产生的服务费结算，历史已生成的账单将保持不变。"
+        />
       </div>
     </Modal>
   );

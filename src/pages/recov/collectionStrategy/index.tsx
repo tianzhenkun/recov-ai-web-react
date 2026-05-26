@@ -17,7 +17,17 @@ import {
   Tabs,
   Tooltip,
 } from 'antd';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import TemplateEditor from '@/components/TemplateEditor';
+import type { TemplateEditorFeatures } from '@/components/TemplateEditor/types';
+import { useTemplateVariables } from '@/hooks/useTemplateVariables';
 import {
   type CallConfigVO,
   type FlowTemplateVO,
@@ -39,6 +49,7 @@ import {
   isSamePersonaId,
   normalizeSteps,
   type PreviewStep,
+  resolveDefaultPersonaId,
   resolveFlowPreviewColumns,
   skipStrategyLabelMap,
   upsertNodeTypeMeta,
@@ -46,10 +57,21 @@ import {
 
 type PersonaId = string | number;
 
+const OPENING_TEMPLATE_FEATURES: TemplateEditorFeatures = {
+  textStyle: false,
+  color: false,
+  align: false,
+  image: false,
+  table: false,
+  variable: true,
+};
+
 type CallConfigForm = {
   id: number | null;
   identityName: string;
   strategyCore: string;
+  speakingStyle: string;
+  openingTemplate: string;
   personaId: PersonaId | null;
 };
 
@@ -57,11 +79,101 @@ const emptyCallConfigForm: CallConfigForm = {
   id: null,
   identityName: '',
   strategyCore: '',
+  speakingStyle: '',
+  openingTemplate: '',
   personaId: null,
 };
 
 type CallConfigEditValues = {
   strategyCore: string;
+  speakingStyle: string;
+  openingTemplate: string;
+};
+
+type CallConfigContentBlockProps = {
+  label: string;
+  value?: string;
+  emptyText: string;
+  className?: string;
+  bodyClassName?: string;
+  children?: ReactNode;
+};
+
+const CallConfigContentBlock = ({
+  label,
+  value = '',
+  emptyText,
+  className = '',
+  bodyClassName = '',
+  children,
+}: CallConfigContentBlockProps) => {
+  const content = value.trim();
+  return (
+    <div
+      className={`rounded-lg border border-solid border-zinc-100 bg-zinc-50/70 px-5 py-4 ${className}`}
+    >
+      <div className="mb-2 text-xs font-semibold text-zinc-500">{label}</div>
+      <div
+        className={`min-h-[96px] whitespace-pre-wrap break-words text-sm leading-7 text-zinc-700 ${bodyClassName}`}
+      >
+        {children ??
+          (content || <span className="text-zinc-400">{emptyText}</span>)}
+      </div>
+    </div>
+  );
+};
+
+const renderOpeningTemplatePreview = (
+  template: string,
+  identityName: string,
+  variables: { label: string; value: string }[],
+  emptyText: string,
+) => {
+  const content = template.trim();
+  if (!content) {
+    return <span className="text-zinc-400">{emptyText}</span>;
+  }
+
+  const nodes: ReactNode[] = [];
+  const variableLabelMap = new Map(
+    variables.map((item) => [item.value, item.label] as const),
+  );
+  const variablePattern = /\{\{\s*([a-zA-Z0-9_]+)\s*}}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  for (
+    match = variablePattern.exec(content);
+    match;
+    match = variablePattern.exec(content)
+  ) {
+    if (match.index > lastIndex) {
+      nodes.push(content.slice(lastIndex, match.index));
+    }
+    const variableName = match[1];
+    const variableLabel = variableLabelMap.get(variableName);
+    if (!variableLabel) {
+      nodes.push(match[0]);
+      lastIndex = match.index + match[0].length;
+      continue;
+    }
+    const label =
+      variableName === 'identityName'
+        ? identityName.trim() || variableLabel
+        : variableLabel;
+    nodes.push(
+      <span
+        key={`${variableName}-${match.index}`}
+        className="mx-0.5 inline-flex items-center rounded border border-solid border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-medium leading-5 text-blue-700"
+      >
+        {label}
+      </span>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    nodes.push(content.slice(lastIndex));
+  }
+  return nodes;
 };
 
 const useFlowPreviewColumns = (container: HTMLDivElement | null): number => {
@@ -84,6 +196,7 @@ const CollectionStrategyPage = () => {
   const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [editCallConfigForm] = Form.useForm<CallConfigEditValues>();
+  const { variables: templateVariables } = useTemplateVariables();
 
   const [loading, setLoading] = useState(false);
   const [personaList, setPersonaList] = useState<PersonaItem[]>([]);
@@ -159,36 +272,72 @@ const CollectionStrategyPage = () => {
             id: config.id,
             identityName: config.identityName ?? '',
             strategyCore: config.strategyCore ?? '',
+            speakingStyle: config.speakingStyle ?? '',
+            openingTemplate: config.openingTemplate ?? '',
             personaId: config.personaId ?? personaId,
           }
-        : { id: null, identityName: '', strategyCore: '', personaId };
+        : { ...emptyCallConfigForm, personaId };
       setCallConfigForm(next);
     },
     [],
+  );
+
+  const fetchCurrentFlowTemplate = useCallback(async (personaId: PersonaId) => {
+    const res = await listCurrentFlowTemplates({
+      pageNum: 1,
+      pageSize: 1,
+      personaId: personaId as number,
+    });
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    return rows[0] ?? null;
+  }, []);
+
+  const resolveTemplateSteps = useCallback(
+    (
+      template: FlowTemplateVO | null,
+      currentFlowModuleMap: Record<string, FlowModuleMeta>,
+    ) => {
+      const steps = template
+        ? normalizeSteps(currentFlowModuleMap, template.steps)
+        : [];
+      return steps.length > 0 ? steps : buildDefaultSteps(currentFlowModuleMap);
+    },
+    [],
+  );
+
+  const loadDefaultPersonaTemplateSteps = useCallback(
+    async (
+      currentFlowModuleMap: Record<string, FlowModuleMeta>,
+      personas: PersonaItem[] = personaList,
+    ) => {
+      const template = await fetchCurrentFlowTemplate(
+        resolveDefaultPersonaId(personas),
+      );
+      return resolveTemplateSteps(template, currentFlowModuleMap);
+    },
+    [fetchCurrentFlowTemplate, personaList, resolveTemplateSteps],
   );
 
   const loadPersonaFlow = useCallback(
     async (
       personaId: PersonaId,
       currentFlowModuleMap: Record<string, FlowModuleMeta>,
+      personas: PersonaItem[] = personaList,
     ) => {
       loadFlowRequestSeqRef.current += 1;
       const requestSeq = loadFlowRequestSeqRef.current;
       try {
-        const res = await listCurrentFlowTemplates({
-          pageNum: 1,
-          pageSize: 1,
-          personaId: personaId as number,
-        });
+        const template = await fetchCurrentFlowTemplate(personaId);
         if (requestSeq !== loadFlowRequestSeqRef.current) return;
-        const rows = Array.isArray(res.rows) ? res.rows : [];
-        const template = rows[0] ?? null;
         setCurrentTemplate(template);
-        setPreviewSteps(
-          template
-            ? normalizeSteps(currentFlowModuleMap, template.steps)
-            : buildDefaultSteps(currentFlowModuleMap),
-        );
+        const steps = template
+          ? resolveTemplateSteps(template, currentFlowModuleMap)
+          : await loadDefaultPersonaTemplateSteps(
+              currentFlowModuleMap,
+              personas,
+            );
+        if (requestSeq !== loadFlowRequestSeqRef.current) return;
+        setPreviewSteps(steps);
       } catch (error) {
         if (requestSeq !== loadFlowRequestSeqRef.current) return;
         console.error('加载策略模板失败', error);
@@ -196,7 +345,12 @@ const CollectionStrategyPage = () => {
         setPreviewSteps(buildDefaultSteps(currentFlowModuleMap));
       }
     },
-    [],
+    [
+      fetchCurrentFlowTemplate,
+      loadDefaultPersonaTemplateSteps,
+      personaList,
+      resolveTemplateSteps,
+    ],
   );
 
   const loadPersonaCallConfigs = useCallback(
@@ -212,6 +366,8 @@ const CollectionStrategyPage = () => {
           ...config,
           identityName: config.identityName ?? '',
           strategyCore: config.strategyCore ?? '',
+          speakingStyle: config.speakingStyle ?? '',
+          openingTemplate: config.openingTemplate ?? '',
           personaId: (config.personaId ?? personaId ?? 0) as number,
         }));
         setCallConfigList(normalized);
@@ -272,7 +428,7 @@ const CollectionStrategyPage = () => {
         if (firstPersonaId != null) {
           setActivePersonaId(firstPersonaId);
           await Promise.all([
-            loadPersonaFlow(firstPersonaId, map),
+            loadPersonaFlow(firstPersonaId, map, rows),
             loadPersonaCallConfigs(firstPersonaId),
           ]);
         }
@@ -339,6 +495,8 @@ const CollectionStrategyPage = () => {
     }
     editCallConfigForm.setFieldsValue({
       strategyCore: callConfigForm.strategyCore,
+      speakingStyle: callConfigForm.speakingStyle,
+      openingTemplate: callConfigForm.openingTemplate,
     });
     setCallConfigEditorOpen(true);
   };
@@ -357,7 +515,10 @@ const CollectionStrategyPage = () => {
     setCallConfigSaving(true);
     try {
       const payload: UpdateCallConfigDTO = {
+        identityName: callConfigForm.identityName,
         strategyCore: values.strategyCore ?? '',
+        speakingStyle: values.speakingStyle ?? '',
+        openingTemplate: values.openingTemplate ?? '',
         personaId: (callConfigForm.personaId ?? activePersonaId ?? undefined) as
           | number
           | undefined,
@@ -366,6 +527,8 @@ const CollectionStrategyPage = () => {
       const nextCallConfigForm = {
         ...callConfigForm,
         strategyCore: payload.strategyCore ?? '',
+        speakingStyle: payload.speakingStyle ?? '',
+        openingTemplate: payload.openingTemplate ?? '',
         personaId: payload.personaId ?? callConfigForm.personaId,
       };
       setCallConfigList((prev) =>
@@ -374,6 +537,8 @@ const CollectionStrategyPage = () => {
             ? {
                 ...item,
                 strategyCore: nextCallConfigForm.strategyCore,
+                speakingStyle: nextCallConfigForm.speakingStyle,
+                openingTemplate: nextCallConfigForm.openingTemplate,
                 personaId: payload.personaId ?? item.personaId,
               }
             : item,
@@ -489,7 +654,7 @@ const CollectionStrategyPage = () => {
         destroyOnHidden
         title="编辑外呼策略"
         open={callConfigEditorOpen}
-        width={720}
+        width={760}
         okText="保存"
         cancelText="取消"
         confirmLoading={callConfigSaving}
@@ -509,12 +674,39 @@ const CollectionStrategyPage = () => {
             />
           </Form.Item>
           <Form.Item
-            label="策略内容"
-            name="strategyCore"
-            rules={[{ max: 1000, message: '策略内容不能超过 1000 字' }]}
+            label="沟通语气"
+            name="speakingStyle"
+            rules={[{ max: 255, message: '沟通语气不能超过 255 字' }]}
           >
             <Input.TextArea
-              rows={10}
+              variant="outlined"
+              rows={3}
+              maxLength={255}
+              showCount
+              style={{ resize: 'none' }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="开场白"
+            name="openingTemplate"
+            rules={[{ max: 255, message: '开场白不能超过 255 字' }]}
+          >
+            <TemplateEditor
+              outputType="text"
+              height={140}
+              placeholder="请输入开场白"
+              features={OPENING_TEMPLATE_FEATURES}
+              variables={templateVariables}
+            />
+          </Form.Item>
+          <Form.Item
+            label="策略核心"
+            name="strategyCore"
+            rules={[{ max: 1000, message: '策略核心不能超过 1000 字' }]}
+          >
+            <Input.TextArea
+              variant="outlined"
+              rows={8}
               maxLength={1000}
               showCount
               style={{ resize: 'none' }}
@@ -573,13 +765,33 @@ const CollectionStrategyPage = () => {
                             tabBarStyle={{ marginBottom: 0 }}
                           />
                         </div>
-                        <div className="px-4 py-3">
-                          <div className="min-h-[220px] whitespace-pre-wrap break-words rounded-lg bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
-                            {callConfigForm.strategyCore.trim() || (
-                              <span className="text-zinc-400">
-                                暂无策略内容
-                              </span>
+                        <div className="px-5 pb-5 pt-4">
+                          <CallConfigContentBlock
+                            label="开场白"
+                            emptyText="暂无开场白"
+                            className="border-blue-100 bg-blue-50/70"
+                            bodyClassName="min-h-[88px] text-[15px] leading-8 text-slate-800"
+                          >
+                            {renderOpeningTemplatePreview(
+                              callConfigForm.openingTemplate,
+                              callConfigForm.identityName,
+                              templateVariables,
+                              '暂无开场白',
                             )}
+                          </CallConfigContentBlock>
+                          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                            <CallConfigContentBlock
+                              label="沟通语气"
+                              value={callConfigForm.speakingStyle}
+                              emptyText="暂无沟通语气"
+                              bodyClassName="min-h-[160px]"
+                            />
+                            <CallConfigContentBlock
+                              label="策略核心"
+                              value={callConfigForm.strategyCore}
+                              emptyText="暂无策略核心"
+                              bodyClassName="min-h-[160px]"
+                            />
                           </div>
                         </div>
                       </div>

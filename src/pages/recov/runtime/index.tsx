@@ -6,12 +6,15 @@ import {
   Radio,
   Spin,
   Switch,
-  Tag,
   TimePicker,
+  Typography,
+  theme,
 } from 'antd';
+import { createStyles } from 'antd-style';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getTimeConfig,
@@ -44,14 +47,162 @@ const timeFieldProps = {
     timeString || '',
 };
 
-const statusTagColor = (status: string) => {
-  if (status === '正常运行') return 'green';
-  if (status === '停止所有') return 'red';
-  if (status === '仅停止外呼') return 'volcano';
-  return 'orange';
+const useStyles = createStyles(({ token, css }) => ({
+  pageContent: css`
+    max-width: 920px;
+  `,
+  card: css`
+    border-color: ${token.colorBorderSecondary};
+  `,
+  cardBody: css`
+    padding: 18px 20px 20px;
+  `,
+  cardHeader: css`
+    min-height: 46px;
+    padding: 0 20px;
+  `,
+  status: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 24px;
+    padding: 2px 9px 2px 8px;
+    color: var(--runtime-status-color);
+    background: var(--runtime-status-bg);
+    border: 1px solid var(--runtime-status-border);
+    border-radius: ${token.borderRadiusLG}px;
+    font-size: ${token.fontSizeSM}px;
+    font-weight: 600;
+    line-height: 20px;
+    white-space: nowrap;
+  `,
+  statusDot: css`
+    position: relative;
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 999px;
+    background: currentColor;
+
+    &::after {
+      position: absolute;
+      inset: -5px;
+      border: 1px solid currentColor;
+      border-radius: inherit;
+      opacity: 0;
+      animation: runtime-status-pulse 1.8s ease-out infinite;
+      content: '';
+    }
+
+    @keyframes runtime-status-pulse {
+      0% {
+        transform: scale(0.45);
+        opacity: 0.5;
+      }
+      70% {
+        transform: scale(1.2);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1.2);
+        opacity: 0;
+      }
+    }
+  `,
+  compactForm: css`
+    max-width: 690px;
+
+    .ant-form-item {
+      margin-bottom: 12px;
+    }
+
+    .ant-form-item-label {
+      padding-bottom: 4px;
+    }
+
+    .ant-form-item-label > label {
+      color: ${token.colorTextSecondary};
+      font-size: ${token.fontSizeSM}px;
+      font-weight: 500;
+    }
+  `,
+  formGrid: css`
+    display: grid;
+    grid-template-columns: minmax(168px, 0.75fr) minmax(280px, 1fr);
+    column-gap: 28px;
+    row-gap: 4px;
+
+    @media (max-width: ${token.screenMD}px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  timeRange: css`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  `,
+  timeDivider: css`
+    color: ${token.colorTextTertiary};
+    font-size: ${token.fontSizeSM}px;
+  `,
+}));
+
+const getRuntimeStatusTone = (
+  status: string,
+  token: ReturnType<typeof theme.useToken>['token'],
+) => {
+  if (status === '正常运行') {
+    return {
+      color: token.colorPrimary,
+      bg: token.colorPrimaryBg,
+      border: token.colorPrimaryBorder,
+    };
+  }
+  if (status === '停止所有') {
+    return {
+      color: token.colorError,
+      bg: token.colorErrorBg,
+      border: token.colorErrorBorder,
+    };
+  }
+  if (status === '仅停止外呼' || status === '非运营时间') {
+    return {
+      color: token.colorWarning,
+      bg: token.colorWarningBg,
+      border: token.colorWarningBorder,
+    };
+  }
+  return {
+    color: token.colorTextTertiary,
+    bg: token.colorFillQuaternary,
+    border: token.colorBorderSecondary,
+  };
+};
+
+const RuntimeStatusIndicator = ({ status }: { status: string }) => {
+  const { styles } = useStyles();
+  const { token } = theme.useToken();
+  const tone = getRuntimeStatusTone(status, token);
+
+  return (
+    <div
+      className={styles.status}
+      style={
+        {
+          '--runtime-status-color': tone.color,
+          '--runtime-status-bg': tone.bg,
+          '--runtime-status-border': tone.border,
+        } as CSSProperties
+      }
+    >
+      <span className={styles.statusDot} />
+      <span>{status}</span>
+    </div>
+  );
 };
 
 const RuntimeSettingsPage = () => {
+  const { styles } = useStyles();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [form] = Form.useForm<TimeConfigVo>();
 
@@ -155,16 +306,34 @@ const RuntimeSettingsPage = () => {
       {messageContextHolder}
 
       <ProCard
-        title="AI 外呼运营时间"
+        className={styles.pageContent}
+        size="small"
+        styles={{
+          body: { padding: 0 },
+          header: { padding: 0 },
+        }}
+        classNames={{
+          body: styles.cardBody,
+          header: styles.cardHeader,
+          root: styles.card,
+        }}
+        title={
+          <Typography.Text strong style={{ fontSize: 15 }}>
+            AI 外呼运营时间
+          </Typography.Text>
+        }
         extra={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {runningStatus ? (
-              <Tag color={statusTagColor(runningStatus)} variant="filled">
-                {runningStatus}
-              </Tag>
+              <RuntimeStatusIndicator status={runningStatus} />
             ) : null}
             {dirty ? (
-              <Button type="primary" loading={saving} onClick={handleSave}>
+              <Button
+                type="primary"
+                size="small"
+                loading={saving}
+                onClick={handleSave}
+              >
                 保存配置
               </Button>
             ) : null}
@@ -176,9 +345,11 @@ const RuntimeSettingsPage = () => {
             form={form}
             layout="vertical"
             initialValues={DEFAULT_TIME_FORM}
-            className="max-w-3xl"
+            requiredMark={false}
+            size="small"
+            className={styles.compactForm}
           >
-            <div className="grid grid-cols-1 gap-x-8 gap-y-2 md:grid-cols-2">
+            <div className={styles.formGrid}>
               <Form.Item
                 label="外呼运营时段"
                 name="timeEnabled"
@@ -186,12 +357,12 @@ const RuntimeSettingsPage = () => {
                 getValueProps={(value) => ({ checked: value === '1' })}
                 getValueFromEvent={(checked: boolean) => (checked ? '1' : '0')}
               >
-                <Switch />
+                <Switch size="small" />
               </Form.Item>
 
               {timeEnabled ? (
                 <Form.Item label="外呼时间段" required>
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className={styles.timeRange}>
                     <Form.Item
                       name="startTime"
                       noStyle
@@ -200,11 +371,11 @@ const RuntimeSettingsPage = () => {
                     >
                       <TimePicker
                         format="HH:mm"
-                        className="!w-36"
+                        className="!w-[112px]"
                         placeholder="开始时间"
                       />
                     </Form.Item>
-                    <span className="font-medium text-gray-400">至</span>
+                    <span className={styles.timeDivider}>至</span>
                     <Form.Item
                       name="endTime"
                       noStyle
@@ -213,7 +384,7 @@ const RuntimeSettingsPage = () => {
                     >
                       <TimePicker
                         format="HH:mm"
-                        className="!w-36"
+                        className="!w-[112px]"
                         placeholder="结束时间"
                       />
                     </Form.Item>

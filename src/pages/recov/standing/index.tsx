@@ -1,88 +1,56 @@
-import {
-  DeleteOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  EyeOutlined,
-  FilePdfOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
 import { useLocation } from '@umijs/max';
-import type { TablePaginationConfig } from 'antd';
-import {
-  Button,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  message,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tag,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+import { Button, Empty, Modal, message, Spin, Tabs } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import TableActions from '@/components/TableActions';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
-import {
-  RecovListPage,
-  RecovListStack,
-  RecovTableCard,
-} from '@/pages/recov/components/RecovListLayout';
+import { RecovListPage } from '@/pages/recov/components/RecovListLayout';
 import { downloadOss, listOssByIds } from '@/services/ruoyi/oss';
 import {
   delStanding,
   listStanding,
-  type StandingQuery,
+  type StandingCode,
   type StandingVO,
   updateStandingStatus,
 } from '@/services/ruoyi/standing';
 import {
   attachStandingFile,
-  getStandingTypeName,
+  pickUsedRangesInSameType,
   STANDING_TYPES,
 } from './_shared';
+import StandingCard from './StandingCard';
 import StandingFormDrawer from './StandingFormDrawer';
+
+type StandingMap = Record<StandingCode, StandingVO[]>;
+
+const emptyStandingMap = (): StandingMap => ({
+  PLAINTIFF_LICENSE: [],
+  LEGAL_REP_ID_CARD: [],
+  LEGAL_REP_CERT: [],
+});
+
+const DEFAULT_STANDING_CODE = STANDING_TYPES[0].code;
 
 type DrawerState = {
   open: boolean;
   mode: 'add' | 'edit';
+  standingCode?: StandingCode;
   editingId?: number | string;
-};
-
-type SearchForm = {
-  standingCode?: string;
-  standingName?: string;
-  debtNumber?: number | null;
-  status?: string;
-};
-
-const statusOptions = [
-  { label: '启用', value: '1' },
-  { label: '停用', value: '0' },
-];
-
-const formatRange = (record: StandingVO) => {
-  if (record.startNum == null && record.endNum == null) return '全部资产';
-  return `${record.startNum ?? '-'} - ${record.endNum ?? '-'}`;
 };
 
 const SmartStandingPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
-  const [form] = Form.useForm<SearchForm>();
   const { search: locationSearch } = useLocation();
 
   const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<StandingVO[]>([]);
-  const [total, setTotal] = useState(0);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
+  const [standingDataMap, setStandingDataMap] = useState<StandingMap>(
+    emptyStandingMap(),
+  );
   const [switchingId, setSwitchingId] = useState<number | string | null>(null);
+  const [activeStandingCode, setActiveStandingCode] = useState<StandingCode>(
+    DEFAULT_STANDING_CODE,
+  );
   const [drawerState, setDrawerState] = useState<DrawerState>({
     open: false,
     mode: 'add',
@@ -90,93 +58,86 @@ const SmartStandingPage = () => {
 
   const confirmDelete = useDeleteConfirm({ modal: modalApi, messageApi });
 
-  const loadData = useCallback(
-    async (
-      nextPage = pagination.current,
-      nextPageSize = pagination.pageSize,
-    ) => {
-      setLoading(true);
-      try {
-        const values = form.getFieldsValue();
-        const query: StandingQuery = {
-          pageNum: nextPage,
-          pageSize: nextPageSize,
-          standingCode: values.standingCode,
-          standingName: values.standingName,
-          debtNumber: values.debtNumber ?? undefined,
-          status: values.status,
-        };
-        const res = await listStanding(query);
-        const sourceRows = (res.rows ?? []) as StandingVO[];
-        const ossIds = sourceRows
-          .map((item) => item.standingOssId)
-          .filter((id) => id != null && id !== '')
-          .map(String);
-        let nextRows = sourceRows;
-        if (ossIds.length > 0) {
-          try {
-            const ossRes = await listOssByIds(
-              Array.from(new Set(ossIds)).join(','),
-            );
-            const ossMap = new Map<string, { url?: string; name?: string }>();
-            (ossRes.data ?? []).forEach((oss) => {
-              if (oss.ossId != null) {
-                ossMap.set(String(oss.ossId), {
-                  url: oss.url,
-                  name: oss.originalName || oss.fileName,
-                });
-              }
-            });
-            nextRows = attachStandingFile(sourceRows, ossMap);
-          } catch {
-            messageApi.error('获取 PDF 文件信息失败');
+  const loadAllStandings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const results = await Promise.all(
+        STANDING_TYPES.map((item) =>
+          listStanding({
+            standingCode: item.code,
+            pageNum: 1,
+            pageSize: 1000,
+          }),
+        ),
+      );
+
+      const nextMap = emptyStandingMap();
+      const ossIdSet = new Set<string>();
+      STANDING_TYPES.forEach((item, index) => {
+        const rows = (results[index]?.rows ?? []) as StandingVO[];
+        nextMap[item.code] = rows;
+        rows.forEach((row) => {
+          if (row.standingOssId != null && row.standingOssId !== '') {
+            ossIdSet.add(String(row.standingOssId));
           }
+        });
+      });
+
+      if (ossIdSet.size > 0) {
+        try {
+          const ossRes = await listOssByIds(Array.from(ossIdSet).join(','));
+          const ossMap = new Map<string, { url?: string; name?: string }>();
+          (ossRes.data ?? []).forEach((oss) => {
+            if (oss.ossId != null) {
+              ossMap.set(String(oss.ossId), {
+                url: oss.url,
+                name: oss.originalName || oss.fileName,
+              });
+            }
+          });
+          STANDING_TYPES.forEach((item) => {
+            nextMap[item.code] = attachStandingFile(nextMap[item.code], ossMap);
+          });
+        } catch {
+          messageApi.error('获取 PDF 文件信息失败');
         }
-        setRows(nextRows);
-        setTotal(Number(res.total ?? sourceRows.length));
-        setPagination({ current: nextPage, pageSize: nextPageSize });
-      } catch {
-        messageApi.error('获取主体资格材料失败');
-      } finally {
-        setLoading(false);
       }
-    },
-    [form, messageApi, pagination.current, pagination.pageSize],
-  );
+
+      setStandingDataMap(nextMap);
+    } catch {
+      messageApi.error('获取主体资格材料失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [messageApi]);
+
+  useEffect(() => {
+    void loadAllStandings();
+  }, [loadAllStandings]);
 
   useEffect(() => {
     const params = new URLSearchParams(locationSearch);
     const standingCode = params.get('standingCode') || undefined;
-    const debtNumber = params.get('debtNumber');
-    if (standingCode || debtNumber) {
-      form.setFieldsValue({
-        standingCode,
-        debtNumber: debtNumber ? Number(debtNumber) : undefined,
-      });
+    if (STANDING_TYPES.some((item) => item.code === standingCode)) {
+      setActiveStandingCode(standingCode as StandingCode);
     }
-    void loadData(1, pagination.pageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationSearch]);
 
-  const handleSearch = () => {
-    void loadData(1, pagination.pageSize);
-  };
-
-  const handleReset = () => {
-    form.resetFields();
-    void loadData(1, pagination.pageSize);
-  };
-
-  const handleTableChange = (next: TablePaginationConfig) => {
-    void loadData(next.current ?? 1, next.pageSize ?? pagination.pageSize);
-  };
-
   const handleAdd = () => {
-    setDrawerState({ open: true, mode: 'add' });
+    setDrawerState({
+      open: true,
+      mode: 'add',
+      standingCode: activeStandingCode,
+    });
   };
 
   const handleEdit = (record: StandingVO) => {
-    setDrawerState({ open: true, mode: 'edit', editingId: record.id });
+    setDrawerState({
+      open: true,
+      mode: 'edit',
+      standingCode: record.standingCode as StandingCode,
+      editingId: record.id,
+    });
   };
 
   const closeDrawer = () => {
@@ -184,7 +145,7 @@ const SmartStandingPage = () => {
   };
 
   const handleDrawerSaved = () => {
-    void loadData();
+    void loadAllStandings();
   };
 
   const handleDelete = (record: StandingVO) => {
@@ -197,7 +158,7 @@ const SmartStandingPage = () => {
         await delStanding([record.id]);
       },
       onSuccess: () => {
-        void loadData();
+        void loadAllStandings();
       },
     });
   };
@@ -217,7 +178,7 @@ const SmartStandingPage = () => {
         try {
           await updateStandingStatus(record.id, nextStatus);
           messageApi.success(`${actionText}成功`);
-          await loadData();
+          await loadAllStandings();
         } catch {
           messageApi.error('状态切换失败');
         } finally {
@@ -246,222 +207,100 @@ const SmartStandingPage = () => {
     }
   };
 
-  const columns: ColumnsType<StandingVO> = useMemo(
-    () => [
-      {
-        title: '材料类型',
-        dataIndex: 'standingCode',
-        width: 210,
-        render: (code: string) => (
-          <Tag color="blue" className="!mr-0">
-            {getStandingTypeName(code)}
-          </Tag>
-        ),
-      },
-      {
-        title: '材料名称',
-        dataIndex: 'standingName',
-        ellipsis: true,
-      },
-      {
-        title: 'PDF 文件',
-        dataIndex: 'standingOssId',
-        width: 220,
-        render: (_: unknown, record) => (
-          <Space size={6} className="max-w-full">
-            <FilePdfOutlined className="text-red-500" />
-            <span className="max-w-[150px] truncate" title={record.fileName}>
-              {record.fileName || `OSS ${record.standingOssId}`}
-            </span>
-          </Space>
-        ),
-      },
-      {
-        title: '资产编号范围',
-        width: 150,
-        render: (_: unknown, record) =>
-          record.startNum == null && record.endNum == null ? (
-            <Tag color="green" className="!mr-0">
-              全部资产
-            </Tag>
-          ) : (
-            <span className="font-mono text-zinc-700">
-              {formatRange(record)}
-            </span>
-          ),
-      },
-      {
-        title: '状态',
-        dataIndex: 'status',
-        width: 110,
-        render: (status: string, record) => (
-          <Switch
-            size="small"
-            checked={status === '1'}
-            loading={switchingId === record.id}
-            checkedChildren="启用"
-            unCheckedChildren="停用"
-            onChange={(checked) =>
-              handleToggleStatus(record, checked ? '1' : '0')
-            }
-          />
-        ),
-      },
-      {
-        title: '更新时间',
-        dataIndex: 'updateTime',
-        width: 180,
-        render: (value?: string) =>
-          value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-',
-      },
-      {
-        title: '操作',
-        fixed: 'right',
-        width: 160,
-        render: (_: unknown, record) => (
-          <TableActions
-            maxVisible={3}
-            actions={[
-              {
-                key: 'preview',
-                label: '预览',
-                icon: <EyeOutlined />,
-                disabled: !record.fileUrl,
-                onClick: () => handlePreview(record),
-              },
-              {
-                key: 'download',
-                label: '下载',
-                icon: <DownloadOutlined />,
-                onClick: () => void handleDownload(record),
-              },
-              {
-                key: 'edit',
-                label: '编辑',
-                icon: <EditOutlined />,
-                onClick: () => handleEdit(record),
-              },
-              {
-                key: 'delete',
-                label: '删除',
-                icon: <DeleteOutlined />,
-                danger: true,
-                onClick: () => handleDelete(record),
-              },
-            ]}
-          />
-        ),
-      },
-    ],
-    [switchingId],
+  const standingTabItems = useMemo(
+    () =>
+      STANDING_TYPES.map((item) => {
+        const Icon = item.icon;
+        return {
+          key: item.code,
+          icon: <Icon />,
+          label: `${item.label} ${standingDataMap[item.code]?.length ?? 0}`,
+        };
+      }),
+    [standingDataMap],
+  );
+
+  const activeStandingList = standingDataMap[activeStandingCode] ?? [];
+  const drawerStandingCode = drawerState.standingCode ?? activeStandingCode;
+  const drawerSameTypeRows = standingDataMap[drawerStandingCode] ?? [];
+  const sameTypeUsedRanges = useMemo(
+    () =>
+      pickUsedRangesInSameType(
+        drawerSameTypeRows,
+        drawerStandingCode,
+        drawerState.editingId,
+      ),
+    [drawerSameTypeRows, drawerStandingCode, drawerState.editingId],
+  );
+  const wildcardUsed = useMemo(
+    () =>
+      drawerSameTypeRows.some(
+        (item) =>
+          item.id !== drawerState.editingId &&
+          item.status === '1' &&
+          item.startNum == null &&
+          item.endNum == null,
+      ),
+    [drawerSameTypeRows, drawerState.editingId],
   );
 
   return (
-    <RecovListPage
-      title="原告主体资格材料管理"
-      extra={[
-        <Button
-          key="refresh"
-          icon={<ReloadOutlined />}
-          onClick={() => void loadData()}
-        >
-          刷新
-        </Button>,
-        <Button
-          key="add"
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleAdd}
-        >
-          新增材料
-        </Button>,
-      ]}
-    >
+    <RecovListPage title="原告主体资格材料管理" breadcrumbRender={false}>
       {messageContextHolder}
       {modalContextHolder}
-      <RecovListStack>
+      <div className="flex flex-col gap-4 pb-4">
         <ProCard>
-          <Form<SearchForm>
-            form={form}
-            layout="inline"
-            className="gap-y-3"
-            onFinish={handleSearch}
-          >
-            <Form.Item name="standingCode" label="材料类型">
-              <Select
-                allowClear
-                placeholder="全部类型"
-                style={{ width: 210 }}
-                options={STANDING_TYPES.map((item) => ({
-                  label: item.label,
-                  value: item.code,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item name="standingName" label="材料名称">
-              <Input
-                allowClear
-                placeholder="请输入材料名称"
-                style={{ width: 180 }}
-              />
-            </Form.Item>
-            <Form.Item name="debtNumber" label="资产编号">
-              <InputNumber
-                controls={false}
-                precision={0}
-                min={1}
-                placeholder="覆盖该编号"
-                style={{ width: 150 }}
-              />
-            </Form.Item>
-            <Form.Item name="status" label="状态">
-              <Select
-                allowClear
-                placeholder="全部状态"
-                style={{ width: 120 }}
-                options={statusOptions}
-              />
-            </Form.Item>
-            <Form.Item>
-              <Space>
+          <Spin spinning={loading}>
+            <Tabs
+              activeKey={activeStandingCode}
+              items={standingTabItems}
+              tabBarGutter={28}
+              tabBarExtraContent={
                 <Button
                   type="primary"
-                  htmlType="submit"
-                  icon={<SearchOutlined />}
+                  icon={<PlusOutlined />}
+                  onClick={handleAdd}
                 >
-                  查询
+                  新增材料
                 </Button>
-                <Button onClick={handleReset}>重置</Button>
-              </Space>
-            </Form.Item>
-          </Form>
+              }
+              className="[&_.ant-tabs-nav]:!mb-4"
+              onChange={(key) => setActiveStandingCode(key as StandingCode)}
+            />
+            {activeStandingList.length === 0 ? (
+              <div className="flex min-h-[320px] items-center justify-center">
+                <Empty
+                  description="暂无材料"
+                  styles={{ image: { height: 72 } }}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+                {activeStandingList.map((item) => (
+                  <StandingCard
+                    key={item.id}
+                    item={item}
+                    switching={switchingId === item.id}
+                    onPreview={handlePreview}
+                    onDownload={(record) => void handleDownload(record)}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onToggleStatus={handleToggleStatus}
+                  />
+                ))}
+              </div>
+            )}
+          </Spin>
         </ProCard>
-
-        <RecovTableCard>
-          <Table<StandingVO>
-            className="recov-stable-pagination-table"
-            rowKey="id"
-            loading={loading}
-            columns={columns}
-            dataSource={rows}
-            scroll={{ x: 1120 }}
-            pagination={{
-              current: pagination.current,
-              pageSize: pagination.pageSize,
-              total,
-              showSizeChanger: true,
-              showTotal: (count) => `共 ${count} 条`,
-            }}
-            onChange={handleTableChange}
-          />
-        </RecovTableCard>
-      </RecovListStack>
+      </div>
 
       <StandingFormDrawer
         open={drawerState.open}
         mode={drawerState.mode}
         editingId={drawerState.editingId}
-        allUsedRanges={[]}
+        standingCode={drawerStandingCode}
+        allUsedRanges={sameTypeUsedRanges}
+        wildcardUsed={wildcardUsed}
         onClose={closeDrawer}
         onSaved={handleDrawerSaved}
         messageApi={messageApi}

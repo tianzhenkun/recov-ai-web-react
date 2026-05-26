@@ -8,8 +8,8 @@ import {
   ToolOutlined,
 } from '@ant-design/icons';
 import type { ComponentType, CSSProperties } from 'react';
-import type { TemplateVariable } from '@/components/TemplateEditor/types';
 import {
+  type DeliveryExpressExcelField,
   type DeliveryStrategyFlowNode,
   type DeliveryWayListRow,
   normalizeDeliveryWayCode,
@@ -75,13 +75,75 @@ export const isDeliveryWayEnabled = (
   );
 };
 
-export const TEMPLATE_VARS_FALLBACK: TemplateVariable[] = [
-  { label: '客户称谓', value: 'name' },
-  { label: '账单金额', value: 'debt_amount' },
-  { label: '截止日期', value: 'deadline_time' },
-  { label: '企业名称', value: 'organization' },
-  { label: '文书链接清单', value: 'documentLinks' },
+export const EXPRESS_EXCEL_TEMPLATE_TYPE = 'expressDebtExcel';
+
+export const EXPRESS_EXCEL_FIELDS_FALLBACK: DeliveryExpressExcelField[] = [
+  { key: 'debtorName', label: '债务人姓名', sortOrder: 10 },
+  { key: 'debtorPhone', label: '手机号', sortOrder: 20 },
+  { key: 'address', label: '住址', sortOrder: 30 },
 ];
+
+export const normalizeExpressExcelFields = (
+  fields: DeliveryExpressExcelField[] | undefined,
+): DeliveryExpressExcelField[] => {
+  if (!Array.isArray(fields) || fields.length === 0) {
+    return EXPRESS_EXCEL_FIELDS_FALLBACK;
+  }
+  const seen = new Set<string>();
+  const normalized = fields
+    .map<DeliveryExpressExcelField | null>((field, index) => {
+      const key = String(field?.key ?? '').trim();
+      const label = String(field?.label ?? '').trim();
+      if (!key || !label || seen.has(key)) return null;
+      seen.add(key);
+      return {
+        key,
+        label,
+        sortOrder: field.sortOrder ?? (index + 1) * 10,
+      };
+    })
+    .filter((field): field is DeliveryExpressExcelField => field !== null)
+    .sort(
+      (a, b) =>
+        Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0) ||
+        a.key.localeCompare(b.key),
+    );
+  return normalized.length > 0 ? normalized : EXPRESS_EXCEL_FIELDS_FALLBACK;
+};
+
+export const expressExcelFieldKeys = (
+  fields: DeliveryExpressExcelField[] = EXPRESS_EXCEL_FIELDS_FALLBACK,
+) => normalizeExpressExcelFields(fields).map((field) => field.key);
+
+export const parseExpressExcelTemplate = (
+  value: string | null | undefined,
+  fields: DeliveryExpressExcelField[] = EXPRESS_EXCEL_FIELDS_FALLBACK,
+): string[] => {
+  const availableKeys = expressExcelFieldKeys(fields);
+  const allowed = new Set(availableKeys);
+  const fallback = availableKeys;
+  const raw = String(value ?? '').trim();
+  if (!raw) return fallback;
+  if (!raw.startsWith('{')) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as { fields?: unknown };
+    if (!Array.isArray(parsed.fields)) return fallback;
+    const selected = parsed.fields
+      .map((key) => String(key ?? '').trim())
+      .filter(
+        (key, index, list) => allowed.has(key) && list.indexOf(key) === index,
+      );
+    return selected;
+  } catch {
+    return fallback;
+  }
+};
+
+export const stringifyExpressExcelTemplate = (fields: string[]) =>
+  JSON.stringify({
+    type: EXPRESS_EXCEL_TEMPLATE_TYPE,
+    fields,
+  });
 
 export const cloneTemplates = (t: DeliveryContentTemplates) =>
   JSON.parse(JSON.stringify(t)) as DeliveryContentTemplates;
@@ -124,19 +186,3 @@ export const pickAvailableWays = (
   usedIds: Set<string>,
 ) =>
   wayRows.filter((item) => item.enabled !== false && !usedIds.has(item.nodeId));
-
-export const normalizeVariables = (
-  variables: Array<{ key?: string; label?: string }> | undefined,
-): TemplateVariable[] => {
-  if (!Array.isArray(variables) || variables.length === 0) {
-    return TEMPLATE_VARS_FALLBACK;
-  }
-  const list = variables
-    .map((item) => {
-      const label = String(item?.label ?? '').trim();
-      const value = String(item?.key ?? '').trim();
-      return label && value ? { label, value } : null;
-    })
-    .filter((item): item is TemplateVariable => item !== null);
-  return list.length > 0 ? list : TEMPLATE_VARS_FALLBACK;
-};

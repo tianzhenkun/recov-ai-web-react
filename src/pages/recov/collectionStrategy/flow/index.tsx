@@ -9,7 +9,6 @@ import {
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import {
-  Alert,
   Button,
   Collapse,
   Drawer,
@@ -23,6 +22,7 @@ import {
   Typography,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type RuoyiDictOption, useRuoyiDict } from '@/hooks/useRuoyiDict';
 import {
   type CreateFlowTemplateDTO,
   createFlowTemplate,
@@ -36,7 +36,7 @@ import {
 import { listPersona, type PersonaItem } from '@/services/ruoyi/persona';
 import {
   type AiCallRole,
-  aiCallRoleOptions,
+  aiCallRoleOptions as aiCallRoleFallbackOptions,
   buildDefaultNodeParams,
   buildDefaultSteps,
   buildInitialFlowModuleMap,
@@ -51,8 +51,10 @@ import {
   getNodeIdentityDisplayText,
   isSamePersonaId,
   type NormalizedStrategyStep,
+  normalizeAiCallRole,
   normalizeStep,
   normalizeSteps,
+  resolveDefaultPersonaId,
   skipStrategyOptions,
   upsertNodeTypeMeta,
   validateStrategySteps,
@@ -62,7 +64,15 @@ const { Text } = Typography;
 
 type PersonaId = string | number;
 
-const mockStandardTemplateNodeCodes = ['ai_call', 'corp_letter', 'law_letter'];
+const digitalEmployeeDictType = 'digital_employee';
+const aiCallRoleDictFallbackOptions: RuoyiDictOption[] =
+  aiCallRoleFallbackOptions.map((option) => ({
+    ...option,
+    raw: {
+      dictLabel: option.label,
+      dictValue: option.value,
+    },
+  }));
 
 type SelectedNodeForm = {
   aiRole: AiCallRole | '';
@@ -83,6 +93,8 @@ const defaultSelectedNodeForm: SelectedNodeForm = {
 const CollectionStrategyFlowEditor = () => {
   const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
+  const { loading: aiCallRoleLoading, options: aiCallRoleDictOptions } =
+    useRuoyiDict(digitalEmployeeDictType, aiCallRoleDictFallbackOptions);
   const [modalApi, modalContextHolder] = Modal.useModal();
 
   const [loading, setLoading] = useState(false);
@@ -140,6 +152,15 @@ const CollectionStrategyFlowEditor = () => {
     return modules.filter((module) => backendNodeCodes.has(module.code));
   }, [backendNodeCodes, flowModuleMap]);
 
+  const aiCallRoleSelectOptions = useMemo(
+    () =>
+      aiCallRoleDictOptions.map((option) => ({
+        label: option.label,
+        value: normalizeAiCallRole(option.value) ?? option.value,
+      })),
+    [aiCallRoleDictOptions],
+  );
+
   const selectedNode = useMemo(
     () => draftSteps.find((node) => node.id === selectedNodeId) ?? null,
     [draftSteps, selectedNodeId],
@@ -154,7 +175,7 @@ const CollectionStrategyFlowEditor = () => {
         return;
       }
       setSelectedNodeForm({
-        aiRole: (node.params?.aiRole as AiCallRole | undefined) ?? '',
+        aiRole: normalizeAiCallRole(node.params?.aiRole) ?? '',
         sealId: node.params?.sealId ?? '',
         waitMinutes: node.config.waitMinutes,
         failStrategy: node.config.failStrategy,
@@ -202,28 +223,64 @@ const CollectionStrategyFlowEditor = () => {
     return rows;
   }, []);
 
+  const fetchCurrentFlowTemplate = useCallback(async (personaId: PersonaId) => {
+    const res = await listCurrentFlowTemplates({
+      pageNum: 1,
+      pageSize: 1,
+      personaId: personaId as number,
+    });
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    return rows[0] ?? null;
+  }, []);
+
+  const resolveTemplateSteps = useCallback(
+    (
+      template: FlowTemplateVO | null,
+      currentFlowModuleMap: Record<string, FlowModuleMeta>,
+    ) => {
+      const steps = template
+        ? normalizeSteps(currentFlowModuleMap, template.steps)
+        : [];
+      return steps.length > 0 ? steps : buildDefaultSteps(currentFlowModuleMap);
+    },
+    [],
+  );
+
+  const loadDefaultPersonaTemplateSteps = useCallback(
+    async (
+      currentFlowModuleMap: Record<string, FlowModuleMeta>,
+      personas: PersonaItem[] = personaList,
+    ) => {
+      const template = await fetchCurrentFlowTemplate(
+        resolveDefaultPersonaId(personas),
+      );
+      return resolveTemplateSteps(template, currentFlowModuleMap);
+    },
+    [fetchCurrentFlowTemplate, personaList, resolveTemplateSteps],
+  );
+
   const loadPersonaFlow = useCallback(
     async (
       personaId: PersonaId,
       currentFlowModuleMap: Record<string, FlowModuleMeta>,
+      personas: PersonaItem[] = personaList,
     ) => {
-      const res = await listCurrentFlowTemplates({
-        pageNum: 1,
-        pageSize: 1,
-        personaId: personaId as number,
-      });
-      const rows = Array.isArray(res.rows) ? res.rows : [];
-      const template = rows[0] ?? null;
+      const template = await fetchCurrentFlowTemplate(personaId);
       setCurrentTemplate(template);
       setCurrentTemplateId(template?.id ?? null);
       const steps = template
-        ? normalizeSteps(currentFlowModuleMap, template.steps)
-        : buildDefaultSteps(currentFlowModuleMap);
+        ? resolveTemplateSteps(template, currentFlowModuleMap)
+        : await loadDefaultPersonaTemplateSteps(currentFlowModuleMap, personas);
       setDraftSteps(steps);
       setSelectedNodeId(steps[0]?.id ?? null);
       setDirty(false);
     },
-    [],
+    [
+      fetchCurrentFlowTemplate,
+      loadDefaultPersonaTemplateSteps,
+      personaList,
+      resolveTemplateSteps,
+    ],
   );
 
   useEffect(() => {
@@ -242,7 +299,7 @@ const CollectionStrategyFlowEditor = () => {
           null;
         if (personaId == null) return;
         setActivePersonaId(personaId);
-        await loadPersonaFlow(personaId, map);
+        await loadPersonaFlow(personaId, map, rows);
       } catch (error) {
         console.error('初始化催收流程编排页失败', error);
         messageApi.error('初始化催收流程编排页失败');
@@ -312,7 +369,8 @@ const CollectionStrategyFlowEditor = () => {
     setSelectedNodeForm((prev) => ({ ...prev, aiRole: role }));
     applySelectedNodeData({
       identity:
-        aiCallRoleOptions.find((item) => item.value === role)?.label ??
+        aiCallRoleSelectOptions.find((item) => item.value === role)?.label ??
+        normalizeAiCallRole(role) ??
         '企业客服',
       params: { aiRole: role },
     });
@@ -370,33 +428,24 @@ const CollectionStrategyFlowEditor = () => {
     closeNodeDrawer();
   };
 
-  const buildMockStandardTemplateSteps = () =>
-    mockStandardTemplateNodeCodes.map((nodeCode, idx) => {
-      const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
-      return normalizeStep(
-        flowModuleMap,
-        {
-          id: createStepId(),
-          nodeCode,
-          identity: meta.defaultIdentity,
-          config: defaultStepConfig,
-          params: buildDefaultNodeParams(nodeCode, meta.defaultIdentity),
-        },
-        idx,
-      );
-    });
-
-  const applyMockStandardTemplate = () => {
+  const applyStandardTemplate = () => {
     modalApi.confirm({
-      title: '使用标准模板',
-      content: '当前流程草稿会被标准模板替换，保存后才会生效。',
-      okText: '使用模板',
+      title: '使用默认流程',
+      content: '当前流程草稿会被默认画像的当前流程替换，保存后才会生效。',
+      okText: '使用默认流程',
       cancelText: '取消',
-      onOk: () => {
-        const nextSteps = buildMockStandardTemplateSteps();
-        setDraftSteps(nextSteps);
-        setSelectedNodeId(nextSteps[0]?.id ?? null);
-        markDirty();
+      onOk: async () => {
+        try {
+          const nextSteps =
+            await loadDefaultPersonaTemplateSteps(flowModuleMap);
+          setDraftSteps(nextSteps);
+          setSelectedNodeId(nextSteps[0]?.id ?? null);
+          markDirty();
+        } catch (error) {
+          console.error('加载默认画像流程失败', error);
+          messageApi.error('加载默认画像流程失败');
+          return Promise.reject(error);
+        }
       },
     });
   };
@@ -666,9 +715,9 @@ const CollectionStrategyFlowEditor = () => {
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
                   icon={<ReloadOutlined />}
-                  onClick={applyMockStandardTemplate}
+                  onClick={applyStandardTemplate}
                 >
-                  使用标准模板
+                  使用默认流程
                 </Button>
                 <Button icon={<PlusOutlined />} onClick={openNodeDrawer}>
                   添加节点
@@ -810,16 +859,6 @@ const CollectionStrategyFlowEditor = () => {
                 </div>
 
                 <Form layout="vertical">
-                  {selectedNode.nodeCode === 'filing_material_submit' ? (
-                    <Alert
-                      showIcon
-                      type="info"
-                      className="mb-3"
-                      message="节点职责"
-                      description="该节点会生成并盖章当前债务的立案类文书，校验原告主体资格上传材料，提交 RPA 受理后等待外部系统回调；只有 RPA 终态成功后才进入下一节点。"
-                    />
-                  ) : null}
-
                   {selectedNode.nodeCode === 'ai_call' ? (
                     <Form.Item label="催收角色" required>
                       <Select<AiCallRole>
@@ -828,7 +867,8 @@ const CollectionStrategyFlowEditor = () => {
                             ? undefined
                             : selectedNodeForm.aiRole
                         }
-                        options={aiCallRoleOptions}
+                        loading={aiCallRoleLoading}
+                        options={aiCallRoleSelectOptions}
                         onChange={handleAiCallRoleChange}
                       />
                     </Form.Item>

@@ -24,12 +24,12 @@ export const STANDING_TYPES: StandingTypeDef[] = [
   },
   {
     code: 'LEGAL_REP_ID_CARD',
-    label: '法定代表人身份证正反面',
+    label: '法人身份证',
     icon: IdcardOutlined,
   },
   {
     code: 'LEGAL_REP_CERT',
-    label: '法定代表人身份证明',
+    label: '法人身份证明',
     icon: SafetyCertificateOutlined,
   },
 ];

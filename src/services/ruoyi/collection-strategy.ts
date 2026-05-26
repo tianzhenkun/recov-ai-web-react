@@ -71,6 +71,8 @@ export interface CallConfigVO {
   tenantId?: string;
   identityName?: string;
   strategyCore?: string;
+  speakingStyle?: string;
+  openingTemplate?: string;
   personaId: number | string;
   createBy?: number | string;
   createTime?: string;
@@ -81,6 +83,8 @@ export interface CallConfigVO {
 export interface UpdateCallConfigDTO {
   identityName?: string;
   strategyCore?: string;
+  speakingStyle?: string;
+  openingTemplate?: string;
   personaId?: number | string;
 }
 

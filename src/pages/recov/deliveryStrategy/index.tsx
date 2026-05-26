@@ -1,21 +1,26 @@
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { Empty, Modal, message, Spin } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTemplateVariables } from '@/hooks/useTemplateVariables';
 import {
+  type DeliveryExpressExcelField,
   type DeliveryStrategyRow,
   type DeliveryWayListRow,
   getDeliveryWay,
+  listDeliveryExpressExcelFields,
   listDeliveryStrategy,
-  listDeliveryVariables,
   listDeliveryWay,
   updateDeliveryWay,
 } from '@/services/ruoyi/delivery';
 import {
   cloneTemplates,
+  expressExcelFieldKeys,
   type FlowDrawerNode,
   isDeliveryWayEnabled,
-  normalizeVariables,
+  normalizeExpressExcelFields,
   normalizeWayId,
+  parseExpressExcelTemplate,
+  stringifyExpressExcelTemplate,
 } from './_shared';
 import type { DeliveryContentTemplates, DeliveryTemplateTabId } from './_types';
 import FlowDrawer from './FlowDrawer';
@@ -40,7 +45,7 @@ const DEFAULT_TEMPLATES: DeliveryContentTemplates = {
   },
   express: {
     enabled: false,
-    content: '',
+    excelFields: expressExcelFieldKeys(),
     providerTemplateId: '',
     sortOrder: 30,
     wayName: '智能快递',
@@ -73,6 +78,9 @@ const getEnabledTemplateTabs = (ways: DeliveryWayListRow[]) => {
 const mergeWayIntoTemplates = (
   prev: DeliveryContentTemplates,
   way: DeliveryWayListRow,
+  expressExcelFields: DeliveryExpressExcelField[] = normalizeExpressExcelFields(
+    undefined,
+  ),
 ): DeliveryContentTemplates => {
   const tab = normalizeWayId(way.nodeId);
   if (!tab) return prev;
@@ -103,7 +111,14 @@ const mergeWayIntoTemplates = (
   if (tab === 'express') {
     return {
       ...prev,
-      express: { ...prev.express, ...base, content: way.contentTemplate ?? '' },
+      express: {
+        ...prev.express,
+        ...base,
+        excelFields: parseExpressExcelTemplate(
+          way.contentTemplate,
+          expressExcelFields,
+        ),
+      },
     };
   }
   return {
@@ -112,9 +127,12 @@ const mergeWayIntoTemplates = (
   };
 };
 
-const buildTemplatesFromWays = (ways: DeliveryWayListRow[]) =>
+const buildTemplatesFromWays = (
+  ways: DeliveryWayListRow[],
+  expressExcelFields?: DeliveryExpressExcelField[],
+) =>
   ways.reduce(
-    (result, way) => mergeWayIntoTemplates(result, way),
+    (result, way) => mergeWayIntoTemplates(result, way, expressExcelFields),
     cloneTemplates(DEFAULT_TEMPLATES),
   );
 
@@ -124,7 +142,6 @@ const getTemplateContent = (
 ) => {
   if (tab === 'sms') return templates.sms.content;
   if (tab === 'email') return templates.email.html;
-  if (tab === 'express') return templates.express.content;
   return templates.call.script;
 };
 
@@ -158,7 +175,9 @@ const buildSavePayload = (
     return {
       ...common,
       subjectTemplate: null,
-      contentTemplate: templates.express.content,
+      contentTemplate: stringifyExpressExcelTemplate(
+        templates.express.excelFields,
+      ),
     };
   }
   return {
@@ -181,9 +200,11 @@ const DeliveryStrategyPage = () => {
     useState<DeliveryContentTemplates>(DEFAULT_TEMPLATES);
   const [savedSnapshot, setSavedSnapshot] =
     useState<DeliveryContentTemplates | null>(null);
-  const [variables, setVariables] = useState<
-    Array<{ key?: string; label?: string }>
-  >([]);
+  const [expressExcelFields, setExpressExcelFields] = useState<
+    DeliveryExpressExcelField[]
+  >(normalizeExpressExcelFields(undefined));
+  const { variables: templateVariables, loading: templateVariablesLoading } =
+    useTemplateVariables();
 
   const [activeTab, setActiveTab] = useState<DeliveryTemplateTabId>('sms');
 
@@ -193,11 +214,6 @@ const DeliveryStrategyPage = () => {
 
   const templatesRef = useRef(templates);
   templatesRef.current = templates;
-
-  const templateVariables = useMemo(
-    () => normalizeVariables(variables),
-    [variables],
-  );
 
   const availableTabs = useMemo<DeliveryTemplateTabId[]>(() => {
     return getEnabledTemplateTabs(wayRows);
@@ -213,36 +229,42 @@ const DeliveryStrategyPage = () => {
     const wayRes = await listDeliveryWay();
     const ways = Array.isArray(wayRes.rows) ? wayRes.rows : [];
     setWayRows(ways);
-    const nextTemplates = buildTemplatesFromWays(ways);
+    const nextTemplates = buildTemplatesFromWays(ways, expressExcelFields);
     setTemplates(nextTemplates);
     setSavedSnapshot(cloneTemplates(nextTemplates));
     return ways;
-  }, []);
+  }, [expressExcelFields]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [strategyRes, wayRes, variableRes] = await Promise.all([
+        const [strategyRes, wayRes, expressFieldRes] = await Promise.all([
           listDeliveryStrategy(),
           listDeliveryWay(),
-          listDeliveryVariables(),
+          listDeliveryExpressExcelFields().catch(() => null),
         ]);
         if (cancelled) return;
 
         const rows = Array.isArray(strategyRes?.rows) ? strategyRes.rows : [];
         const ways = Array.isArray(wayRes?.rows) ? wayRes.rows : [];
+        const nextExpressExcelFields = normalizeExpressExcelFields(
+          expressFieldRes?.data,
+        );
         setStrategyRows(rows);
         setWayRows(ways);
-        setVariables(variableRes.data ?? []);
+        setExpressExcelFields(nextExpressExcelFields);
 
         const enabledTabs = getEnabledTemplateTabs(ways);
         if (enabledTabs.length > 0) {
           setActiveTab(enabledTabs[0]);
         }
 
-        const nextTemplates = buildTemplatesFromWays(ways);
+        const nextTemplates = buildTemplatesFromWays(
+          ways,
+          nextExpressExcelFields,
+        );
         setTemplates(nextTemplates);
         setSavedSnapshot(cloneTemplates(nextTemplates));
       } catch {
@@ -261,11 +283,18 @@ const DeliveryStrategyPage = () => {
   const handleSaveTemplates = useCallback(async () => {
     const current = templatesRef.current;
     const way = findWayByTab(wayRows, activeTab);
-    const content = getTemplateContent(current, activeTab).trim();
 
-    if (!content) {
-      messageApi.warning('内容模板不能为空');
+    if (activeTab === 'express' && current.express.excelFields.length === 0) {
+      messageApi.warning('Excel导出字段不能为空');
       return false;
+    }
+
+    if (activeTab !== 'express') {
+      const content = getTemplateContent(current, activeTab).trim();
+      if (!content) {
+        messageApi.warning('内容模板不能为空');
+        return false;
+      }
     }
     if (activeTab === 'email' && !current.email.subject.trim()) {
       messageApi.warning('邮件主题不能为空');
@@ -285,7 +314,7 @@ const DeliveryStrategyPage = () => {
           5,
         );
       } else {
-        messageApi.success('送达模板已保存');
+        messageApi.success('送达配置已保存');
       }
       return true;
     } catch {
@@ -311,7 +340,7 @@ const DeliveryStrategyPage = () => {
             : [...prev, way];
         });
         setTemplates((prev) => {
-          const merged = mergeWayIntoTemplates(prev, way);
+          const merged = mergeWayIntoTemplates(prev, way, expressExcelFields);
           setSavedSnapshot(cloneTemplates(merged));
           return merged;
         });
@@ -319,7 +348,7 @@ const DeliveryStrategyPage = () => {
         messageApi.error('渠道模板详情加载失败，请稍后重试');
       }
     },
-    [activeTab, messageApi],
+    [activeTab, expressExcelFields, messageApi],
   );
 
   const openFlowDrawer = (row: DeliveryStrategyRow) => {
@@ -373,7 +402,7 @@ const DeliveryStrategyPage = () => {
         </ProCard>
 
         <TemplatePanel
-          loading={loading}
+          loading={loading || templateVariablesLoading}
           saving={saving}
           templates={templates}
           savedSnapshot={savedSnapshot}
@@ -382,6 +411,7 @@ const DeliveryStrategyPage = () => {
           onActiveTabChange={handleActiveTabChange}
           availableTabs={availableTabs}
           variables={templateVariables}
+          expressExcelFields={expressExcelFields}
           onSave={handleSaveTemplates}
           modalApi={modalApi}
         />

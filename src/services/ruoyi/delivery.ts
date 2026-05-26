@@ -3,10 +3,10 @@ import type { RuoyiResponse } from '@/adapters/ruoyi/response';
 
 export type DeliveryWayCode = 'sms' | 'email' | 'express' | 'call';
 
-export type DeliveryVariable = {
+export type DeliveryExpressExcelField = {
   key: string;
   label: string;
-  scope?: string | null;
+  sortOrder?: number | null;
 };
 
 export type DeliveryStrategyFlowNode = {
@@ -177,10 +177,13 @@ const normalizeStrategy = (
   };
 };
 
-export const listDeliveryVariables = () =>
-  ruoyiRequest<DeliveryVariable[]>(`${BASE}/variables`, {
-    method: 'get',
-  });
+export const listDeliveryExpressExcelFields = () =>
+  ruoyiRequest<DeliveryExpressExcelField[]>(
+    `${BASE}/ways/express/excel-fields`,
+    {
+      method: 'get',
+    },
+  );
 
 export const listDeliveryWay = async (): Promise<
   ListCompatResponse<DeliveryWayListRow>

@@ -18,10 +18,14 @@ import type {
   StrategyStep,
 } from '@/services/ruoyi/collection-strategy';
 
-export type AiCallRole =
-  | 'enterprise_service'
-  | 'enterprise_business'
-  | 'lawyer';
+export const aiCallRoleValues = [
+  '项目员工',
+  '企业法务',
+  '企业客服',
+  '律师',
+] as const;
+
+export type AiCallRole = string;
 
 export type StrategyStepParams = {
   aiRole?: AiCallRole;
@@ -103,13 +107,11 @@ export const buildInitialFlowModuleMap = (): Record<
   },
   filing_material_submit: {
     code: 'filing_material_submit',
-    label: '立案材料提交',
+    label: '发送诉讼申请截图',
     icon: 'filing',
     bgColor: '#0F766E',
     iconColor: '#ffffff',
-    defaultIdentity: '立案专员',
-    description:
-      '生成并盖章立案材料，校验原告主体资格材料，提交 RPA 后等待外部回调。',
+    defaultIdentity: '项目员工',
   },
   litigation_screenshot: {
     code: 'litigation_screenshot',
@@ -157,7 +159,7 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'warning',
     bgColor: '#607D8B',
     iconColor: '#ffffff',
-    defaultIdentity: '法院',
+    defaultIdentity: '律师',
   },
   credit_blacklist: {
     code: 'credit_blacklist',
@@ -165,7 +167,7 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'blacklist',
     bgColor: '#455A64',
     iconColor: '#ffffff',
-    defaultIdentity: '法院',
+    defaultIdentity: '律师',
   },
 });
 
@@ -175,24 +177,41 @@ export const fallbackFlowModuleMeta: FlowModuleMeta = {
   icon: 'workflow',
   bgColor: '#64748b',
   iconColor: '#ffffff',
-  defaultIdentity: '系统',
+  defaultIdentity: '项目员工',
 };
 
 export const defaultFlowSteps: Array<
   Pick<StrategyStep, 'nodeCode' | 'identity'>
 > = [
+  { nodeCode: 'ai_call', identity: '项目员工' },
   { nodeCode: 'ai_call', identity: '企业客服' },
+  { nodeCode: 'ai_call', identity: '企业法务' },
   { nodeCode: 'corp_letter', identity: '企业法务' },
+  { nodeCode: 'ai_call', identity: '律师' },
   { nodeCode: 'law_letter', identity: '律师' },
-  { nodeCode: 'litigation_screenshot', identity: '律师' },
-  { nodeCode: 'litigation_result', identity: '律师' },
+  { nodeCode: 'filing_material_submit', identity: '项目员工' },
 ];
 
-export const aiCallRoleOptions: Array<{ label: string; value: AiCallRole }> = [
-  { label: '企业客服', value: 'enterprise_service' },
-  { label: '企业商务', value: 'enterprise_business' },
-  { label: '律师', value: 'lawyer' },
-];
+const flowModuleLabelOverrideMap: Record<string, string> = {
+  filing_material_submit: '发送诉讼申请截图',
+};
+
+export const aiCallRoleOptions: Array<{ label: string; value: AiCallRole }> =
+  aiCallRoleValues.map((role) => ({ label: role, value: role }));
+
+const legacyAiCallRoleMap: Record<string, AiCallRole> = {
+  enterprise_service: '企业客服',
+  enterprise_business: '企业法务',
+  lawyer: '律师',
+  企业商务: '企业法务',
+  第三方律师: '律师',
+};
+
+export const normalizeAiCallRole = (role?: unknown): AiCallRole | undefined => {
+  const value = typeof role === 'string' ? role.trim() : '';
+  if (!value) return undefined;
+  return legacyAiCallRoleMap[value] ?? value;
+};
 
 export const corpLetterSealOptions: Array<{ label: string; value: string }> = [
   { label: '企业默认公章', value: 'company_default' },
@@ -234,6 +253,20 @@ export const isSamePersonaId = (
   return String(left) === String(right);
 };
 
+type PersonaLike = {
+  id?: number | string | null;
+  personaName?: string | null;
+};
+
+export const defaultPersonaId = '0';
+export const defaultPersonaName = '默认画像';
+
+export const resolveDefaultPersonaId = (personas: PersonaLike[]) =>
+  personas.find((item) => isSamePersonaId(item.id, defaultPersonaId))?.id ??
+  personas.find((item) => item.personaName?.trim() === defaultPersonaName)
+    ?.id ??
+  defaultPersonaId;
+
 export const getFlowModuleMeta = (
   flowModuleMap: Record<string, FlowModuleMeta>,
   nodeCode: string,
@@ -249,14 +282,10 @@ export const getNodeIdentityDisplayText = (
   step: Pick<NormalizedStrategyStep, 'nodeCode' | 'identity' | 'params'>,
 ) => {
   if (step.nodeCode === 'ai_call') {
-    const roleMap: Record<AiCallRole, string> = {
-      enterprise_service: '企业客服',
-      enterprise_business: '企业商务',
-      lawyer: '律师',
-    };
-    const aiRole = step.params?.aiRole;
-    if (aiRole && roleMap[aiRole]) return roleMap[aiRole];
+    const aiRole = normalizeAiCallRole(step.params?.aiRole);
+    if (aiRole) return aiRole;
     return (
+      normalizeAiCallRole(step.identity) ??
       step.identity ??
       getFlowModuleMeta(flowModuleMap, step.nodeCode).defaultIdentity
     );
@@ -282,12 +311,7 @@ export const buildDefaultNodeParams = (
   identity: string,
 ): StrategyStepParams => {
   if (nodeCode === 'ai_call') {
-    const roleByIdentity: Record<string, AiCallRole> = {
-      企业客服: 'enterprise_service',
-      企业商务: 'enterprise_business',
-      律师: 'lawyer',
-    };
-    return { aiRole: roleByIdentity[identity] ?? 'enterprise_service' };
+    return { aiRole: normalizeAiCallRole(identity) ?? '企业客服' };
   }
   if (nodeCode === 'corp_letter') return { sealId: 'company_default' };
   return {};
@@ -298,7 +322,15 @@ export const sanitizeStepParams = (
   params: StrategyStepParams,
 ): StrategyStepParams => {
   const nextParams: StrategyStepParams = { ...params };
-  if (nodeCode === 'ai_call') delete nextParams.scriptId;
+  if (nodeCode === 'ai_call') {
+    const aiRole = normalizeAiCallRole(nextParams.aiRole);
+    delete nextParams.scriptId;
+    if (aiRole) {
+      nextParams.aiRole = aiRole;
+    } else {
+      delete nextParams.aiRole;
+    }
+  }
   return nextParams;
 };
 
@@ -311,7 +343,13 @@ export const normalizeStep = (
   idx: number,
 ): NormalizedStrategyStep => {
   const meta = getFlowModuleMeta(flowModuleMap, step.nodeCode);
-  const identity = step.identity || meta.defaultIdentity;
+  const identity =
+    step.nodeCode === 'ai_call'
+      ? (normalizeAiCallRole(step.params?.aiRole) ??
+        normalizeAiCallRole(step.identity) ??
+        step.identity ??
+        meta.defaultIdentity)
+      : step.identity || meta.defaultIdentity;
   const baseParams = buildDefaultNodeParams(step.nodeCode, identity);
   const mergedParams: StrategyStepParams = {
     ...baseParams,
@@ -364,10 +402,14 @@ export const upsertNodeTypeMeta = (
       ...(current ?? {
         ...fallbackFlowModuleMeta,
         code: nodeType.code,
-        defaultIdentity: '系统',
+        defaultIdentity: '项目员工',
       }),
       code: nodeType.code,
-      label: nodeType.label || current?.label || nodeType.code,
+      label:
+        flowModuleLabelOverrideMap[nodeType.code] ||
+        nodeType.label ||
+        current?.label ||
+        nodeType.code,
       description: nodeType.description || current?.description,
     },
   };

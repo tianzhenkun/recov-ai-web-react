@@ -73,37 +73,3 @@ export const buildRangeText = (
   const end = Math.min(pageNum * pageSize, total);
   return `显示 ${start} 到 ${end} 条，共 ${total} 条`;
 };
-
-const withDateTimeBoundary = (
-  value: string,
-  boundary: 'start' | 'end',
-): string => {
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-
-  if (/\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (/\d{2}:\d{2}$/.test(trimmed)) {
-    return `${trimmed}:00`;
-  }
-
-  return `${trimmed} ${boundary === 'start' ? '00:00:00' : '23:59:59'}`;
-};
-
-export const parsePeriodRange = (
-  period: string,
-): { startTime: string; endTime: string } => {
-  const parts = period.split(/[~～]/).map((s) => s.trim());
-  if (parts.length === 2) {
-    return {
-      startTime: withDateTimeBoundary(parts[0], 'start'),
-      endTime: withDateTimeBoundary(parts[1], 'end'),
-    };
-  }
-  return {
-    startTime: withDateTimeBoundary(period, 'start'),
-    endTime: withDateTimeBoundary(period, 'end'),
-  };
-};

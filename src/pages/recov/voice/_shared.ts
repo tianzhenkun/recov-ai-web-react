@@ -48,9 +48,9 @@ export const getIdentityMeta = (identityName: string): IdentityMeta =>
   IDENTITY_META[identityName] ?? FALLBACK_IDENTITY_META;
 
 export const EMPLOYEE_NAME_PREFIX: Record<string, string> = {
-  项目员工: '物业中心',
-  企业客服: '客户主管',
-  企业法务: '法务经理',
+  项目员工: '项目员工',
+  企业客服: '企业客服',
+  企业法务: '企业法务',
   律师: '律师',
 };
 

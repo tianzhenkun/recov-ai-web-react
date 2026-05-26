@@ -16,7 +16,7 @@ export type DeliveryContentTemplates = {
   };
   express: {
     enabled: boolean;
-    content: string;
+    excelFields: string[];
     providerTemplateId?: string | null;
     sortOrder?: number | null;
     wayName?: string;

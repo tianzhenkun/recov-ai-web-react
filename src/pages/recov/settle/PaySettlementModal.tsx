@@ -73,12 +73,12 @@ const PaySettlementModal = ({
             </span>
           </Form.Item>
           <Form.Item label="本期服务费">
-            <span className="text-sm font-bold text-indigo-600">
+            <span className="text-sm font-bold text-gray-900">
               {formatCurrencyDisplay(initial.serviceFee)}
             </span>
           </Form.Item>
           <Form.Item label="已付服务费">
-            <span className="text-sm font-bold text-emerald-600">
+            <span className="text-sm font-bold text-gray-900">
               {formatCurrencyDisplay(initial.paidServiceFee)}
             </span>
           </Form.Item>

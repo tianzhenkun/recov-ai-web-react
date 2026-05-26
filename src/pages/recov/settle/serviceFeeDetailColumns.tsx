@@ -77,7 +77,7 @@ export const serviceFeeDetailColumns: ColumnsType<ServiceFeeDetail> = [
     minWidth: 90,
     align: 'center',
     render: (value: number) => (
-      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">
+      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700">
         {value}%
       </span>
     ),
@@ -88,7 +88,7 @@ export const serviceFeeDetailColumns: ColumnsType<ServiceFeeDetail> = [
     minWidth: 130,
     align: 'right',
     render: (value: number) => (
-      <span className="text-xs font-bold text-indigo-600">
+      <span className="text-xs font-bold text-gray-900">
         {formatAmount(value)}
       </span>
     ),

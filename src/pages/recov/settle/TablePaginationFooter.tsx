@@ -14,12 +14,12 @@ const TablePaginationFooter = ({
   pageSize,
   total,
   onChange,
-}: TablePaginationFooterProps) => (
-  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4">
-    <div className="whitespace-nowrap text-xs font-medium text-gray-500">
-      {rangeText}
-    </div>
-    {total > 0 ? (
+}: TablePaginationFooterProps) =>
+  total > 0 ? (
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4">
+      <div className="whitespace-nowrap text-xs font-medium text-gray-500">
+        {rangeText}
+      </div>
       <Pagination
         size="small"
         current={pageNum}
@@ -28,8 +28,7 @@ const TablePaginationFooter = ({
         showSizeChanger
         onChange={onChange}
       />
-    ) : null}
-  </div>
-);
+    </div>
+  ) : null;
 
 export default TablePaginationFooter;

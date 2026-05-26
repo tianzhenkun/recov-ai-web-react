@@ -117,7 +117,7 @@ export const getDifferenceDetails = (params: DifferenceDetailQuery) =>
   );
 
 /**
- * 按结算单 ID 查询明细（Vue 页面未使用，保留契约对齐）。
+ * 按结算单 ID 查询明细。
  */
 export const getSettlementDetails = (id: number, params?: PageQuery) =>
   ruoyiRequest<ServiceFeeDetail>(

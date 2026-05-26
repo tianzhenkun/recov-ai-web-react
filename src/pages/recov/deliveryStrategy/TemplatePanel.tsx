@@ -1,13 +1,15 @@
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
-import { Button, Empty, Spin, Tabs } from 'antd';
+import { Button, Checkbox, Empty, Spin, Table, Tabs } from 'antd';
 import type { HookAPI } from 'antd/es/modal/useModal';
+import type { ColumnsType } from 'antd/es/table';
 import { useRef } from 'react';
 import TemplateEditor from '@/components/TemplateEditor';
 import type {
   TemplateEditorFeatures,
   TemplateVariable,
 } from '@/components/TemplateEditor/types';
+import type { DeliveryExpressExcelField } from '@/services/ruoyi/delivery';
 import { isTabDirty, TEMPLATE_TAB_ICON, TEMPLATE_TAB_LABEL } from './_shared';
 import type { DeliveryContentTemplates, DeliveryTemplateTabId } from './_types';
 
@@ -32,6 +34,12 @@ const EMAIL_FEATURES: TemplateEditorFeatures = {
   fontSize: true,
 };
 
+const EXPRESS_SAMPLE_ROW: Record<string, string> = {
+  debtorName: '刘先生',
+  debtorPhone: '13800138000',
+  address: '深圳市南山区科技园1号',
+};
+
 export type TemplatePanelProps = {
   loading: boolean;
   saving: boolean;
@@ -44,6 +52,7 @@ export type TemplatePanelProps = {
   onActiveTabChange: (tab: DeliveryTemplateTabId) => void;
   availableTabs: DeliveryTemplateTabId[];
   variables: TemplateVariable[];
+  expressExcelFields: DeliveryExpressExcelField[];
   onSave: () => Promise<boolean>;
   modalApi: HookAPI;
 };
@@ -58,6 +67,7 @@ const TemplatePanel = ({
   onActiveTabChange,
   availableTabs,
   variables,
+  expressExcelFields,
   onSave,
   modalApi,
 }: TemplatePanelProps) => {
@@ -76,7 +86,7 @@ const TemplatePanel = ({
     pendingTabRef.current = nextTab;
     modalApi.confirm({
       title: '未保存提示',
-      content: '当前渠道内容已修改但未保存，是否先保存再切换？',
+      content: '当前渠道配置已修改但未保存，是否先保存再切换？',
       okText: '保存并切换',
       cancelText: '不保存切换',
       closable: false,
@@ -117,10 +127,15 @@ const TemplatePanel = ({
       email: { ...prev.email, html: value },
     }));
 
-  const handleExpressContentChange = (value: string) =>
+  const handleExpressExcelFieldsChange = (
+    checkedValues: Array<string | number | boolean>,
+  ) =>
     setTemplates((prev) => ({
       ...prev,
-      express: { ...prev.express, content: value },
+      express: {
+        ...prev.express,
+        excelFields: checkedValues.map((item) => String(item)),
+      },
     }));
 
   const handleCallScriptChange = (value: string) =>
@@ -186,19 +201,50 @@ const TemplatePanel = ({
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-semibold text-slate-900">
-            快递内容模板
+            Excel导出字段
+          </span>
+          <span className="text-xs text-slate-500">
+            {templates.express.excelFields.length} 列
           </span>
         </div>
-        <TemplateEditor
-          value={templates.express.content}
-          onChange={handleExpressContentChange}
-          outputType="text"
-          placeholder="请输入快递送达内容模板"
-          variables={variables}
-          features={PLAIN_FEATURES}
-          height={260}
-        />
+        <Checkbox.Group
+          value={templates.express.excelFields}
+          onChange={handleExpressExcelFieldsChange}
+          className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3"
+        >
+          {expressExcelFields.map((field) => (
+            <Checkbox
+              key={field.key}
+              value={field.key}
+              className="!m-0 rounded-md border border-slate-200 px-3 py-2"
+            >
+              {field.label}
+            </Checkbox>
+          ))}
+        </Checkbox.Group>
       </div>
+      <Table<Record<string, string>>
+        size="small"
+        rowKey="key"
+        pagination={false}
+        columns={templates.express.excelFields
+          .map((key) => expressExcelFields.find((field) => field.key === key))
+          .filter(
+            (field): field is DeliveryExpressExcelField => field !== undefined,
+          )
+          .map<ColumnsType<Record<string, string>>[number]>((field) => ({
+            title: field.label,
+            dataIndex: field.key,
+            ellipsis: true,
+          }))}
+        dataSource={
+          templates.express.excelFields.length > 0
+            ? [{ key: 'sample', ...EXPRESS_SAMPLE_ROW }]
+            : []
+        }
+        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: '请选择导出字段' }}
+      />
     </div>
   );
 
@@ -238,7 +284,7 @@ const TemplatePanel = ({
 
   return (
     <ProCard
-      title="送达内容模板"
+      title="送达模板配置"
       extra={
         dirty ? (
           <Button

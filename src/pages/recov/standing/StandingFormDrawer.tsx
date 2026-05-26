@@ -1,20 +1,12 @@
 import { WarningOutlined } from '@ant-design/icons';
-import {
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Tag,
-} from 'antd';
+import { Form, Input, InputNumber, Modal, Space, Spin, Tag } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { useEffect, useMemo, useState } from 'react';
 import {
   addStanding,
   getStanding,
   getStandingRange,
+  type StandingCode,
   type StandingForm,
   type StandingRangeVO,
   updateStanding,
@@ -24,7 +16,6 @@ import {
   DEFAULT_STANDING_RANGE,
   defaultStandingForm,
   getStandingTypeName,
-  STANDING_TYPES,
   type UsedRangeRef,
 } from './_shared';
 import StandingPdfUpload from './StandingPdfUpload';
@@ -33,6 +24,7 @@ type StandingFormDrawerProps = {
   open: boolean;
   mode: 'add' | 'edit';
   editingId?: number | string;
+  standingCode: StandingCode;
   allUsedRanges: UsedRangeRef[];
   wildcardUsed?: boolean;
   onClose: () => void;
@@ -41,7 +33,6 @@ type StandingFormDrawerProps = {
 };
 
 type FormShape = {
-  standingCode: string;
   standingName: string;
   standingOssId: string;
   startNum: number | null;
@@ -52,6 +43,7 @@ const StandingFormDrawer = ({
   open,
   mode,
   editingId,
+  standingCode,
   allUsedRanges,
   wildcardUsed,
   onClose,
@@ -68,7 +60,8 @@ const StandingFormDrawer = ({
     startNum: number | null;
     endNum: number | null;
   }>({ startNum: null, endNum: null });
-  const [standingCode, setStandingCode] = useState<string>('PLAINTIFF_LICENSE');
+  const [currentStandingCode, setCurrentStandingCode] =
+    useState<StandingCode>(standingCode);
 
   useEffect(() => {
     if (!open) return;
@@ -81,9 +74,8 @@ const StandingFormDrawer = ({
           if (cancelled) return;
           const detail = detailRes.data;
           if (detail) {
-            const code = detail.standingCode ?? 'PLAINTIFF_LICENSE';
+            const code = (detail.standingCode ?? standingCode) as StandingCode;
             const next: FormShape = {
-              standingCode: code,
               standingName: detail.standingName ?? '',
               standingOssId:
                 detail.standingOssId == null
@@ -92,7 +84,7 @@ const StandingFormDrawer = ({
               startNum: detail.startNum ?? null,
               endNum: detail.endNum ?? null,
             };
-            setStandingCode(code);
+            setCurrentStandingCode(code);
             form.setFieldsValue(next);
             setRangeValues({
               startNum: next.startNum,
@@ -111,16 +103,15 @@ const StandingFormDrawer = ({
           form.resetFields();
           const empty = defaultStandingForm();
           const next: FormShape = {
-            standingCode: empty.standingCode,
             standingName: empty.standingName,
             standingOssId: String(empty.standingOssId ?? ''),
             startNum: empty.startNum ?? null,
             endNum: empty.endNum ?? null,
           };
-          setStandingCode(next.standingCode);
+          setCurrentStandingCode(standingCode);
           form.setFieldsValue(next);
           setRangeValues({ startNum: null, endNum: null });
-          const rangeRes = await getStandingRange(next.standingCode);
+          const rangeRes = await getStandingRange(standingCode);
           if (cancelled) return;
           setRangeInfo({
             usedRanges: rangeRes.data?.usedRanges ?? [],
@@ -139,7 +130,7 @@ const StandingFormDrawer = ({
     return () => {
       cancelled = true;
     };
-  }, [open, mode, editingId, form]);
+  }, [open, mode, editingId, standingCode, form]);
 
   const usedRanges = useMemo(
     () =>
@@ -147,9 +138,9 @@ const StandingFormDrawer = ({
         ? allUsedRanges
         : (rangeInfo.usedRanges ?? []).map((range) => ({
             ...range,
-            standingName: getStandingTypeName(standingCode),
+            standingName: getStandingTypeName(currentStandingCode),
           })),
-    [allUsedRanges, rangeInfo.usedRanges, standingCode],
+    [allUsedRanges, rangeInfo.usedRanges, currentStandingCode],
   );
 
   const issues = useMemo(
@@ -164,35 +155,11 @@ const StandingFormDrawer = ({
     [rangeValues, rangeInfo, usedRanges, wildcardUsed],
   );
 
-  const loadRangeInfo = async (code: string) => {
-    try {
-      const rangeRes = await getStandingRange(
-        code,
-        mode === 'edit' ? editingId : undefined,
-      );
-      setRangeInfo({
-        usedRanges: rangeRes.data?.usedRanges ?? [],
-        wildcardUsed: rangeRes.data?.wildcardUsed ?? false,
-        minAvailable: rangeRes.data?.minAvailable ?? 1,
-        maxAvailable: rangeRes.data?.maxAvailable ?? 10000,
-      });
-    } catch {
-      setRangeInfo(DEFAULT_STANDING_RANGE);
-    }
-  };
-
-  const handleValuesChange = (
-    changed: Partial<FormShape>,
-    all: Partial<FormShape>,
-  ) => {
+  const handleValuesChange = (all: Partial<FormShape>) => {
     setRangeValues({
       startNum: all.startNum ?? null,
       endNum: all.endNum ?? null,
     });
-    if (changed.standingCode) {
-      setStandingCode(changed.standingCode);
-      void loadRangeInfo(changed.standingCode);
-    }
   };
 
   const handleSubmit = async () => {
@@ -225,7 +192,7 @@ const StandingFormDrawer = ({
 
       const payload: StandingForm = {
         id: mode === 'edit' ? editingId : undefined,
-        standingCode: values.standingCode,
+        standingCode: currentStandingCode,
         standingName: values.standingName,
         standingOssId: values.standingOssId,
         startNum: values.startNum ?? null,
@@ -291,18 +258,10 @@ const StandingFormDrawer = ({
           preserve={false}
           className="[&_.ant-form-item-label>label]:!font-medium [&_.ant-form-item-label>label]:!text-zinc-800"
         >
-          <Form.Item
-            label="材料类型"
-            name="standingCode"
-            rules={[{ required: true, message: '请选择材料类型' }]}
-          >
-            <Select
-              placeholder="请选择材料类型"
-              options={STANDING_TYPES.map((item) => ({
-                label: item.label,
-                value: item.code,
-              }))}
-            />
+          <Form.Item label="材料类型">
+            <Tag color="blue" className="!mr-0">
+              {getStandingTypeName(currentStandingCode)}
+            </Tag>
           </Form.Item>
 
           <Form.Item

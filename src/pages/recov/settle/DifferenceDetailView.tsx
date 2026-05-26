@@ -1,6 +1,7 @@
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Button, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { RecovTableCard } from '@/pages/recov/components/RecovListLayout';
 import type {
   DifferenceDetailQuery,
   DifferenceServiceFeeDetail,
@@ -19,7 +20,6 @@ export type DifferenceDetailViewProps = {
   onBack: () => void;
   onQueryChange: (next: DifferenceDetailQuery) => void;
   onSearch: () => void;
-  onReset: () => void;
 };
 
 const differenceColumns: ColumnsType<DifferenceServiceFeeDetail> = [
@@ -121,7 +121,7 @@ const differenceColumns: ColumnsType<DifferenceServiceFeeDetail> = [
     minWidth: 90,
     align: 'center',
     render: (value: number) => (
-      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">
+      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700">
         {value}%
       </span>
     ),
@@ -132,7 +132,7 @@ const differenceColumns: ColumnsType<DifferenceServiceFeeDetail> = [
     minWidth: 130,
     align: 'right',
     render: (value: number) => (
-      <span className="text-xs font-bold text-indigo-600">
+      <span className="text-xs font-bold text-gray-900">
         {formatAmount(value)}
       </span>
     ),
@@ -149,54 +149,53 @@ const DifferenceDetailView = ({
   onBack,
   onQueryChange,
   onSearch,
-  onReset,
 }: DifferenceDetailViewProps) => (
-  <>
-    <div className="border-b border-gray-100 px-6 py-4">
-      <div className="mb-4 flex items-center gap-3">
-        <Button
-          type="link"
-          className="!p-0 !text-gray-500 hover:!text-indigo-600"
-          icon={<ArrowLeftOutlined className="text-lg" />}
-          onClick={onBack}
-        />
-        <div>
-          <h3 className="text-base font-bold tracking-tight text-gray-800">
-            对账差异产生服务费明细
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-500">
+  <RecovTableCard
+    title={
+      <div>
+        <div>对账差异产生服务费明细</div>
+        {periodLabel ? (
+          <div className="mt-1 text-xs font-normal text-zinc-500">
             统计周期：{periodLabel}
-          </p>
-        </div>
+          </div>
+        ) : null}
       </div>
+    }
+    extra={
+      <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+        返回
+      </Button>
+    }
+  >
+    <div className="recov-table-card-content">
       <DetailFilterBar
         query={query}
         onQueryChange={onQueryChange}
         onSearch={onSearch}
-        onReset={onReset}
+      />
+
+      <Table<DifferenceServiceFeeDetail>
+        className="recov-stable-pagination-table"
+        rowKey="id"
+        loading={loading}
+        size="middle"
+        scroll={{ x: 1400 }}
+        pagination={false}
+        dataSource={list}
+        columns={differenceColumns}
+      />
+
+      <TablePaginationFooter
+        rangeText={rangeText}
+        pageNum={query.pageNum ?? 1}
+        pageSize={query.pageSize ?? 10}
+        total={total}
+        onChange={(page, pageSize) =>
+          onQueryChange({ ...query, pageNum: page, pageSize })
+        }
       />
     </div>
-
-    <Table<DifferenceServiceFeeDetail>
-      rowKey="id"
-      loading={loading}
-      bordered
-      scroll={{ x: 1400 }}
-      pagination={false}
-      dataSource={list}
-      columns={differenceColumns}
-    />
-
-    <TablePaginationFooter
-      rangeText={rangeText}
-      pageNum={query.pageNum ?? 1}
-      pageSize={query.pageSize ?? 10}
-      total={total}
-      onChange={(page, pageSize) =>
-        onQueryChange({ ...query, pageNum: page, pageSize })
-      }
-    />
-  </>
+  </RecovTableCard>
 );
 
 export default DifferenceDetailView;

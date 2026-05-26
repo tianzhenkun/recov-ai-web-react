@@ -22,6 +22,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -129,15 +130,18 @@ const getStatusText = (status: unknown) => {
 };
 
 const getModeInfo = (mode: unknown) =>
-  Number(mode) === 1
-    ? { label: '系统对账', color: 'blue' }
-    : { label: '人工对账', color: 'default' };
+  Number(mode) === 1 ? { label: '系统对账' } : { label: '人工对账' };
 
 const getRowDifference = (record?: ReconciliationItem | null) =>
   toNumber(record?.systemAmount) - toNumber(record?.recordedAmount);
 
 const hasRowDifference = (record: ReconciliationItem) =>
-  getRowDifference(record) !== 0;
+  getRowDifference(record) > 0;
+
+const hasSystemAmount = (record: ReconciliationItem) =>
+  record.systemAmount !== null &&
+  record.systemAmount !== undefined &&
+  record.systemAmount !== '';
 
 const getRowKey = (record: ReconciliationItem) =>
   String(record.id ?? record.debtId ?? record.debtNumber);
@@ -242,6 +246,28 @@ const StatCard = ({ title, value, tone, icon }: StatCardProps) => {
         )}
       </div>
     </ProCard>
+  );
+};
+
+const ModeIndicator = ({ label }: { label: string }) => {
+  const { token } = theme.useToken();
+
+  return (
+    <div
+      className="inline-flex items-center gap-2 rounded-md border border-solid px-3 py-1 text-sm font-medium"
+      style={{
+        color: token.colorPrimaryText,
+        background: token.colorPrimaryBg,
+        borderColor: token.colorPrimaryBorder,
+      }}
+    >
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{ background: token.colorPrimary }}
+      />
+      <span className="text-zinc-500">当前模式：</span>
+      <span>{label}</span>
+    </div>
   );
 };
 
@@ -547,7 +573,7 @@ const ReconciliationPage = () => {
     if (systemMode === 1) {
       baseColumns.push(
         {
-          title: 'RECOV系统金额',
+          title: '系统金额',
           dataIndex: 'systemAmount',
           width: 150,
           align: 'right',
@@ -612,7 +638,7 @@ const ReconciliationPage = () => {
         fixed: 'right',
         align: 'center',
         render: (_, record) => {
-          if (systemMode === 0 && Number(record.status) === 0) {
+          if (Number(record.status) === 0 && systemMode === 0) {
             return (
               <TableActions
                 maxVisible={2}
@@ -628,6 +654,26 @@ const ReconciliationPage = () => {
                     label: '确认',
                     icon: <CheckOutlined />,
                     onClick: () => openConfirmDialog(record),
+                  },
+                ]}
+              />
+            );
+          }
+
+          if (
+            Number(record.status) === 0 &&
+            systemMode === 1 &&
+            hasSystemAmount(record)
+          ) {
+            return (
+              <TableActions
+                maxVisible={1}
+                actions={[
+                  {
+                    key: 'repayment',
+                    label: '回款',
+                    icon: <WalletOutlined />,
+                    onClick: () => openRepaymentDialog(record),
                   },
                 ]}
               />
@@ -684,7 +730,7 @@ const ReconciliationPage = () => {
 
         <RecovTableCard
           title="对账差异明细"
-          extra={<Tag color={modeInfo.color}>当前模式：{modeInfo.label}</Tag>}
+          extra={<ModeIndicator label={modeInfo.label} />}
         >
           <Form
             form={queryForm}
@@ -881,7 +927,7 @@ const ReconciliationPage = () => {
                 </div>
               </Col>
               <Col span={12}>
-                <Text type="secondary">RECOV系统金额</Text>
+                <Text type="secondary">系统金额</Text>
                 <div>
                   <Text strong>{formatAmount(currentRow?.systemAmount)}</Text>
                 </div>

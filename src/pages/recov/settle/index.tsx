@@ -10,6 +10,7 @@ import {
   getDifferenceDetails,
   getServiceFeeDetails,
   getServiceFeeStatistics,
+  getSettlementDetails,
   getSettlementPage,
   paySettlement,
   type ServiceFeeDetail,
@@ -22,7 +23,6 @@ import {
   buildRangeText,
   DEFAULT_PAGE_SIZE,
   PAGE_TITLE,
-  parsePeriodRange,
   type SettleActiveView,
   toNumber,
 } from './_shared';
@@ -88,10 +88,9 @@ const ServiceFeeSettlePage = () => {
   const [detailTotal, setDetailTotal] = useState(0);
   const [detailPageNum, setDetailPageNum] = useState(1);
   const [detailPageSize, setDetailPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [detailTimeRange, setDetailTimeRange] = useState({
-    startTime: '',
-    endTime: '',
-  });
+  const [detailSettlementId, setDetailSettlementId] = useState<number | null>(
+    null,
+  );
 
   const [payOpen, setPayOpen] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
@@ -152,14 +151,21 @@ const ServiceFeeSettlePage = () => {
   }, [differenceQuery]);
 
   const fetchDetailList = useCallback(
-    async (pageNum: number, pageSize: number, range = detailTimeRange) => {
+    async (
+      pageNum: number,
+      pageSize: number,
+      settlementId = detailSettlementId,
+    ) => {
+      if (!settlementId) {
+        setDetailList([]);
+        setDetailTotal(0);
+        return;
+      }
       setDetailLoading(true);
       try {
-        const res = await getServiceFeeDetails({
+        const res = await getSettlementDetails(settlementId, {
           pageNum,
           pageSize,
-          startTime: range.startTime,
-          endTime: range.endTime,
         });
         setDetailList(Array.isArray(res.rows) ? res.rows : []);
         setDetailTotal(Number(res.total) || 0);
@@ -167,7 +173,7 @@ const ServiceFeeSettlePage = () => {
         setDetailLoading(false);
       }
     },
-    [detailTimeRange],
+    [detailSettlementId],
   );
 
   useEffect(() => {
@@ -179,7 +185,6 @@ const ServiceFeeSettlePage = () => {
       void loadSettlements({
         pageNum: settlementQuery.pageNum,
         pageSize: settlementQuery.pageSize,
-        status: settlementQuery.status,
       });
     }
   }, [
@@ -187,7 +192,6 @@ const ServiceFeeSettlePage = () => {
     loadSettlements,
     settlementQuery.pageNum,
     settlementQuery.pageSize,
-    settlementQuery.status,
   ]);
 
   useEffect(() => {
@@ -227,19 +231,20 @@ const ServiceFeeSettlePage = () => {
     [detailPageNum, detailPageSize, detailTotal],
   );
 
-  const querySettlements = useCallback(() => {
-    const next = { ...settlementQuery, pageNum: 1 };
+  const refreshSettlements = useCallback(() => {
+    const next: SettlementQuery = {
+      pageNum: settlementQuery.pageNum ?? 1,
+      pageSize: settlementQuery.pageSize ?? DEFAULT_PAGE_SIZE,
+    };
     setSettlementQuery(next);
     void loadSettlements(next);
     void fetchStatistics();
-  }, [settlementQuery, loadSettlements, fetchStatistics]);
-
-  const resetSettlementQuery = useCallback(() => {
-    const next = { pageNum: 1, pageSize: DEFAULT_PAGE_SIZE };
-    setSettlementQuery(next);
-    void loadSettlements(next);
-    void fetchStatistics();
-  }, [loadSettlements, fetchStatistics]);
+  }, [
+    fetchStatistics,
+    loadSettlements,
+    settlementQuery.pageNum,
+    settlementQuery.pageSize,
+  ]);
 
   const refreshCurrentWeek = useCallback(() => {
     void fetchCurrentWeekDetails();
@@ -248,14 +253,6 @@ const ServiceFeeSettlePage = () => {
 
   const queryCurrentWeekDetails = useCallback(() => {
     setCurrentWeekQuery((prev) => ({ ...prev, pageNum: 1 }));
-    refreshCurrentWeek();
-  }, [refreshCurrentWeek]);
-
-  const resetCurrentWeekQuery = useCallback(() => {
-    setCurrentWeekQuery({
-      pageNum: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
-    });
     refreshCurrentWeek();
   }, [refreshCurrentWeek]);
 
@@ -269,14 +266,6 @@ const ServiceFeeSettlePage = () => {
     refreshDifference();
   }, [refreshDifference]);
 
-  const resetDifferenceQuery = useCallback(() => {
-    setDifferenceQuery({
-      pageNum: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
-    });
-    refreshDifference();
-  }, [refreshDifference]);
-
   const handleCardClick = (type: StatisticsCardType) => {
     switch (type) {
       case 'unpaid':
@@ -284,7 +273,6 @@ const ServiceFeeSettlePage = () => {
         setSettlementQuery({
           pageNum: 1,
           pageSize: DEFAULT_PAGE_SIZE,
-          status: '0',
         });
         break;
       case 'currentWeek':
@@ -307,12 +295,11 @@ const ServiceFeeSettlePage = () => {
   };
 
   const handleViewDetail = (row: SettlementRecord) => {
-    const range = parsePeriodRange(row.period);
-    setDetailTitle(`结算明细 - ${row.period}`);
+    setDetailTitle(`结算周期：${row.period}`);
     setDetailPageNum(1);
-    setDetailTimeRange(range);
+    setDetailSettlementId(row.id);
     setDetailOpen(true);
-    void fetchDetailList(1, detailPageSize, range);
+    void fetchDetailList(1, detailPageSize, row.id);
   };
 
   const handleDetailPageChange = (page: number, pageSize: number) => {
@@ -378,8 +365,7 @@ const ServiceFeeSettlePage = () => {
               total={settlementTotal}
               query={settlementQuery}
               onQueryChange={setSettlementQuery}
-              onSearch={querySettlements}
-              onReset={resetSettlementQuery}
+              onRefresh={refreshSettlements}
               onViewDetail={handleViewDetail}
               onPay={handleOpenPay}
             />
@@ -396,7 +382,6 @@ const ServiceFeeSettlePage = () => {
               onBack={() => setActiveView('settlement')}
               onQueryChange={setCurrentWeekQuery}
               onSearch={queryCurrentWeekDetails}
-              onReset={resetCurrentWeekQuery}
             />
           ) : null}
 
@@ -411,7 +396,6 @@ const ServiceFeeSettlePage = () => {
               onBack={() => setActiveView('settlement')}
               onQueryChange={setDifferenceQuery}
               onSearch={queryDifferenceDetails}
-              onReset={resetDifferenceQuery}
             />
           ) : null}
         </div>

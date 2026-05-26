@@ -47,6 +47,7 @@ const recovListPagePaths = new Set([
   '/litigation-process',
   '/reconciliation',
   '/sys/instrument-standing',
+  '/sys/standing',
   '/sys/settle',
   '/test11',
 ]);
