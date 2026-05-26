@@ -3,11 +3,9 @@ import {
   EyeOutlined,
   ReloadOutlined,
   StopOutlined,
-  UserAddOutlined,
 } from '@ant-design/icons';
 import {
   Button,
-  Modal,
   Popconfirm,
   Segmented,
   Select,
@@ -52,8 +50,6 @@ type MatchListSectionProps = {
   onPageChange: (pageNum: number, pageSize: number) => void;
   onViewLawyer: (row: MatchedLawyerRowVO) => void;
   onReplaceLawyer: (row: MatchedLawyerRowVO) => void;
-  onBlacklistLawyer: (row: MatchedLawyerRowVO) => void;
-  onManualMatch: (row: UnmatchedCaseRowVO) => void;
   onWithdrawCase: (row: UnmatchedCaseRowVO) => void;
   onExportUnmatched: () => void;
 };
@@ -88,8 +84,6 @@ const MatchListSection = ({
   onPageChange,
   onViewLawyer,
   onReplaceLawyer,
-  onBlacklistLawyer,
-  onManualMatch,
   onWithdrawCase,
   onExportUnmatched,
 }: MatchListSectionProps) => {
@@ -185,28 +179,12 @@ const MatchListSection = ({
                 icon: <ReloadOutlined />,
                 onClick: () => onReplaceLawyer(row),
               },
-              {
-                key: 'blacklist',
-                label: '拉黑',
-                icon: <StopOutlined />,
-                danger: true,
-                onClick: () => {
-                  Modal.confirm({
-                    title: '确认拉黑该律师？',
-                    content: `将把律师「${row.lawyerName}」加入黑名单，案件 ${row.caseNo} 将不再自动匹配该律师，此操作不可恢复。`,
-                    okText: '确认拉黑',
-                    okButtonProps: { danger: true },
-                    cancelText: '取消',
-                    onOk: () => onBlacklistLawyer(row),
-                  });
-                },
-              },
             ]}
           />
         ),
       },
     ],
-    [onViewLawyer, onReplaceLawyer, onBlacklistLawyer],
+    [onViewLawyer, onReplaceLawyer],
   );
 
   const unmatchedColumns: ColumnsType<UnmatchedCaseRowVO> = useMemo(
@@ -261,34 +239,24 @@ const MatchListSection = ({
         title: '操作',
         key: 'actions',
         fixed: 'right',
-        width: 180,
+        width: 100,
         render: (_, row) => (
-          <Space size={4}>
-            <Button
-              type="link"
-              size="small"
-              icon={<UserAddOutlined />}
-              onClick={() => onManualMatch(row)}
-            >
-              手动匹配
+          <Popconfirm
+            title="确认一键撤诉？"
+            description={`案件 ${row.caseNo}（业主 ${row.ownerName}）将发起撤诉流程，撤诉后该案件将不再进入代开庭匹配队列，且不可自动恢复。`}
+            okText="确认撤诉"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => onWithdrawCase(row)}
+          >
+            <Button type="link" size="small" danger icon={<StopOutlined />}>
+              一键撤诉
             </Button>
-            <Popconfirm
-              title="确认一键撤诉？"
-              description={`案件 ${row.caseNo}（业主 ${row.ownerName}）将发起撤诉流程，撤诉后该案件将不再进入代开庭匹配队列，且不可自动恢复。`}
-              okText="确认撤诉"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => onWithdrawCase(row)}
-            >
-              <Button type="link" size="small" danger icon={<StopOutlined />}>
-                一键撤诉
-              </Button>
-            </Popconfirm>
-          </Space>
+          </Popconfirm>
         ),
       },
     ],
-    [onManualMatch, onWithdrawCase],
+    [onWithdrawCase],
   );
 
   const pagination: TablePaginationConfig = {

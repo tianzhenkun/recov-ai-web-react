@@ -94,18 +94,8 @@ export const postReplaceLawyer = (id: string) =>
     method: 'post',
   });
 
-export const postBlacklistLawyer = (id: string) =>
-  ruoyiRequest<void>(`${API_PREFIX}/matched/${id}/blacklist`, {
-    method: 'post',
-  });
-
 export const postWithdrawCase = (id: string) =>
   ruoyiRequest<void>(`${API_PREFIX}/unmatched/${id}/withdraw`, {
-    method: 'post',
-  });
-
-export const postManualMatch = (id: string) =>
-  ruoyiRequest<void>(`${API_PREFIX}/unmatched/${id}/manual-match`, {
     method: 'post',
   });
 

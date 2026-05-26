@@ -16,13 +16,11 @@ import MatchListSection from './components/MatchListSection';
 import MatchToolbar from './components/MatchToolbar';
 import OverviewCards from './components/OverviewCards';
 import {
-  blacklistMatchedLawyer,
   exportUnmatchedCases,
   fetchLawyerCourtOverview,
   fetchLawyerCourtPage,
   getCityOptions,
   getProjectOptions,
-  manualMatchCase,
   replaceMatchedLawyer,
   runAutoMatch,
   withdrawUnmatchedCase,
@@ -200,26 +198,6 @@ const LawyerCourtPage = () => {
     }
   };
 
-  const handleBlacklistLawyer = async (row: MatchedLawyerRowVO) => {
-    try {
-      await blacklistMatchedLawyer(row.id);
-      message.success(`律师「${row.lawyerName}」已加入黑名单`);
-      await refreshAll();
-    } catch {
-      message.error('拉黑失败，请稍后重试');
-    }
-  };
-
-  const handleManualMatch = async (row: UnmatchedCaseRowVO) => {
-    try {
-      await manualMatchCase(row.id);
-      message.success(`案件 ${row.caseNo} 已手动匹配律师`);
-      await refreshAll();
-    } catch {
-      message.error('手动匹配失败，请稍后重试');
-    }
-  };
-
   const handleWithdrawCase = async (row: UnmatchedCaseRowVO) => {
     try {
       await withdrawUnmatchedCase(row.id);
@@ -264,8 +242,6 @@ const LawyerCourtPage = () => {
           onPageChange={handlePageChange}
           onViewLawyer={handleViewLawyer}
           onReplaceLawyer={handleReplaceLawyer}
-          onBlacklistLawyer={handleBlacklistLawyer}
-          onManualMatch={handleManualMatch}
           onWithdrawCase={handleWithdrawCase}
           onExportUnmatched={handleExportUnmatched}
         />

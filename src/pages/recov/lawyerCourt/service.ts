@@ -8,9 +8,7 @@ import {
   getLawyerCourtOverview,
   getMatchedLawyerPage,
   getUnmatchedCasePage,
-  postBlacklistLawyer,
   postLawyerCourtAutoMatch,
-  postManualMatch,
   postReplaceLawyer,
   postWithdrawCase,
   unwrapLawyerCourtOverview,
@@ -515,15 +513,6 @@ export const replaceMatchedLawyer = async (id: string): Promise<void> => {
   await postReplaceLawyer(id);
 };
 
-export const blacklistMatchedLawyer = async (id: string): Promise<void> => {
-  if (LAWYER_COURT_USE_LOCAL_DATA) {
-    await withDelay(undefined);
-    matchedStore = matchedStore.filter((item) => item.id !== id);
-    return;
-  }
-  await postBlacklistLawyer(id);
-};
-
 export const withdrawUnmatchedCase = async (id: string): Promise<void> => {
   if (LAWYER_COURT_USE_LOCAL_DATA) {
     await withDelay(undefined);
@@ -531,29 +520,6 @@ export const withdrawUnmatchedCase = async (id: string): Promise<void> => {
     return;
   }
   await postWithdrawCase(id);
-};
-
-export const manualMatchCase = async (id: string): Promise<void> => {
-  if (LAWYER_COURT_USE_LOCAL_DATA) {
-    await withDelay(undefined);
-    const index = unmatchedStore.findIndex((item) => item.id === id);
-    if (index < 0) return;
-    const item = unmatchedStore[index];
-    unmatchedStore = unmatchedStore.filter((row) => row.id !== id);
-    const lawyer = pickReplacementLawyer();
-    matchedStore.unshift({
-      id: `M-MANUAL-${item.id}`,
-      ...lawyer,
-      caseNo: item.caseNo,
-      ownerName: item.ownerName,
-      assetNo: item.assetNo,
-      city: item.city,
-      project: item.project,
-      amount: item.amount,
-    });
-    return;
-  }
-  await postManualMatch(id);
 };
 
 export const exportUnmatchedCases = (rows: UnmatchedCaseRowVO[]): void => {
