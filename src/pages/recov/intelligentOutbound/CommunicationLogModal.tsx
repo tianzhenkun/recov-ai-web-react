@@ -1,10 +1,7 @@
 import {
-  CheckCircleOutlined,
   ClockCircleOutlined,
-  ExclamationCircleOutlined,
   MessageOutlined,
-  MinusCircleOutlined,
-  QuestionCircleOutlined,
+  TagOutlined,
 } from '@ant-design/icons';
 import {
   Button,
@@ -17,7 +14,6 @@ import {
   Typography,
   theme,
 } from 'antd';
-import type { ReactNode } from 'react';
 import type { CommunicationLog, OwnerCommunicationDetail } from './_shared';
 import { formatDuration } from './_shared';
 
@@ -30,34 +26,36 @@ type CommunicationLogModalProps = {
   onClose: () => void;
 };
 
-const sentimentMeta: Record<
-  CommunicationLog['sentiment'],
+const statusMeta: Record<
+  string,
   {
     color: string;
-    tagColor: 'error' | 'success' | 'default' | 'warning';
-    icon: ReactNode;
+    tagColor: 'error' | 'success' | 'default' | 'processing' | 'warning';
   }
 > = {
-  负向: {
+  '1': {
+    color: '#1677ff',
+    tagColor: 'processing',
+  },
+  '2': {
     color: '#cf1322',
     tagColor: 'error',
-    icon: <ExclamationCircleOutlined />,
   },
-  正向: {
+  '3': {
+    color: '#d48806',
+    tagColor: 'warning',
+  },
+  '4': {
     color: '#389e0d',
     tagColor: 'success',
-    icon: <CheckCircleOutlined />,
   },
-  中性: {
-    color: '#1677ff',
-    tagColor: 'default',
-    icon: <MinusCircleOutlined />,
-  },
-  未知: {
-    color: '#8c8c8c',
-    tagColor: 'default',
-    icon: <QuestionCircleOutlined />,
-  },
+};
+
+const sentimentColor: Record<CommunicationLog['sentiment'], string> = {
+  负向: '#cf1322',
+  正向: '#389e0d',
+  中性: '#1677ff',
+  未知: '#8c8c8c',
 };
 
 const firstText = (...values: unknown[]) => {
@@ -86,9 +84,19 @@ const getTranscriptTurns = (transcript?: Record<string, unknown>) => {
       return {
         speaker: speaker || '对话',
         content,
+        role:
+          speaker === 'user' || speaker === '用户'
+            ? 'user'
+            : speaker === 'assistant' || speaker === 'AI'
+              ? 'assistant'
+              : 'unknown',
       };
     })
-    .filter(Boolean) as Array<{ speaker: string; content: string }>;
+    .filter(Boolean) as Array<{
+    speaker: string;
+    content: string;
+    role: 'assistant' | 'user' | 'unknown';
+  }>;
 };
 
 const CommunicationLogModal = ({
@@ -100,50 +108,80 @@ const CommunicationLogModal = ({
   const { token } = theme.useToken();
 
   const timelineItems = (detail?.logs || []).map((log) => {
-    const meta = sentimentMeta[log.sentiment];
+    const callStatusMeta = statusMeta[log.status || ''] || {
+      color: token.colorTextTertiary,
+      tagColor: 'default' as const,
+    };
+    const timelineColor = log.hasSemanticAnalysis
+      ? sentimentColor[log.sentiment]
+      : callStatusMeta.color;
     const transcriptTurns = getTranscriptTurns(log.transcript);
+    const shouldShowSummary =
+      log.hasSemanticAnalysis || transcriptTurns.length === 0;
     return {
-      color: meta.color,
-      dot: <ClockCircleOutlined style={{ color: meta.color }} />,
+      color: timelineColor,
+      dot: <ClockCircleOutlined style={{ color: timelineColor }} />,
       children: (
         <div className="flex flex-col gap-2 pb-2">
           <Space size={8} align="center" wrap>
             <Text strong>{log.date || '未记录时间'}</Text>
-            <Tag color="processing" style={{ marginInlineEnd: 0 }}>
-              {log.channel}
-            </Tag>
-            <Tag
-              color={meta.tagColor}
-              icon={meta.icon}
-              style={{ marginInlineEnd: 0 }}
-            >
-              {log.sentiment}
-            </Tag>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {formatDuration(log.durationSeconds)}
-            </Text>
+            {log.durationSeconds > 0 ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {formatDuration(log.durationSeconds)}
+              </Text>
+            ) : null}
           </Space>
-          <Paragraph
-            style={{
-              marginBottom: 0,
-              color: token.colorTextSecondary,
-              fontSize: 13,
-              lineHeight: 1.7,
-            }}
-          >
-            <Text strong style={{ marginInlineEnd: 6 }}>
-              语义摘要：
-            </Text>
-            {log.summary}
-          </Paragraph>
+          {shouldShowSummary ? (
+            <Paragraph
+              style={{
+                marginBottom: 0,
+                color: token.colorTextSecondary,
+                fontSize: 13,
+                lineHeight: 1.7,
+              }}
+            >
+              <Text strong style={{ marginInlineEnd: 6 }}>
+                {log.hasSemanticAnalysis ? '语义摘要：' : '状态说明：'}
+              </Text>
+              {log.summary}
+            </Paragraph>
+          ) : null}
           {log.keywords.length > 0 ? (
-            <Space size={[6, 4]} wrap>
-              {log.keywords.map((keyword) => (
-                <Tag key={keyword} style={{ marginInlineEnd: 0 }}>
-                  {keyword}
-                </Tag>
-              ))}
-            </Space>
+            <div
+              className="flex flex-col gap-1.5 rounded-md px-3 py-2"
+              style={{
+                backgroundColor: token.colorFillQuaternary,
+                border: `1px solid ${token.colorBorderSecondary}`,
+              }}
+            >
+              <Space size={6} align="center" wrap>
+                <TagOutlined style={{ color: token.colorPrimary }} />
+                <Text
+                  strong
+                  style={{
+                    color: token.colorTextSecondary,
+                    fontSize: 12,
+                  }}
+                >
+                  语义标签
+                </Text>
+              </Space>
+              <Space size={[6, 4]} wrap>
+                {log.keywords.map((keyword) => (
+                  <Tag
+                    key={keyword}
+                    style={{
+                      marginInlineEnd: 0,
+                      color: token.colorPrimaryText,
+                      backgroundColor: token.colorPrimaryBg,
+                      borderColor: token.colorPrimaryBorder,
+                    }}
+                  >
+                    {keyword}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
           ) : null}
           {transcriptTurns.length > 0 ? (
             <div
@@ -156,10 +194,30 @@ const CommunicationLogModal = ({
               {transcriptTurns.slice(0, 6).map((turn) => (
                 <div
                   key={`${turn.speaker}-${turn.content}`}
-                  className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-sm"
+                  className={`flex ${
+                    turn.role === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
                 >
-                  <Text type="secondary">{turn.speaker}</Text>
-                  <Text style={{ color: token.colorTextSecondary }}>
+                  <Text
+                    className="inline-block rounded-lg px-3 py-2 text-sm"
+                    style={{
+                      maxWidth: '82%',
+                      backgroundColor:
+                        turn.role === 'user'
+                          ? token.colorPrimaryBg
+                          : token.colorBgContainer,
+                      border:
+                        turn.role === 'user'
+                          ? `1px solid ${token.colorPrimaryBorder}`
+                          : `1px solid ${token.colorBorderSecondary}`,
+                      color:
+                        turn.role === 'user'
+                          ? token.colorPrimaryText
+                          : token.colorTextSecondary,
+                      lineHeight: 1.7,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
                     {turn.content}
                   </Text>
                 </div>
@@ -199,13 +257,7 @@ const CommunicationLogModal = ({
           >
             <Space size={6} align="center" wrap style={{ marginBottom: 6 }}>
               <MessageOutlined style={{ color: token.colorPrimary }} />
-              <Text strong>沟通语义分析总结</Text>
-              {detail.organization ? (
-                <Tag style={{ marginInlineEnd: 0 }}>{detail.organization}</Tag>
-              ) : null}
-              {detail.debtorPhone ? (
-                <Tag style={{ marginInlineEnd: 0 }}>{detail.debtorPhone}</Tag>
-              ) : null}
+              <Text strong>通话语义概要</Text>
             </Space>
             <Paragraph
               style={{

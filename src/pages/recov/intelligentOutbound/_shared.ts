@@ -1,6 +1,7 @@
 import { formatAmount, toNumber } from '@/pages/recov/settle/_shared';
 import type {
   AiCallDashboard,
+  AiCallDebtFeedback,
   AiCallDebtTimeline,
   AiCallRecord,
   AiCallRecordDetail,
@@ -9,7 +10,7 @@ import type {
 
 export const PAGE_TITLE = '数字员工智能外呼';
 
-export const DEFAULT_FEEDBACK_PAGE_SIZE = 6;
+export const DEFAULT_FEEDBACK_PAGE_SIZE = 5;
 
 export type MetricFormat = 'currency' | 'count' | 'duration';
 
@@ -46,12 +47,19 @@ export type FeedbackItem = {
   feedbackType: string;
   semanticTags: string[];
   startedAt: string;
+  feedbackRecordCount: number;
 };
 
 export type CommunicationLog = {
   id: string;
   date: string;
   channel: string;
+  status?: string;
+  statusLabel: string;
+  analysisStatus?: string;
+  analysisStatusLabel?: string;
+  analysisError?: string;
+  hasSemanticAnalysis: boolean;
   sentiment: '正向' | '中性' | '负向' | '未知';
   summary: string;
   keywords: string[];
@@ -237,6 +245,39 @@ export const toFeedbackItem = (record: AiCallRecord): FeedbackItem => {
     feedbackType: firstText(record.feedbackType, '中性'),
     semanticTags: tags.length > 0 ? tags : keyPoints,
     startedAt: firstText(record.startedAt),
+    feedbackRecordCount: 1,
+  };
+};
+
+export const toDebtFeedbackItem = (
+  record: AiCallDebtFeedback,
+): FeedbackItem => {
+  const debtId = firstText(record.debtId);
+  const callRecordId = firstText(record.latestCallRecordId);
+  const tags = Array.isArray(record.latestTags)
+    ? record.latestTags.filter(Boolean)
+    : [];
+  const keyPoints = Array.isArray(record.latestKeyPoints)
+    ? record.latestKeyPoints.filter(Boolean)
+    : [];
+
+  return {
+    id: debtId || callRecordId || firstText(record.latestFinishedAt),
+    callRecordId,
+    debtId,
+    ownerName: firstText(record.debtorName, '未知业主'),
+    project: firstText(record.organization, '未归属项目'),
+    summary: firstText(
+      record.callSummary,
+      record.latestSummary,
+      record.latestAnalysisError,
+      '无语义摘要',
+    ),
+    sentiment: getFeedbackSentiment(record.latestFeedbackType),
+    feedbackType: firstText(record.latestFeedbackType, '中性'),
+    semanticTags: tags.length > 0 ? tags : keyPoints,
+    startedAt: firstText(record.latestFinishedAt, record.latestStartedAt),
+    feedbackRecordCount: toNumber(record.feedbackRecordCount),
   };
 };
 
@@ -267,6 +308,9 @@ export const FIXED_DIGITAL_IDENTITIES: DigitalIdentity[] = [
 const getRecordSummary = (
   record: AiCallTimelineRecord | AiCallRecordDetail,
 ): string => {
+  if (!hasSuccessfulAnalysis(record)) {
+    return getStatusSummary(record);
+  }
   if ('analysis' in record && record.analysis?.summary) {
     return record.analysis.summary;
   }
@@ -280,6 +324,9 @@ const getRecordSummary = (
 const getRecordFeedbackType = (
   record: AiCallTimelineRecord | AiCallRecordDetail,
 ): '正向' | '中性' | '负向' | '未知' => {
+  if (!hasSuccessfulAnalysis(record)) {
+    return '未知';
+  }
   const feedbackType =
     'analysis' in record && record.analysis?.feedbackType
       ? record.analysis.feedbackType
@@ -297,6 +344,9 @@ const getRecordFeedbackType = (
 const getRecordKeywords = (
   record: AiCallTimelineRecord | AiCallRecordDetail,
 ): string[] => {
+  if (!hasSuccessfulAnalysis(record)) {
+    return [];
+  }
   const analysisTags =
     'analysis' in record && Array.isArray(record.analysis?.tags)
       ? record.analysis.tags
@@ -306,12 +356,148 @@ const getRecordKeywords = (
   return [...analysisTags, ...tags, ...keyPoints].filter(Boolean).slice(0, 8);
 };
 
+const hasTranscriptContent = (
+  transcript?: AiCallTimelineRecord['transcript'],
+) => {
+  if (!transcript || !Array.isArray(transcript.turns)) return false;
+  return transcript.turns.some((turn) => {
+    if (!turn || typeof turn !== 'object') return false;
+    const source = turn as Record<string, unknown>;
+    return Boolean(firstText(source.text, source.content, source.message));
+  });
+};
+
+const isMeaningfulCommunicationRecord = (
+  record: AiCallTimelineRecord | AiCallRecordDetail,
+) =>
+  Boolean(
+    firstText(record.status, record.finishedAt, record.startedAt) ||
+      toNumber(record.durationSeconds) > 0 ||
+      firstText(record.summary) ||
+      ('analysisError' in record ? firstText(record.analysisError) : '') ||
+      getRecordKeywords(record).length > 0 ||
+      hasTranscriptContent(record.transcript),
+  );
+
+const statusLabels: Record<string, string> = {
+  '0': '未开始',
+  '1': '进行中',
+  '2': '外呼失败',
+  '3': '未接听',
+  '4': '转写完成',
+};
+
+const analysisStatusLabels: Record<string, string> = {
+  '0': '待分析',
+  '1': '分析中',
+  '2': '分析成功',
+  '3': '分析失败',
+  '4': '无有效用户输入',
+};
+
+const getRecordStatus = (record: AiCallTimelineRecord | AiCallRecordDetail) =>
+  firstText(record.status);
+
+const getRecordAnalysisStatus = (
+  record: AiCallTimelineRecord | AiCallRecordDetail,
+) => firstText(record.analysisStatus);
+
+const getRecordStatusLabel = (
+  record: AiCallTimelineRecord | AiCallRecordDetail,
+) =>
+  firstText(
+    'statusLabel' in record ? record.statusLabel : undefined,
+    statusLabels[getRecordStatus(record)],
+    '未知状态',
+  );
+
+const getRecordAnalysisStatusLabel = (
+  record: AiCallTimelineRecord | AiCallRecordDetail,
+) =>
+  firstText(
+    'analysisStatusLabel' in record ? record.analysisStatusLabel : undefined,
+    analysisStatusLabels[getRecordAnalysisStatus(record)],
+    '未分析',
+  );
+
+const hasSuccessfulAnalysis = (
+  record: AiCallTimelineRecord | AiCallRecordDetail,
+) => {
+  const analysisStatus = getRecordAnalysisStatus(record);
+  if (analysisStatus !== '2') return false;
+  if ('analysis' in record) {
+    return Boolean(
+      firstText(record.analysis?.summary, record.analysis?.feedbackType) ||
+        (record.analysis?.tags || []).length > 0 ||
+        (record.analysis?.keyPoints || []).length > 0,
+    );
+  }
+  return Boolean(
+    firstText(record.summary, record.feedbackType) ||
+      (record.tags || []).length > 0 ||
+      (record.keyPoints || []).length > 0,
+  );
+};
+
+const getStatusSummary = (
+  record: AiCallTimelineRecord | AiCallRecordDetail,
+) => {
+  const status = getRecordStatus(record);
+  const analysisStatus = getRecordAnalysisStatus(record);
+  const analysisError = firstText(
+    'analysisError' in record ? record.analysisError : undefined,
+  );
+
+  if (status === '1') {
+    return '外呼进行中，等待通话结束后生成结果。';
+  }
+  if (status === '2') {
+    return '外呼失败，未产生有效通话内容。';
+  }
+  if (status === '3') {
+    return '用户未接听，未产生有效通话内容。';
+  }
+  if (status === '4' && analysisStatus === '4') {
+    return firstText(
+      analysisError,
+      '通话已接通，但未获取到用户有效话术，无需进行语义分析。',
+    );
+  }
+  if (status === '4' && analysisStatus === '3') {
+    return firstText(
+      analysisError ? `语义分析失败：${analysisError}` : '',
+      '语义分析失败，暂未生成摘要。',
+    );
+  }
+  if (status === '4' && analysisStatus === '1') {
+    return '通话转写已完成，语义分析处理中。';
+  }
+  if (status === '4') {
+    return '通话转写已完成，等待语义分析结果。';
+  }
+  if (hasTranscriptContent(record.transcript)) {
+    return '本次通话已有转写，语义分析结果尚未返回。';
+  }
+  if (toNumber(record.durationSeconds) > 0) {
+    return '本次外呼已产生通话时长，语义分析结果尚未返回。';
+  }
+  return firstText(analysisError, '暂无语义摘要。');
+};
+
 const toCommunicationLog = (
   record: AiCallTimelineRecord | AiCallRecordDetail,
 ): CommunicationLog => ({
   id: firstText(record.callRecordId, record.finishedAt, record.startedAt),
   date: firstText(record.finishedAt, record.startedAt),
   channel: 'AI 智能外呼',
+  status: getRecordStatus(record),
+  statusLabel: getRecordStatusLabel(record),
+  analysisStatus: getRecordAnalysisStatus(record),
+  analysisStatusLabel: getRecordAnalysisStatusLabel(record),
+  analysisError: firstText(
+    'analysisError' in record ? record.analysisError : undefined,
+  ),
+  hasSemanticAnalysis: hasSuccessfulAnalysis(record),
   sentiment: getRecordFeedbackType(record),
   summary: getRecordSummary(record),
   keywords: getRecordKeywords(record),
@@ -322,24 +508,33 @@ const toCommunicationLog = (
 export const buildCommunicationDetail = (
   timeline?: AiCallDebtTimeline | null,
   detail?: AiCallRecordDetail | null,
+  semanticSummary?: string,
 ): OwnerCommunicationDetail => {
+  const timelineRecords = Array.isArray(timeline?.records)
+    ? timeline.records.filter(isMeaningfulCommunicationRecord)
+    : [];
   const logs =
-    Array.isArray(timeline?.records) && timeline.records.length > 0
-      ? timeline.records.map(toCommunicationLog)
+    timelineRecords.length > 0
+      ? timelineRecords.map(toCommunicationLog)
       : detail
         ? [toCommunicationLog(detail)]
         : [];
   const currentLog = logs[0];
+  const semanticLog = logs.find((log) => log.hasSemanticAnalysis);
 
   return {
     ownerName: firstText(timeline?.debtorName, detail?.debtorName, '未知业主'),
     debtorPhone: firstText(timeline?.debtorPhone, detail?.debtorPhone),
     organization: firstText(timeline?.organization, detail?.organization),
     semanticSummary: firstText(
+      timeline?.callSummary,
+      detail?.callSummary,
       detail?.analysis?.summary,
       detail?.summary,
+      semanticSummary,
+      semanticLog?.summary,
       currentLog?.summary,
-      '无语义摘要',
+      '暂无成功语义分析',
     ),
     logs,
   };

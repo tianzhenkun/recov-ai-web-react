@@ -40,6 +40,7 @@ export type AiCallRecord = {
   debtorName?: string;
   debtorPhone?: string;
   organization?: string;
+  callSummary?: string;
   status?: string;
   analysisStatus?: string;
   analysisError?: string | null;
@@ -53,6 +54,28 @@ export type AiCallRecord = {
   timeHint?: AiCallTimeHint;
 };
 
+export type AiCallDebtFeedback = {
+  debtId?: number | string;
+  debtNumber?: number | string;
+  debtorName?: string;
+  debtorPhone?: string;
+  organization?: string;
+  callSummary?: string;
+  latestCallRecordId?: number | string;
+  latestStatus?: string;
+  latestAnalysisStatus?: string;
+  latestAnalysisError?: string | null;
+  latestStartedAt?: string | null;
+  latestFinishedAt?: string | null;
+  latestDurationSeconds?: number | string;
+  latestSummary?: string;
+  latestFeedbackType?: string;
+  latestKeyPoints?: string[];
+  latestTags?: string[];
+  latestTimeHint?: AiCallTimeHint;
+  feedbackRecordCount?: number | string;
+};
+
 export type AiCallRecordDetail = AiCallRecord & {
   analysis?: AiCallAnalysis;
   transcript?: AiCallTranscript | Record<string, unknown>;
@@ -60,6 +83,11 @@ export type AiCallRecordDetail = AiCallRecord & {
 
 export type AiCallTimelineRecord = {
   callRecordId?: number | string;
+  status?: string;
+  statusLabel?: string;
+  analysisStatus?: string;
+  analysisStatusLabel?: string;
+  analysisError?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
   durationSeconds?: number | string;
@@ -76,6 +104,7 @@ export type AiCallDebtTimeline = {
   debtorName?: string;
   debtorPhone?: string;
   organization?: string;
+  callSummary?: string;
   records?: AiCallTimelineRecord[];
 };
 
@@ -91,6 +120,8 @@ export type AiCallRecordPageQuery = {
   dateEnd?: string;
 };
 
+export type AiCallDebtFeedbackPageQuery = AiCallRecordPageQuery;
+
 const BASE = '/system/recov/ai-call';
 
 export const getAiCallDashboard = () =>
@@ -100,6 +131,14 @@ export const getAiCallDashboard = () =>
 
 export const getAiCallRecordPage = (params: AiCallRecordPageQuery) =>
   ruoyiRequest<AiCallRecord>(`${BASE}/records/page`, {
+    method: 'get',
+    params,
+  });
+
+export const getAiCallDebtFeedbackPage = (
+  params: AiCallDebtFeedbackPageQuery,
+) =>
+  ruoyiRequest<AiCallDebtFeedback>(`${BASE}/feedback/debts/page`, {
     method: 'get',
     params,
   });

@@ -56,7 +56,7 @@ const LiveMonitorCard = ({
           style={{
             color: options?.large ? token.colorTextHeading : token.colorText,
             cursor: 'inherit',
-            fontSize: options?.large ? 40 : 24,
+            fontSize: options?.large ? 34 : 22,
             lineHeight: 1.1,
             whiteSpace: 'nowrap',
           }}
@@ -86,15 +86,15 @@ const LiveMonitorCard = ({
 
   return (
     <div
-      className={`flex flex-col rounded-lg border border-solid ${fillHeight ? 'h-full min-h-[220px] p-5' : 'p-5'}`}
+      className={`flex flex-col rounded-lg border border-solid ${fillHeight ? 'h-full min-h-[200px] p-4' : 'p-4'}`}
       style={{
         background: token.colorBgContainer,
         borderColor: token.colorBorderSecondary,
         boxShadow: '0 10px 28px rgba(15, 23, 42, 0.04)',
       }}
     >
-      <div className="mb-5 flex items-center justify-between gap-2">
-        <Text strong style={{ fontSize: 18 }}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <Text strong style={{ fontSize: 16 }}>
           实时外呼监控
         </Text>
         <Badge status="processing" text="实时" />
@@ -102,7 +102,7 @@ const LiveMonitorCard = ({
 
       <div className={fillHeight ? 'flex flex-1 flex-col justify-center' : ''}>
         <div
-          className="rounded-lg px-5 py-5"
+          className="rounded-lg px-4 py-4"
           style={{
             backgroundColor: token.colorFillQuaternary,
           }}
@@ -122,7 +122,7 @@ const LiveMonitorCard = ({
         </div>
 
         <div
-          className="mt-4 grid grid-cols-2 rounded-lg border border-solid"
+          className="mt-3 grid grid-cols-2 rounded-lg border border-solid"
           style={{
             borderColor: token.colorBorderSecondary,
             backgroundColor: token.colorBgContainer,
@@ -131,7 +131,7 @@ const LiveMonitorCard = ({
           {secondaryStats.map((stat) => (
             <div
               key={stat.label}
-              className="min-w-0 px-4 py-4"
+              className="min-w-0 px-4 py-3"
               style={{
                 borderInlineStart:
                   stat.label === secondaryStats[0].label
@@ -142,7 +142,7 @@ const LiveMonitorCard = ({
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {stat.label}
               </Text>
-              <div className="mt-3">
+              <div className="mt-2">
                 {loading ? (
                   <Skeleton.Input active size="small" style={{ width: 86 }} />
                 ) : (

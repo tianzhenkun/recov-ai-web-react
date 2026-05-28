@@ -17,6 +17,7 @@ const MAX_VISIBLE_TAGS = 3;
 type FeedbackFeedProps = {
   items: FeedbackItem[];
   loading?: boolean;
+  pageSize?: number;
   onItemClick: (item: FeedbackItem) => void;
 };
 
@@ -27,8 +28,14 @@ type SentimentMeta = {
   icon: ReactNode;
 };
 
-const FeedbackFeed = ({ items, loading, onItemClick }: FeedbackFeedProps) => {
+const FeedbackFeed = ({
+  items,
+  loading,
+  pageSize = 5,
+  onItemClick,
+}: FeedbackFeedProps) => {
   const { token } = theme.useToken();
+  const shouldFillPage = items.length >= pageSize;
 
   const sentimentMeta: Record<FeedbackSentiment, SentimentMeta> = {
     negative: {
@@ -53,9 +60,11 @@ const FeedbackFeed = ({ items, loading, onItemClick }: FeedbackFeedProps) => {
 
   if (loading && items.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {[0, 1, 2, 3].map((idx) => (
-          <Skeleton key={idx} active avatar paragraph={{ rows: 2 }} />
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+        {[0, 1, 2, 3, 4].map((idx) => (
+          <div key={idx} className="shrink-0 rounded-lg px-4 py-3">
+            <Skeleton active avatar paragraph={{ rows: 2 }} />
+          </div>
         ))}
       </div>
     );
@@ -88,53 +97,82 @@ const FeedbackFeed = ({ items, loading, onItemClick }: FeedbackFeedProps) => {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div
+      className={`min-h-0 flex-1 gap-2 pr-1 ${
+        shouldFillPage
+          ? 'grid overflow-hidden'
+          : 'flex flex-col overflow-y-auto'
+      }`}
+      style={
+        shouldFillPage
+          ? {
+              gridTemplateRows: `repeat(${pageSize}, minmax(0, 1fr))`,
+            }
+          : undefined
+      }
+    >
       {items.map((item) => {
         const meta = sentimentMeta[item.sentiment];
         const visibleTags = item.semanticTags.slice(0, MAX_VISIBLE_TAGS);
         const hiddenTags = item.semanticTags.slice(MAX_VISIBLE_TAGS);
+        const feedbackRecordCount = item.feedbackRecordCount || 0;
         return (
           <button
             key={item.id}
             type="button"
             onClick={() => onItemClick(item)}
-            className="flex w-full cursor-pointer items-start gap-4 rounded-lg border border-solid px-4 py-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
+            className={`flex w-full cursor-pointer items-start gap-3 rounded-lg border border-solid px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+              shouldFillPage ? 'h-full min-h-0 overflow-hidden' : 'shrink-0'
+            }`}
             style={{
               borderColor: token.colorBorderSecondary,
               backgroundColor: token.colorBgContainer,
-              minHeight: 140,
             }}
           >
             <span
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base"
               style={{ color: meta.color, backgroundColor: meta.iconBg }}
               aria-hidden
             >
               {meta.icon}
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
               <Space size={8} align="center" wrap>
                 <Text strong>{item.ownerName}</Text>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   来自 {item.project}
                 </Text>
+                {feedbackRecordCount > 1 ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    共 {feedbackRecordCount} 次反馈
+                  </Text>
+                ) : null}
               </Space>
-              <Text
-                type="secondary"
-                italic
-                style={{ fontSize: 13, lineHeight: 1.8 }}
-              >
-                “{item.summary}”
-              </Text>
-              <Space size={[12, 6]} wrap style={{ marginTop: 2 }}>
+              <Tooltip title={item.summary}>
+                <Text
+                  type="secondary"
+                  italic
+                  style={{
+                    display: '-webkit-box',
+                    overflow: 'hidden',
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    WebkitBoxOrient: 'vertical',
+                    WebkitLineClamp: 2,
+                  }}
+                >
+                  “{item.summary}”
+                </Text>
+              </Tooltip>
+              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                 {visibleTags.length > 0 ? (
-                  <Space size={4} wrap>
+                  <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
                     <TagOutlined style={{ color: token.colorTextTertiary }} />
                     {visibleTags.map((tag) => (
                       <Tooltip key={tag} title={tag}>
                         <Tag
                           style={{
-                            maxWidth: 112,
+                            maxWidth: 96,
                             marginInlineEnd: 0,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -153,10 +191,10 @@ const FeedbackFeed = ({ items, loading, onItemClick }: FeedbackFeedProps) => {
                         </Tag>
                       </Tooltip>
                     ) : null}
-                  </Space>
+                  </div>
                 ) : null}
                 {item.startedAt ? (
-                  <Space size={4}>
+                  <Space className="shrink-0" size={4}>
                     <ClockCircleOutlined
                       style={{ color: token.colorTextTertiary }}
                     />
@@ -165,9 +203,10 @@ const FeedbackFeed = ({ items, loading, onItemClick }: FeedbackFeedProps) => {
                     </Text>
                   </Space>
                 ) : null}
-              </Space>
+              </div>
             </div>
             <Tag
+              className="shrink-0"
               color={meta.tagColor}
               icon={meta.icon}
               style={{ marginInlineEnd: 0 }}

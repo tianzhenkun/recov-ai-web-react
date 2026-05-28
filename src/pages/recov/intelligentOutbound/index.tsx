@@ -2,9 +2,10 @@ import {
   MessageOutlined,
   ReloadOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Flex, message, Pagination, Space } from 'antd';
+import { Button, Flex, message, Pagination, Space, theme } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   buildCommunicationDetail,
@@ -15,9 +16,10 @@ import {
   FIXED_DIGITAL_IDENTITIES,
   type OwnerCommunicationDetail,
   PAGE_TITLE,
-  toFeedbackItem,
+  toDebtFeedbackItem,
 } from './_shared';
 import CommunicationLogModal from './CommunicationLogModal';
+import FeedbackAllDrawer from './FeedbackAllDrawer';
 import FeedbackFeed from './FeedbackFeed';
 import IdentityGrid from './IdentityGrid';
 import LiveMonitorCard from './LiveMonitorCard';
@@ -25,12 +27,12 @@ import MetricsRow from './MetricsRow';
 import {
   type AiCallDashboard,
   getAiCallDashboard,
+  getAiCallDebtFeedbackPage,
   getAiCallDebtTimeline,
-  getAiCallRecordDetail,
-  getAiCallRecordPage,
 } from './service';
 
 const IntelligentOutboundPage = () => {
+  const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
 
   const [dashboard, setDashboard] = useState<AiCallDashboard>(emptyDashboard);
@@ -43,6 +45,7 @@ const IntelligentOutboundPage = () => {
     pageSize: DEFAULT_FEEDBACK_PAGE_SIZE,
   });
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackDrawerOpen, setFeedbackDrawerOpen] = useState(false);
 
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logDetail, setLogDetail] = useState<OwnerCommunicationDetail | null>(
@@ -68,12 +71,12 @@ const IntelligentOutboundPage = () => {
     async (pageNum: number, pageSize: number) => {
       setFeedbackLoading(true);
       try {
-        const res = await getAiCallRecordPage({
+        const res = await getAiCallDebtFeedbackPage({
           pageNum,
           pageSize,
           analysisStatus: '2',
         });
-        setFeedbackItems((res.rows || []).map(toFeedbackItem));
+        setFeedbackItems((res.rows || []).map(toDebtFeedbackItem));
         setFeedbackTotal(Number(res.total || 0));
       } catch {
         setFeedbackItems([]);
@@ -105,8 +108,8 @@ const IntelligentOutboundPage = () => {
 
   const handleFeedbackClick = useCallback(
     async (item: FeedbackItem) => {
-      if (!item.callRecordId) {
-        messageApi.warning('通话记录 ID 为空，无法查看详情');
+      if (!item.debtId) {
+        messageApi.warning('债务 ID 为空，无法查看详情');
         return;
       }
 
@@ -114,19 +117,10 @@ const IntelligentOutboundPage = () => {
       setLogDetail(null);
       setLogLoading(true);
       try {
-        const [detailResult, timelineResult] = await Promise.allSettled([
-          getAiCallRecordDetail(item.callRecordId),
-          item.debtId
-            ? getAiCallDebtTimeline(item.debtId)
-            : Promise.resolve(null),
-        ]);
-        const detail =
-          detailResult.status === 'fulfilled' ? detailResult.value.data : null;
-        const timeline =
-          timelineResult.status === 'fulfilled'
-            ? timelineResult.value?.data
-            : null;
-        setLogDetail(buildCommunicationDetail(timeline, detail));
+        const res = await getAiCallDebtTimeline(item.debtId);
+        setLogDetail(
+          buildCommunicationDetail(res.data || null, null, item.summary),
+        );
       } catch {
         messageApi.error('加载沟通记录失败');
       } finally {
@@ -156,17 +150,18 @@ const IntelligentOutboundPage = () => {
       }
     >
       {messageContextHolder}
-      <Flex vertical gap={16} style={{ width: '100%' }}>
+      <Flex vertical gap={12} style={{ width: '100%' }}>
         <MetricsRow metrics={overview.metrics} loading={dashboardLoading} />
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-4">
+        <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[420px_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-3">
             <LiveMonitorCard
               stats={overview.liveStats}
               loading={dashboardLoading}
             />
 
             <ProCard
+              className="flex-1"
               title={
                 <Space>
                   <TeamOutlined />
@@ -175,35 +170,61 @@ const IntelligentOutboundPage = () => {
               }
               styles={{
                 body: {
+                  height: '100%',
                   minHeight: 0,
+                  padding: 16,
                 },
               }}
             >
-              <IdentityGrid identities={FIXED_DIGITAL_IDENTITIES} />
+              <IdentityGrid identities={FIXED_DIGITAL_IDENTITIES} fillHeight />
             </ProCard>
           </div>
 
           <ProCard
-            className="h-full min-w-0"
+            className="min-w-0"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+            }}
             title={
               <Space>
                 <MessageOutlined />
                 用户反馈与语义分析
               </Space>
             }
+            extra={
+              <Button
+                icon={<UnorderedListOutlined />}
+                size="small"
+                type="text"
+                onClick={() => setFeedbackDrawerOpen(true)}
+                style={{
+                  color: token.colorPrimary,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  height: 28,
+                  paddingInline: 8,
+                }}
+              >
+                全部反馈
+              </Button>
+            }
             styles={{
               body: {
                 display: 'flex',
-                height: '100%',
+                flex: 1,
                 minHeight: 0,
                 flexDirection: 'column',
                 gap: 12,
+                padding: 16,
               },
             }}
           >
             <FeedbackFeed
               items={feedbackItems}
               loading={feedbackLoading}
+              pageSize={feedbackPage.pageSize}
               onItemClick={handleFeedbackClick}
             />
             {feedbackTotal > 0 ? (
@@ -211,12 +232,11 @@ const IntelligentOutboundPage = () => {
                 align="end"
                 current={feedbackPage.pageNum}
                 pageSize={feedbackPage.pageSize}
+                size="small"
                 total={feedbackTotal}
-                showSizeChanger
-                style={{ marginTop: 'auto' }}
-                showTotal={(total, range) =>
-                  `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`
-                }
+                showSizeChanger={false}
+                style={{ flexShrink: 0 }}
+                showTotal={(total) => `共 ${total} 条`}
                 onChange={(pageNum, pageSize) => {
                   setFeedbackPage({ pageNum, pageSize });
                 }}
@@ -225,6 +245,12 @@ const IntelligentOutboundPage = () => {
           </ProCard>
         </div>
       </Flex>
+
+      <FeedbackAllDrawer
+        open={feedbackDrawerOpen}
+        onClose={() => setFeedbackDrawerOpen(false)}
+        onItemClick={handleFeedbackClick}
+      />
 
       <CommunicationLogModal
         open={logModalOpen}

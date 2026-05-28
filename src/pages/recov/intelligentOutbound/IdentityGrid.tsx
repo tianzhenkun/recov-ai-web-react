@@ -57,8 +57,8 @@ const IdentityGrid = ({
   }
 
   const gridClassName = fillHeight
-    ? 'grid h-full min-h-[240px] grid-cols-1 gap-4'
-    : 'grid grid-cols-1 gap-4';
+    ? 'grid h-full min-h-[220px] grid-cols-1 gap-2'
+    : 'grid grid-cols-1 gap-2';
 
   return (
     <div className={gridClassName}>
@@ -67,14 +67,14 @@ const IdentityGrid = ({
         return (
           <div
             key={identity.key}
-            className={`flex items-center gap-4 rounded-lg border border-solid ${fillHeight ? 'h-full min-h-[108px] p-5' : 'p-5'}`}
+            className={`flex items-center gap-3 rounded-lg border border-solid ${fillHeight ? 'h-full min-h-[96px] p-3' : 'p-3'}`}
             style={{
               borderColor: token.colorBorderSecondary,
               backgroundColor: token.colorBgContainer,
             }}
           >
             <span
-              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-xl"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg"
               style={{
                 color: meta.color,
                 backgroundColor: token.colorFillQuaternary,
@@ -83,15 +83,15 @@ const IdentityGrid = ({
             >
               {meta.icon}
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <Text strong style={{ fontSize: 17, lineHeight: 1.2 }}>
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <Text strong style={{ fontSize: 15, lineHeight: 1.2 }}>
                 {identity.label}
               </Text>
               <Text
                 type="secondary"
                 style={{
-                  fontSize: 13,
-                  lineHeight: 1.7,
+                  fontSize: 12,
+                  lineHeight: 1.55,
                   color: token.colorTextSecondary,
                 }}
               >
