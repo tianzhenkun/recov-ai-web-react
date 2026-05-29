@@ -412,6 +412,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/recov-runtime-control',
+    component: './ruoyi/system/recov-runtime-control',
+    hideInMenu: true,
+  },
+  {
     path: '/index',
     component: './recov/dashboard',
     hideInMenu: true,

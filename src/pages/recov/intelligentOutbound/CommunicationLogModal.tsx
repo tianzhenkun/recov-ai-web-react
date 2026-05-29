@@ -1,8 +1,4 @@
-import {
-  ClockCircleOutlined,
-  MessageOutlined,
-  TagOutlined,
-} from '@ant-design/icons';
+import { ClockCircleOutlined, MessageOutlined } from '@ant-design/icons';
 import {
   Button,
   Empty,
@@ -49,13 +45,6 @@ const statusMeta: Record<
     color: '#389e0d',
     tagColor: 'success',
   },
-};
-
-const sentimentColor: Record<CommunicationLog['sentiment'], string> = {
-  负向: '#cf1322',
-  正向: '#389e0d',
-  中性: '#1677ff',
-  未知: '#8c8c8c',
 };
 
 const firstText = (...values: unknown[]) => {
@@ -106,6 +95,16 @@ const CommunicationLogModal = ({
   onClose,
 }: CommunicationLogModalProps) => {
   const { token } = theme.useToken();
+  const sentimentColor: Record<CommunicationLog['sentiment'], string> = {
+    负向: token.colorError,
+    正向: token.colorPrimary,
+    中性: token.colorTextSecondary,
+    未知: token.colorTextTertiary,
+  };
+  const sectionTitleStyle = {
+    marginInlineEnd: 6,
+    fontSize: 13,
+  } as const;
 
   const timelineItems = (detail?.logs || []).map((log) => {
     const callStatusMeta = statusMeta[log.status || ''] || {
@@ -140,41 +139,26 @@ const CommunicationLogModal = ({
                 lineHeight: 1.7,
               }}
             >
-              <Text strong style={{ marginInlineEnd: 6 }}>
+              <Text strong style={sectionTitleStyle}>
                 {log.hasSemanticAnalysis ? '语义摘要：' : '状态说明：'}
               </Text>
               {log.summary}
             </Paragraph>
           ) : null}
           {log.keywords.length > 0 ? (
-            <div
-              className="flex flex-col gap-1.5 rounded-md px-3 py-2"
-              style={{
-                backgroundColor: token.colorFillQuaternary,
-                border: `1px solid ${token.colorBorderSecondary}`,
-              }}
-            >
-              <Space size={6} align="center" wrap>
-                <TagOutlined style={{ color: token.colorPrimary }} />
-                <Text
-                  strong
-                  style={{
-                    color: token.colorTextSecondary,
-                    fontSize: 12,
-                  }}
-                >
-                  语义标签
-                </Text>
-              </Space>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              <Text strong style={sectionTitleStyle}>
+                语义标签：
+              </Text>
               <Space size={[6, 4]} wrap>
                 {log.keywords.map((keyword) => (
                   <Tag
                     key={keyword}
                     style={{
                       marginInlineEnd: 0,
-                      color: token.colorPrimaryText,
-                      backgroundColor: token.colorPrimaryBg,
-                      borderColor: token.colorPrimaryBorder,
+                      color: token.colorTextSecondary,
+                      backgroundColor: token.colorFillQuaternary,
+                      borderColor: token.colorBorderSecondary,
                     }}
                   >
                     {keyword}
@@ -184,45 +168,52 @@ const CommunicationLogModal = ({
             </div>
           ) : null}
           {transcriptTurns.length > 0 ? (
-            <div
-              className="flex flex-col gap-2 rounded-lg p-3"
-              style={{
-                backgroundColor: token.colorFillAlter,
-                border: `1px solid ${token.colorBorderSecondary}`,
-              }}
-            >
-              {transcriptTurns.slice(0, 6).map((turn) => (
-                <div
-                  key={`${turn.speaker}-${turn.content}`}
-                  className={`flex ${
-                    turn.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  <Text
-                    className="inline-block rounded-lg px-3 py-2 text-sm"
-                    style={{
-                      maxWidth: '82%',
-                      backgroundColor:
-                        turn.role === 'user'
-                          ? token.colorPrimaryBg
-                          : token.colorBgContainer,
-                      border:
-                        turn.role === 'user'
-                          ? `1px solid ${token.colorPrimaryBorder}`
-                          : `1px solid ${token.colorBorderSecondary}`,
-                      color:
-                        turn.role === 'user'
-                          ? token.colorPrimaryText
-                          : token.colorTextSecondary,
-                      lineHeight: 1.7,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {turn.content}
-                  </Text>
+            <>
+              <Text strong style={sectionTitleStyle}>
+                对话内容：
+              </Text>
+              <div
+                className="flex flex-col gap-2 rounded-lg p-3"
+                style={{
+                  backgroundColor: token.colorFillAlter,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                }}
+              >
+                <div className="flex flex-col gap-2">
+                  {transcriptTurns.slice(0, 6).map((turn) => (
+                    <div
+                      key={`${turn.speaker}-${turn.content}`}
+                      className={`flex ${
+                        turn.role === 'user' ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      <Text
+                        className="inline-block rounded-lg px-3 py-2 text-sm"
+                        style={{
+                          maxWidth: '82%',
+                          backgroundColor:
+                            turn.role === 'user'
+                              ? token.colorPrimaryBg
+                              : token.colorBgContainer,
+                          border:
+                            turn.role === 'user'
+                              ? `1px solid ${token.colorPrimaryBorder}`
+                              : `1px solid ${token.colorBorderSecondary}`,
+                          color:
+                            turn.role === 'user'
+                              ? token.colorPrimaryText
+                              : token.colorTextSecondary,
+                          lineHeight: 1.7,
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {turn.content}
+                      </Text>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            </>
           ) : null}
         </div>
       ),

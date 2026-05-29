@@ -1,13 +1,24 @@
 import { EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Form, Select, Space, Table, Tag, Typography } from 'antd';
+import {
+  Button,
+  Form,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useEffect, useMemo } from 'react';
 import TableActions from '@/components/TableActions';
+import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+} from '@/pages/recov/components/RecovFilterControls';
 import { RecovTableCard } from '@/pages/recov/components/RecovListLayout';
-import type {
-  LitigationNodeType,
-  LitigationStatus,
-} from '@/services/ruoyi/litigation-process';
+import type { LitigationNodeType } from '@/services/ruoyi/litigation-process';
 import {
   CITY_OPTIONS,
   type ColumnSchema,
@@ -15,6 +26,7 @@ import {
   formatDebtNumber,
   formatDisplayMoney,
   formatText,
+  getCourtStatusColor,
   getFeeStatusColor,
   getFeeStatusLabel,
   getLitigationStatusColor,
@@ -22,7 +34,6 @@ import {
   getOverdueDaysColor,
   getRemainDaysColor,
   getVisibleColumns,
-  LITIGATION_STATUS_FILTER_OPTIONS,
   ORGANIZATION_OPTIONS,
 } from '../_shared';
 
@@ -35,13 +46,13 @@ type CaseMonitorTableProps = {
   pageNum: number;
   pageSize: number;
   loading?: boolean;
+  debtNumberFilter: string;
   cityFilter: string;
   organizationFilter: string;
-  statusFilter: LitigationStatus | '';
   onFilterSearch: (filters: {
+    debtNumber: string;
     city: string;
     organization: string;
-    status: LitigationStatus | '';
   }) => void;
   onFilterReset: () => void;
   onPageChange: (pageNum: number, pageSize: number) => void;
@@ -49,9 +60,9 @@ type CaseMonitorTableProps = {
 };
 
 type FilterFormValues = {
+  debtNumber?: string;
   city?: string;
   organization?: string;
-  status?: LitigationStatus;
 };
 
 const renderCell = (row: DisplayRow, column: ColumnSchema) => {
@@ -108,14 +119,11 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
   }
 
   const value = row[column.prop as keyof DisplayRow];
+  const fallback = column.blankWhenEmpty ? '' : '-';
 
   switch (column.type) {
     case 'asset':
-      return (
-        <Tag style={{ fontFamily: 'Consolas, monospace', fontSize: 11 }}>
-          {formatDebtNumber(row.debtNumber)}
-        </Tag>
-      );
+      return formatDebtNumber(row.debtNumber);
     case 'money':
       return (
         <Text strong style={{ fontSize: 12 }}>
@@ -132,6 +140,13 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
           {getLitigationStatusLabel(row.status)}
         </Tag>
       );
+    case 'courtStatus': {
+      const statusText = row._result?.courtStatusRaw;
+      const statusCode = row._result?.courtStatusCode;
+      const text = formatText(statusText || statusCode, fallback);
+      if (!text) return null;
+      return <Tag color={getCourtStatusColor(statusCode)}>{text}</Tag>;
+    }
     case 'party':
       return (
         <Text strong style={{ fontSize: 12 }}>
@@ -139,9 +154,13 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
         </Text>
       );
     case 'mono':
-      return <Text code>{formatText(value)}</Text>;
-    default:
-      return <Text style={{ fontSize: 12 }}>{formatText(value)}</Text>;
+      return formatText(value, fallback) ? (
+        <Text code>{formatText(value, fallback)}</Text>
+      ) : null;
+    default: {
+      const text = formatText(value, fallback);
+      return text ? <Text style={{ fontSize: 12 }}>{text}</Text> : null;
+    }
   }
 };
 
@@ -152,9 +171,9 @@ const CaseMonitorTable = ({
   pageNum,
   pageSize,
   loading,
+  debtNumberFilter,
   cityFilter,
   organizationFilter,
-  statusFilter,
   onFilterSearch,
   onFilterReset,
   onPageChange,
@@ -164,17 +183,17 @@ const CaseMonitorTable = ({
 
   useEffect(() => {
     form.setFieldsValue({
+      debtNumber: debtNumberFilter || undefined,
       city: cityFilter || undefined,
       organization: organizationFilter || undefined,
-      status: statusFilter || undefined,
     });
-  }, [cityFilter, form, organizationFilter, statusFilter]);
+  }, [cityFilter, debtNumberFilter, form, organizationFilter]);
 
   const handleSearch = (values: FilterFormValues) => {
     onFilterSearch({
+      debtNumber: values.debtNumber?.trim() || '',
       city: values.city || '',
       organization: values.organization || '',
-      status: values.status || '',
     });
   };
 
@@ -224,10 +243,7 @@ const CaseMonitorTable = ({
     pageSize,
     total,
     showSizeChanger: true,
-    showTotal: (value, range) =>
-      total
-        ? `当前显示 ${range[0]}-${range[1]} 条，共 ${value} 条`
-        : '暂无数据',
+    showTotal: (value) => `共 ${value} 条`,
     onChange: onPageChange,
   };
 
@@ -237,20 +253,28 @@ const CaseMonitorTable = ({
         form={form}
         initialValues={{
           city: cityFilter || undefined,
+          debtNumber: debtNumberFilter || undefined,
           organization: organizationFilter || undefined,
-          status: statusFilter || undefined,
         }}
         onFinish={handleSearch}
         className="recov-table-toolbar"
       >
         <Space wrap size={12}>
+          <Form.Item name="debtNumber" noStyle>
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="资产编号"
+              style={RECOV_FILTER_CONTROL_STYLE}
+            />
+          </Form.Item>
           <Form.Item name="city" noStyle>
             <Select
               allowClear
               showSearch
               optionFilterProp="label"
               placeholder="所属城市"
-              style={{ width: 160 }}
+              style={RECOV_FILTER_CONTROL_STYLE}
               options={CITY_OPTIONS.map((city) => ({
                 label: city,
                 value: city,
@@ -263,19 +287,15 @@ const CaseMonitorTable = ({
               showSearch
               optionFilterProp="label"
               placeholder="所属项目"
-              style={{ width: 200 }}
               options={ORGANIZATION_OPTIONS.map((organization) => ({
                 label: organization,
                 value: organization,
               }))}
-            />
-          </Form.Item>
-          <Form.Item name="status" noStyle>
-            <Select
-              allowClear
-              placeholder="节点状态"
-              style={{ width: 140 }}
-              options={LITIGATION_STATUS_FILTER_OPTIONS}
+              optionRender={(option) =>
+                renderRecovSelectOptionLabel(option.label)
+              }
+              popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+              style={RECOV_FILTER_CONTROL_STYLE}
             />
           </Form.Item>
           <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>

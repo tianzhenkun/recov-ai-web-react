@@ -6,6 +6,7 @@ import {
   Space,
   Tooltip,
   type TooltipProps,
+  theme,
 } from 'antd';
 import type React from 'react';
 import { usePermission } from '@/components/Permission';
@@ -39,6 +40,7 @@ export const TableActions = ({
   moreLabel = '更多',
   tooltipPlacement = 'top',
 }: TableActionsProps) => {
+  const { token } = theme.useToken();
   const { canAccess } = usePermission();
   const allowedActions = actions.filter((action) =>
     canAccess({
@@ -51,6 +53,11 @@ export const TableActions = ({
   const overflowActions = allowedActions.slice(maxVisible);
 
   if (allowedActions.length === 0) return null;
+
+  const primaryIconButtonStyle: React.CSSProperties = {
+    ...iconButtonStyle,
+    color: token.colorPrimary,
+  };
 
   const menuItems = overflowActions.map((action) => ({
     key: action.key,
@@ -75,7 +82,11 @@ export const TableActions = ({
             icon={action.icon}
             loading={action.loading}
             size="small"
-            style={iconButtonStyle}
+            style={
+              action.danger || action.disabled || action.loading
+                ? iconButtonStyle
+                : primaryIconButtonStyle
+            }
             type="link"
             onClick={action.onClick}
           />
@@ -98,7 +109,7 @@ export const TableActions = ({
             aria-label={moreLabel}
             icon={<MoreOutlined />}
             size="small"
-            style={iconButtonStyle}
+            style={primaryIconButtonStyle}
             type="link"
           />
         </Dropdown>

@@ -116,7 +116,7 @@ export type InstrumentTaskActionResult = {
 export type InstrumentMetricItem = {
   key: string;
   label?: string;
-  value?: number;
+  value?: number | string;
   displayValue?: string;
   unit?: string;
 };

@@ -218,7 +218,10 @@ const DictTypePage = () => {
         actionRef={actionRef}
         rowKey={(record) => String(record.dictId)}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         columns={columns}
         request={async (params) => {
           const query = toDictTypeQuery(params);

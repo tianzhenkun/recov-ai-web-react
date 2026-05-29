@@ -60,9 +60,9 @@ export type LitigationPageQuery = {
   pageNum?: number;
   pageSize?: number;
   nodeType: LitigationNodeType;
+  debtNumber?: number | string;
   city?: string;
   organization?: string;
-  status?: LitigationStatus | '';
 };
 
 export type LitigationPageResult = {
@@ -173,9 +173,9 @@ export const getLitigationPage = (params: LitigationPageQuery) =>
       pageNum: params.pageNum,
       pageSize: params.pageSize,
       nodeType: toApiNodeType(params.nodeType),
+      debtNumber: params.debtNumber,
       city: params.city,
       organization: params.organization,
-      status: params.status || undefined,
     },
   });
 

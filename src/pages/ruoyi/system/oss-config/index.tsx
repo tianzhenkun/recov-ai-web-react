@@ -291,7 +291,10 @@ const OssConfigPage = () => {
         actionRef={actionRef}
         rowKey={(record) => String(record.ossConfigId)}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         columns={columns}
         request={async (params) => {
           const query = toOssConfigQuery(params);

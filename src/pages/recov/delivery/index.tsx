@@ -2,7 +2,12 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  DownloadOutlined,
   EyeOutlined,
+  FileImageOutlined,
+  FilePdfOutlined,
+  FileTextOutlined,
+  FileUnknownOutlined,
   MailOutlined,
   MessageOutlined,
   PhoneOutlined,
@@ -37,34 +42,37 @@ import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
 import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_LIST_COLUMN_WIDTH,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+  renderRecovSingleLineText,
+} from '@/pages/recov/components/RecovFilterControls';
+import {
   RecovListPage,
   RecovListStack,
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
 import {
-  type DeliveryStrategyRow,
-  type DeliveryWayListRow,
-  listDeliveryStrategy,
-  listDeliveryWay,
-} from '@/services/ruoyi/delivery';
-import {
   type DeliveryOverview,
   type DeliveryTaskItem,
   type DeliveryTaskStatus,
   getDeliveryTask,
   type ListDeliveryTasksParams,
+  listDeliveryCities,
+  listDeliveryOrganizations,
   listDeliveryTasks,
   retryDeliveryTask,
 } from '@/services/ruoyi/deliveryTask';
+import { downloadOss } from '@/services/ruoyi/oss';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 type QueryFormValues = {
-  keyword?: string;
-  sceneCode?: string;
-  wayCode?: string;
-  status?: DeliveryTaskStatus;
+  debtNumber?: string;
+  city?: string;
+  organization?: string;
 };
 
 type StatCardProps = {
@@ -74,16 +82,63 @@ type StatCardProps = {
   tone: MetricTone;
 };
 
+type DeliveryFileKind = 'image' | 'pdf' | 'text' | 'unknown';
+
+type DeliveryFilePreviewState = {
+  open: boolean;
+  fileUrl: string;
+  fileName: string;
+  previewType: 'image' | 'embed';
+};
+
 const DEFAULT_PAGE_SIZE = 20;
 const LIST_REFRESH_INTERVAL_MS = 5000;
+
+const deliveryFileSuffixGroups = {
+  image: new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']),
+  pdf: new Set(['pdf']),
+  text: new Set(['txt', 'log', 'json', 'xml', 'csv', 'md']),
+};
+
+const previewableDeliveryFileKinds = new Set<DeliveryFileKind>([
+  'image',
+  'pdf',
+  'text',
+]);
+
+const DELIVERY_FILE_VISUAL: Record<
+  DeliveryFileKind,
+  { icon: ReactNode; color: string; background: string }
+> = {
+  image: {
+    icon: <FileImageOutlined />,
+    color: '#0958d9',
+    background: '#e6f4ff',
+  },
+  pdf: {
+    icon: <FilePdfOutlined />,
+    color: '#cf1322',
+    background: '#fff1f0',
+  },
+  text: {
+    icon: <FileTextOutlined />,
+    color: '#08979c',
+    background: '#e6fffb',
+  },
+  unknown: {
+    icon: <FileUnknownOutlined />,
+    color: '#8c8c8c',
+    background: '#f5f5f5',
+  },
+};
 
 const STATUS_META: Record<
   DeliveryTaskStatus,
   { text: string; color: string; icon: ReactNode }
 > = {
-  0: { text: '待发送', color: 'default', icon: <ClockCircleOutlined /> },
-  1: { text: '发送中', color: 'processing', icon: <SyncOutlined spin /> },
-  2: { text: '送达成功', color: 'success', icon: <CheckCircleOutlined /> },
+  0: { text: '待送达', color: 'default', icon: <ClockCircleOutlined /> },
+  1: { text: '送达中', color: 'processing', icon: <SyncOutlined spin /> },
+  2: { text: '已送达', color: 'success', icon: <CheckCircleOutlined /> },
   3: { text: '送达失败', color: 'error', icon: <CloseCircleOutlined /> },
 };
 
@@ -124,6 +179,15 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(next) ? next : 0;
 };
 
+const getNonEmptyText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+};
+
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
 
@@ -140,6 +204,58 @@ const normalizeStatus = (value: unknown): DeliveryTaskStatus | undefined => {
 const formatCurrency = (value: unknown) =>
   currencyFormatter.format(toNumber(value));
 
+const getAssetNumber = (record: DeliveryTaskItem) =>
+  toText(record.debtNumber ?? record.debtId);
+
+const getDeliveryFileSuffix = (record?: DeliveryTaskItem | null) => {
+  const candidates = [record?.fileName, record?.publicUrl];
+
+  for (const candidate of candidates) {
+    const text = getNonEmptyText(candidate);
+    if (!text) continue;
+    const normalized = text.replace(/^\./, '').toLowerCase();
+    if (
+      Object.values(deliveryFileSuffixGroups).some((group) =>
+        group.has(normalized),
+      )
+    ) {
+      return normalized;
+    }
+
+    const match = text.match(/\.([a-zA-Z0-9]+)(?:[?#].*)?$/);
+    if (match?.[1]) return match[1].toLowerCase();
+  }
+
+  return '';
+};
+
+const getDeliveryFileKind = (
+  record?: DeliveryTaskItem | null,
+): DeliveryFileKind => {
+  const suffix = getDeliveryFileSuffix(record);
+  if (deliveryFileSuffixGroups.image.has(suffix)) return 'image';
+  if (deliveryFileSuffixGroups.pdf.has(suffix)) return 'pdf';
+  if (deliveryFileSuffixGroups.text.has(suffix)) return 'text';
+  return 'unknown';
+};
+
+const getDeliveryFileName = (record?: DeliveryTaskItem | null) => {
+  const name = getNonEmptyText(record?.fileName, record?.fileOssId);
+  if (!name) return '送达文件';
+  return name.split(/[\\/]/).pop()?.split('?')[0] || name;
+};
+
+const getDeliveryFileUrl = (record?: DeliveryTaskItem | null) =>
+  getNonEmptyText(record?.publicUrl);
+
+const getDeliveryFileDownloadName = (record: DeliveryTaskItem) => {
+  const name = getDeliveryFileName(record);
+  const suffix = getDeliveryFileSuffix(record);
+  return suffix && !name.toLowerCase().endsWith(`.${suffix}`)
+    ? `${name}.${suffix}`
+    : name;
+};
+
 const mergeOverview = (overview?: DeliveryOverview) => ({
   ...defaultOverview,
   ...(overview ?? {}),
@@ -147,10 +263,9 @@ const mergeOverview = (overview?: DeliveryOverview) => ({
 
 const getStatusText = (record: DeliveryTaskItem) => {
   const status = normalizeStatus(record.taskStatus);
-  return (
-    record.taskStatusLabel ||
-    (status !== undefined ? STATUS_META[status].text : '-')
-  );
+  return status !== undefined
+    ? STATUS_META[status].text
+    : record.taskStatusLabel || '-';
 };
 
 const StatCard = ({ title, value, icon, tone }: StatCardProps) => (
@@ -180,83 +295,168 @@ const ContentBlock = ({
   title: string;
   content?: string | null;
 }) => {
-  if (!content) return null;
+  const readableContent = getReadableContent(content);
+  if (!readableContent) return null;
   return (
-    <ProCard title={title} size="small">
-      <pre className="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-3 text-xs leading-6 text-slate-700">
-        {content}
-      </pre>
-    </ProCard>
+    <DetailSubsection title={title}>
+      <div className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+        {readableContent}
+      </div>
+    </DetailSubsection>
   );
 };
+
+const decodeHtmlEntities = (value: string) => {
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = value;
+    return textarea.value;
+  }
+
+  return value
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+};
+
+const getReadableContent = (content?: string | null) => {
+  const rawText = getNonEmptyText(content);
+  if (!rawText) return '';
+
+  const decodedText = decodeHtmlEntities(rawText);
+  if (!/<[a-z][\s\S]*>/i.test(decodedText)) {
+    return decodedText.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  if (typeof document !== 'undefined') {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = decodedText
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '</p>\n')
+      .replace(/<\/div>/gi, '</div>\n');
+    return (wrapper.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  return decodedText
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+const DetailPanel = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) => (
+  <ProCard title={title} size="small" styles={{ body: { padding: 16 } }}>
+    {children}
+  </ProCard>
+);
+
+const DetailSubsection = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) => (
+  <section className="min-w-0">
+    <Text className="mb-2 block text-sm" strong>
+      {title}
+    </Text>
+    {children}
+  </section>
+);
 
 const DeliveryPage = () => {
   const [form] = Form.useForm<QueryFormValues>();
   const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
-  const initialKeyword = normalizeQueryParam(searchParams.get('keyword'));
-  const initialSceneCode = normalizeQueryParam(searchParams.get('sceneCode'));
+  const initialDebtNumber = normalizeQueryParam(searchParams.get('debtNumber'));
+  const initialCity = normalizeQueryParam(searchParams.get('city'));
+  const initialOrganization = normalizeQueryParam(
+    searchParams.get('organization'),
+  );
+  const initialLegacyKeyword = normalizeQueryParam(searchParams.get('keyword'));
+  const initialLegacySceneCode = normalizeQueryParam(
+    searchParams.get('sceneCode'),
+  );
 
   const [overview, setOverview] =
     useState<Required<DeliveryOverview>>(defaultOverview);
   const [query, setQuery] = useState<ListDeliveryTasksParams>({
     pageNum: 1,
     pageSize: DEFAULT_PAGE_SIZE,
-    keyword: initialKeyword,
-    sceneCode: initialSceneCode,
+    debtNumber: initialDebtNumber,
+    city: initialCity,
+    organization: initialOrganization,
+    keyword: initialLegacyKeyword,
+    sceneCode: initialLegacySceneCode,
   });
   const [rows, setRows] = useState<DeliveryTaskItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [optionLoading, setOptionLoading] = useState(false);
-  const [strategyRows, setStrategyRows] = useState<DeliveryStrategyRow[]>([]);
-  const [wayRows, setWayRows] = useState<DeliveryWayListRow[]>([]);
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false);
+  const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [organizationOptions, setOrganizationOptions] = useState<string[]>([]);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [currentRow, setCurrentRow] = useState<DeliveryTaskItem | null>(null);
   const [retryingTaskId, setRetryingTaskId] = useState('');
+  const [filePreview, setFilePreview] = useState<DeliveryFilePreviewState>({
+    open: false,
+    fileUrl: '',
+    fileName: '',
+    previewType: 'embed',
+  });
+  const [downloadingFile, setDownloadingFile] = useState(false);
 
   const queryRef = useRef(query);
   queryRef.current = query;
 
   useEffect(() => {
     form.setFieldsValue({
-      keyword: initialKeyword,
-      sceneCode: initialSceneCode,
+      debtNumber: initialDebtNumber,
+      city: initialCity,
+      organization: initialOrganization,
     });
     setQuery((prev) => {
       if (
-        prev.keyword === initialKeyword &&
-        prev.sceneCode === initialSceneCode
+        prev.debtNumber === initialDebtNumber &&
+        prev.city === initialCity &&
+        prev.organization === initialOrganization &&
+        prev.keyword === initialLegacyKeyword &&
+        prev.sceneCode === initialLegacySceneCode
       ) {
         return prev;
       }
       return {
         ...prev,
         pageNum: 1,
-        keyword: initialKeyword,
-        sceneCode: initialSceneCode,
+        debtNumber: initialDebtNumber,
+        city: initialCity,
+        organization: initialOrganization,
+        keyword: initialLegacyKeyword,
+        sceneCode: initialLegacySceneCode,
       };
     });
-  }, [form, initialKeyword, initialSceneCode]);
-
-  const loadOptions = useCallback(async () => {
-    setOptionLoading(true);
-    try {
-      const [strategyRes, wayRes] = await Promise.all([
-        listDeliveryStrategy(),
-        listDeliveryWay(),
-      ]);
-      setStrategyRows(Array.isArray(strategyRes.rows) ? strategyRes.rows : []);
-      setWayRows(Array.isArray(wayRes.rows) ? wayRes.rows : []);
-    } catch {
-      messageApi.error('筛选项加载失败，请稍后重试');
-    } finally {
-      setOptionLoading(false);
-    }
-  }, [messageApi]);
+  }, [
+    form,
+    initialCity,
+    initialDebtNumber,
+    initialLegacyKeyword,
+    initialLegacySceneCode,
+    initialOrganization,
+  ]);
 
   const loadList = useCallback(
     async (params: ListDeliveryTasksParams, silent = false) => {
@@ -276,8 +476,25 @@ const DeliveryPage = () => {
   );
 
   useEffect(() => {
-    void loadOptions();
-  }, [loadOptions]);
+    const loadFilterOptions = async () => {
+      setFilterOptionsLoading(true);
+      try {
+        const [citiesRes, organizationsRes] = await Promise.all([
+          listDeliveryCities(),
+          listDeliveryOrganizations(),
+        ]);
+        setCityOptions(citiesRes.data ?? []);
+        setOrganizationOptions(organizationsRes.data ?? []);
+      } catch {
+        setCityOptions([]);
+        setOrganizationOptions([]);
+      } finally {
+        setFilterOptionsLoading(false);
+      }
+    };
+
+    void loadFilterOptions();
+  }, []);
 
   useEffect(() => {
     void loadList(query);
@@ -293,57 +510,47 @@ const DeliveryPage = () => {
   const statCards = useMemo(
     () => [
       {
-        key: 'pending',
-        title: '待发送',
-        value: numberFormatter.format(overview.pendingCount),
+        key: 'pendingTasks',
+        title: '待处理任务',
+        value: numberFormatter.format(
+          overview.pendingCount + overview.sendingCount,
+        ),
         icon: <ClockCircleOutlined />,
         tone: 'warning' as const,
       },
       {
-        key: 'sending',
-        title: '发送中',
-        value: numberFormatter.format(overview.sendingCount),
-        icon: <SyncOutlined />,
-        tone: 'primary' as const,
-      },
-      {
-        key: 'success',
-        title: '送达成功',
-        value: numberFormatter.format(overview.successCount),
+        key: 'processedTasks',
+        title: '已处理任务',
+        value: numberFormatter.format(
+          overview.successCount + overview.failedCount,
+        ),
         icon: <CheckCircleOutlined />,
         tone: 'success' as const,
       },
       {
-        key: 'failed',
-        title: '送达失败',
-        value: numberFormatter.format(overview.failedCount),
-        icon: <CloseCircleOutlined />,
-        tone: 'error' as const,
-      },
-      {
         key: 'sms',
-        title: '短信任务',
+        title: '发送短信总量',
         value: numberFormatter.format(overview.smsTotal),
         icon: <MessageOutlined />,
         tone: 'primary' as const,
       },
       {
         key: 'email',
-        title: '邮件任务',
+        title: '发送邮件总量',
         value: numberFormatter.format(overview.emailTotal),
         icon: <MailOutlined />,
         tone: 'info' as const,
       },
       {
         key: 'express',
-        title: '快递任务',
+        title: '快递函件总量',
         value: numberFormatter.format(overview.expressTotal),
         icon: <TruckOutlined />,
         tone: 'neutral' as const,
       },
       {
         key: 'call',
-        title: '电话任务',
+        title: '电话提醒数量',
         value: numberFormatter.format(overview.callTotal),
         icon: <PhoneOutlined />,
         tone: 'warning' as const,
@@ -359,12 +566,11 @@ const DeliveryPage = () => {
   const handleSearch = () => {
     const values = form.getFieldsValue();
     applyQuery({
-      ...query,
       pageNum: 1,
-      keyword: values.keyword?.trim() || undefined,
-      sceneCode: values.sceneCode || undefined,
-      wayCode: values.wayCode || undefined,
-      status: values.status,
+      pageSize: query.pageSize || DEFAULT_PAGE_SIZE,
+      debtNumber: values.debtNumber?.trim() || undefined,
+      city: values.city?.trim() || undefined,
+      organization: values.organization?.trim() || undefined,
     });
   };
 
@@ -413,47 +619,225 @@ const DeliveryPage = () => {
     });
   };
 
+  const canPreviewDeliveryFile = (record: DeliveryTaskItem) =>
+    Boolean(
+      getDeliveryFileUrl(record) &&
+        previewableDeliveryFileKinds.has(getDeliveryFileKind(record)),
+    );
+
+  const openDeliveryFilePreview = (record: DeliveryTaskItem) => {
+    const fileUrl = getDeliveryFileUrl(record);
+    if (!fileUrl) {
+      messageApi.warning('当前送达文件没有可预览地址');
+      return;
+    }
+
+    const kind = getDeliveryFileKind(record);
+    if (!previewableDeliveryFileKinds.has(kind)) {
+      messageApi.info('当前文件类型暂不支持在线预览');
+      return;
+    }
+
+    setFilePreview({
+      open: true,
+      fileUrl,
+      fileName: getDeliveryFileName(record),
+      previewType: kind === 'image' ? 'image' : 'embed',
+    });
+  };
+
+  const downloadDeliveryFile = async (record: DeliveryTaskItem) => {
+    const ossId = getNonEmptyText(record.fileOssId);
+    const fileUrl = getDeliveryFileUrl(record);
+
+    if (!ossId && !fileUrl) {
+      messageApi.warning('当前送达文件缺少下载信息');
+      return;
+    }
+    if (downloadingFile) return;
+
+    const messageKey = `delivery-file-download-${record.taskId}`;
+    setDownloadingFile(true);
+    messageApi.open({
+      key: messageKey,
+      type: 'loading',
+      content: '正在下载送达文件...',
+      duration: 0,
+    });
+
+    try {
+      if (ossId) {
+        await downloadOss(ossId, getDeliveryFileDownloadName(record));
+      } else {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      }
+      messageApi.open({
+        key: messageKey,
+        type: 'success',
+        content: ossId ? '下载已开始' : '已在新窗口打开文件',
+        duration: 2,
+      });
+    } catch (error) {
+      messageApi.open({
+        key: messageKey,
+        type: 'error',
+        content:
+          error instanceof Error
+            ? error.message
+            : '送达文件下载失败，请稍后重试',
+        duration: 3,
+      });
+    } finally {
+      setDownloadingFile(false);
+    }
+  };
+
+  const renderDeliveryFile = (record: DeliveryTaskItem) => {
+    const hasFile = getNonEmptyText(
+      record.fileName,
+      record.fileOssId,
+      record.publicUrl,
+    );
+    if (!hasFile) return <Text type="secondary">暂无送达文件</Text>;
+
+    const kind = getDeliveryFileKind(record);
+    const suffix = getDeliveryFileSuffix(record);
+    const visual = DELIVERY_FILE_VISUAL[kind];
+    const name = getDeliveryFileName(record);
+
+    return (
+      <div
+        className="flex items-start gap-3 rounded-md border border-solid border-slate-200 bg-white p-3"
+        style={{ maxWidth: '100%' }}
+      >
+        <span
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-lg"
+          style={{
+            color: visual.color,
+            background: visual.background,
+            borderRadius: 8,
+          }}
+        >
+          {visual.icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <Tooltip title={name}>
+              <Text
+                strong
+                style={{
+                  display: 'block',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {name}
+              </Text>
+            </Tooltip>
+            <Space size={4} wrap={false}>
+              {canPreviewDeliveryFile(record) ? (
+                <Tooltip title="预览文件">
+                  <Button
+                    aria-label="预览文件"
+                    icon={<EyeOutlined />}
+                    onClick={() => openDeliveryFilePreview(record)}
+                    shape="circle"
+                    size="small"
+                    type="text"
+                  />
+                </Tooltip>
+              ) : null}
+              <Tooltip title="下载文件">
+                <Button
+                  aria-label="下载文件"
+                  icon={<DownloadOutlined />}
+                  loading={downloadingFile}
+                  onClick={() => {
+                    void downloadDeliveryFile(record);
+                  }}
+                  shape="circle"
+                  size="small"
+                  type="text"
+                />
+              </Tooltip>
+            </Space>
+          </div>
+          {suffix ? (
+            <Tag style={{ marginTop: 6 }}>{suffix.toUpperCase()}</Tag>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   const columns = useMemo<ColumnsType<DeliveryTaskItem>>(
     () => [
       {
-        title: '客户名称',
-        dataIndex: 'debtorName',
-        width: 120,
-        render: (value) => <Text strong>{toText(value)}</Text>,
+        title: '资产编号',
+        dataIndex: 'debtNumber',
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: (_, record) =>
+          renderRecovSingleLineText(getAssetNumber(record)),
       },
       {
-        title: '手机号',
-        dataIndex: 'debtorPhone',
-        width: 140,
+        title: '所属城市',
+        dataIndex: 'city',
+        width: RECOV_LIST_COLUMN_WIDTH.city,
         render: toText,
       },
       {
-        title: '企业/项目',
+        title: '所属项目',
         dataIndex: 'projectName',
-        width: 180,
-        ellipsis: true,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
+      },
+      {
+        title: '业主姓名',
+        dataIndex: 'debtorName',
+        width: 150,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
+      },
+      {
+        title: '电话',
+        dataIndex: 'debtorPhone',
+        width: 130,
         render: toText,
       },
       {
-        title: '送达场景',
-        dataIndex: 'sceneName',
-        width: 160,
-        ellipsis: true,
-        render: toText,
+        title: '逾期金额',
+        dataIndex: 'debtAmount',
+        width: 120,
+        align: 'right',
+        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
       },
       {
-        title: '送达文件',
-        dataIndex: 'fileName',
-        width: 180,
-        ellipsis: true,
-        render: (value, record) => (
-          <Text title={toText(value ?? record.fileOssId)}>
-            {toText(value ?? record.fileOssId)}
-          </Text>
-        ),
+        title: '违约（滞纳）金',
+        dataIndex: 'overdueAmount',
+        width: 140,
+        align: 'right',
+        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
       },
       {
-        title: '送达渠道',
+        title: '状态',
+        dataIndex: 'taskStatus',
+        width: 110,
+        align: 'center',
+        render: (_, record) => {
+          const status = normalizeStatus(record.taskStatus);
+          const meta = status !== undefined ? STATUS_META[status] : undefined;
+          return (
+            <Tag color={meta?.color ?? 'default'} icon={meta?.icon}>
+              {getStatusText(record)}
+            </Tag>
+          );
+        },
+      },
+      {
+        title: '送达方式',
         dataIndex: 'wayCode',
         width: 120,
         align: 'center',
@@ -468,57 +852,6 @@ const DeliveryPage = () => {
             </Tag>
           );
         },
-      },
-      {
-        title: '状态',
-        dataIndex: 'taskStatus',
-        width: 120,
-        align: 'center',
-        render: (_, record) => {
-          const status = normalizeStatus(record.taskStatus);
-          const meta = status !== undefined ? STATUS_META[status] : undefined;
-          return (
-            <Tag color={meta?.color ?? 'default'} icon={meta?.icon}>
-              {getStatusText(record)}
-            </Tag>
-          );
-        },
-      },
-      {
-        title: '失败原因',
-        dataIndex: 'errorMessage',
-        width: 220,
-        ellipsis: true,
-        render: (value, record) =>
-          normalizeStatus(record.taskStatus) === 3 ? (
-            <Text type="danger" title={toText(value)}>
-              {toText(value)}
-            </Text>
-          ) : (
-            <Text type="secondary">-</Text>
-          ),
-      },
-      {
-        title: '逾期天数',
-        dataIndex: 'overdueDays',
-        width: 100,
-        align: 'right',
-        render: (value) => `${numberFormatter.format(toNumber(value))} 天`,
-      },
-      {
-        title: '账单金额',
-        dataIndex: 'debtAmount',
-        width: 130,
-        align: 'right',
-        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
-      },
-      {
-        title: '创建时间',
-        dataIndex: 'taskCreateTime',
-        width: 170,
-        render: (value, record) => (
-          <Text type="secondary">{toText(value ?? record.createTime)}</Text>
-        ),
       },
       {
         title: '操作',
@@ -559,12 +892,12 @@ const DeliveryPage = () => {
   const currentStatus = normalizeStatus(currentRow?.taskStatus);
 
   return (
-    <RecovListPage title="全域智能送达">
+    <RecovListPage title="全域智能送达管理">
       {messageContextHolder}
       {modalContextHolder}
 
       <RecovListStack>
-        <RecovStatsStrip className="grid grid-cols-1 gap-4 md:grid-cols-4 xl:grid-cols-8">
+        <RecovStatsStrip className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           {statCards.map((card) => (
             <StatCard
               key={card.key}
@@ -576,55 +909,48 @@ const DeliveryPage = () => {
           ))}
         </RecovStatsStrip>
 
-        <RecovTableCard title="送达任务列表">
+        <RecovTableCard title="已送达名单">
           <Form form={form} className="recov-table-toolbar">
             <Space wrap size={12}>
-              <Form.Item name="keyword" noStyle>
+              <Form.Item name="debtNumber" noStyle>
                 <Input
                   allowClear
                   prefix={<SearchOutlined />}
-                  placeholder="搜索客户 / 手机号 / 项目 / 场景 / 业务ID"
-                  style={{ width: 260 }}
+                  placeholder="资产编号"
+                  style={RECOV_FILTER_CONTROL_STYLE}
                   onPressEnter={handleSearch}
                 />
               </Form.Item>
-              <Form.Item name="sceneCode" noStyle>
+              <Form.Item name="city" noStyle>
                 <Select
                   allowClear
-                  showSearch
-                  loading={optionLoading}
-                  placeholder="送达场景"
-                  style={{ width: 180 }}
+                  loading={filterOptionsLoading}
                   optionFilterProp="label"
-                  options={strategyRows.map((item) => ({
-                    label: item.sceneName || item.deliveryObj || item.sceneCode,
-                    value: item.sceneCode,
+                  options={cityOptions.map((item) => ({
+                    label: item,
+                    value: item,
                   }))}
+                  placeholder="所属城市"
+                  showSearch
+                  style={RECOV_FILTER_CONTROL_STYLE}
                 />
               </Form.Item>
-              <Form.Item name="wayCode" noStyle>
+              <Form.Item name="organization" noStyle>
                 <Select
                   allowClear
-                  showSearch
-                  loading={optionLoading}
-                  placeholder="送达渠道"
-                  style={{ width: 150 }}
+                  loading={filterOptionsLoading}
                   optionFilterProp="label"
-                  options={wayRows.map((item) => ({
-                    label: item.wayName || item.nodeName || item.wayCode,
-                    value: item.wayCode,
+                  options={organizationOptions.map((item) => ({
+                    label: item,
+                    value: item,
                   }))}
-                />
-              </Form.Item>
-              <Form.Item name="status" noStyle>
-                <Select
-                  allowClear
-                  placeholder="任务状态"
-                  style={{ width: 140 }}
-                  options={Object.entries(STATUS_META).map(([value, meta]) => ({
-                    label: meta.text,
-                    value: Number(value),
-                  }))}
+                  optionRender={(option) =>
+                    renderRecovSelectOptionLabel(option.label)
+                  }
+                  placeholder="所属项目"
+                  popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+                  showSearch
+                  style={RECOV_FILTER_CONTROL_STYLE}
                 />
               </Form.Item>
               <Button
@@ -637,15 +963,6 @@ const DeliveryPage = () => {
               <Button icon={<ReloadOutlined />} onClick={handleReset}>
                 重置
               </Button>
-              <Button
-                icon={<SyncOutlined />}
-                loading={loading}
-                onClick={() => {
-                  void loadList(query);
-                }}
-              >
-                刷新
-              </Button>
             </Space>
           </Form>
 
@@ -656,17 +973,16 @@ const DeliveryPage = () => {
             dataSource={rows}
             loading={loading}
             rowKey="taskId"
-            scroll={{ x: 1720 }}
+            scroll={{ x: 1240 }}
             locale={{
-              emptyText: <Empty description="暂无送达任务" />,
+              emptyText: <Empty description="暂无送达记录" />,
             }}
             pagination={{
               current: query.pageNum || 1,
               pageSize: query.pageSize || DEFAULT_PAGE_SIZE,
               total,
               showSizeChanger: true,
-              showTotal: (nextTotal, range) =>
-                `第 ${range[0]}-${range[1]} 条/总共 ${nextTotal} 条`,
+              showTotal: (nextTotal) => `共 ${nextTotal} 条`,
               onChange: (pageNum, pageSize) => {
                 applyQuery({
                   ...query,
@@ -680,100 +996,69 @@ const DeliveryPage = () => {
       </RecovListStack>
 
       <Drawer
-        title="送达任务详情"
+        title="送达详情"
         open={detailOpen}
         width={720}
         destroyOnHidden
         loading={detailLoading}
         onClose={() => setDetailOpen(false)}
         extra={
-          currentRow ? (
-            <Space>
-              {currentStatus !== undefined ? (
-                <Tag color={STATUS_META[currentStatus].color}>
-                  {getStatusText(currentRow)}
-                </Tag>
-              ) : null}
-              {currentStatus === 3 ? (
-                <Button
-                  size="small"
-                  type="primary"
-                  icon={<ReloadOutlined />}
-                  loading={retryingTaskId === currentRow.taskId}
-                  onClick={() => handleRetry(currentRow)}
-                >
-                  重试当前渠道
-                </Button>
-              ) : null}
-            </Space>
+          currentRow && currentStatus === 3 ? (
+            <Button
+              size="small"
+              type="primary"
+              icon={<ReloadOutlined />}
+              loading={retryingTaskId === currentRow.taskId}
+              onClick={() => handleRetry(currentRow)}
+            >
+              重试当前渠道
+            </Button>
           ) : null
         }
       >
         {currentRow ? (
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Descriptions bordered column={2} size="small">
-              <Descriptions.Item label="任务编号" span={2}>
-                <Text code>{currentRow.taskId}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="送达编号" span={2}>
-                <Text code>{toText(currentRow.deliveryId)}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="债务编号" span={2}>
-                <Text code>{toText(currentRow.debtId)}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="来源业务编号" span={2}>
-                <Text code>{toText(currentRow.businessId)}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="客户名称">
-                {toText(currentRow.debtorName)}
-              </Descriptions.Item>
-              <Descriptions.Item label="手机号">
-                {toText(currentRow.debtorPhone)}
-              </Descriptions.Item>
-              <Descriptions.Item label="邮箱">
-                {toText(currentRow.debtorEmail)}
-              </Descriptions.Item>
-              <Descriptions.Item label="企业/项目">
-                {toText(currentRow.projectName)}
-              </Descriptions.Item>
-              <Descriptions.Item label="送达场景">
-                {toText(currentRow.sceneName)}
-              </Descriptions.Item>
-              <Descriptions.Item label="送达渠道">
-                {toText(currentRow.wayName)}
-              </Descriptions.Item>
-              <Descriptions.Item label="流程顺序">
-                {toText(currentRow.flowIndex ?? currentRow.sortOrder)}
-              </Descriptions.Item>
-              <Descriptions.Item label="重试次数">
-                {numberFormatter.format(toNumber(currentRow.retryCount))} 次
-              </Descriptions.Item>
-              <Descriptions.Item label="成功后动作">
-                {currentRow.onSuccess === 'next' ? '继续下一渠道' : '停止'}
-              </Descriptions.Item>
-              <Descriptions.Item label="失败后动作">
-                {currentRow.onFail === 'next' ? '继续下一渠道' : '停止'}
-              </Descriptions.Item>
-              <Descriptions.Item label="创建时间" span={2}>
-                {toText(currentRow.createTime ?? currentRow.taskCreateTime)}
-              </Descriptions.Item>
-              <Descriptions.Item label="送达文件" span={2}>
-                <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                  <Text>{toText(currentRow.fileName)}</Text>
-                  <Text type="secondary">
-                    OSS ID：{toText(currentRow.fileOssId)}
-                  </Text>
-                  {currentRow.publicUrl ? (
-                    <Paragraph copyable style={{ marginBottom: 0 }}>
-                      {currentRow.publicUrl}
-                    </Paragraph>
-                  ) : null}
-                </Space>
-              </Descriptions.Item>
-              <Descriptions.Item label="服务商请求 ID" span={2}>
-                {toText(currentRow.providerRequestId)}
-              </Descriptions.Item>
-            </Descriptions>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <DetailPanel title="基础信息">
+              <Descriptions
+                column={2}
+                colon={false}
+                size="small"
+                labelStyle={{ color: '#64748b', width: 72 }}
+                contentStyle={{ minWidth: 0, wordBreak: 'break-word' }}
+              >
+                <Descriptions.Item label="资产编号">
+                  {getAssetNumber(currentRow)}
+                </Descriptions.Item>
+                <Descriptions.Item label="业主姓名">
+                  {toText(currentRow.debtorName)}
+                </Descriptions.Item>
+                <Descriptions.Item label="所属城市">
+                  {toText(currentRow.city)}
+                </Descriptions.Item>
+                <Descriptions.Item label="所属项目">
+                  {toText(currentRow.projectName)}
+                </Descriptions.Item>
+                <Descriptions.Item label="送达场景">
+                  {toText(currentRow.sceneName)}
+                </Descriptions.Item>
+                <Descriptions.Item label="送达渠道">
+                  {toText(currentRow.wayName)}
+                </Descriptions.Item>
+                <Descriptions.Item label="送达状态">
+                  {currentStatus !== undefined ? (
+                    <Tag
+                      color={STATUS_META[currentStatus].color}
+                      icon={STATUS_META[currentStatus].icon}
+                      style={{ marginInlineEnd: 0 }}
+                    >
+                      {getStatusText(currentRow)}
+                    </Tag>
+                  ) : (
+                    '-'
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            </DetailPanel>
 
             {currentStatus === 3 && currentRow.errorMessage ? (
               <Alert
@@ -784,23 +1069,99 @@ const DeliveryPage = () => {
               />
             ) : null}
 
-            <ContentBlock
-              title="实际发送主题"
-              content={currentRow.subjectContent}
-            />
-            <ContentBlock
-              title="实际发送内容"
-              content={currentRow.sendContent}
-            />
-            <ContentBlock
-              title="服务商响应"
-              content={currentRow.providerResponse}
-            />
+            <DetailPanel title="送达内容">
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                {renderDeliveryFile(currentRow)}
+                <ContentBlock
+                  title="实际发送主题"
+                  content={currentRow.subjectContent}
+                />
+                <ContentBlock
+                  title="实际发送内容"
+                  content={currentRow.sendContent}
+                />
+              </Space>
+            </DetailPanel>
           </Space>
         ) : (
           <Empty description="暂无详情" />
         )}
       </Drawer>
+
+      <Modal
+        title={filePreview.fileName || '送达文件预览'}
+        open={filePreview.open}
+        width={860}
+        destroyOnHidden
+        footer={
+          <Space>
+            <Button
+              disabled={!filePreview.fileUrl}
+              onClick={() =>
+                window.open(
+                  filePreview.fileUrl,
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+            >
+              新窗口打开
+            </Button>
+            <Button
+              onClick={() =>
+                setFilePreview((prev) => ({ ...prev, open: false }))
+              }
+            >
+              关闭
+            </Button>
+          </Space>
+        }
+        onCancel={() => setFilePreview((prev) => ({ ...prev, open: false }))}
+      >
+        {filePreview.fileUrl ? (
+          filePreview.previewType === 'image' ? (
+            <img
+              alt={filePreview.fileName}
+              src={filePreview.fileUrl}
+              style={{
+                display: 'block',
+                maxHeight: '70vh',
+                maxWidth: '100%',
+                margin: '0 auto',
+                objectFit: 'contain',
+              }}
+            />
+          ) : (
+            <object
+              data={filePreview.fileUrl}
+              style={{
+                width: '100%',
+                height: '70vh',
+                border: '1px solid #f0f0f0',
+                borderRadius: 8,
+              }}
+            >
+              <div className="flex h-[320px] flex-col items-center justify-center gap-3">
+                <Text type="secondary">当前浏览器不支持内嵌预览该文件</Text>
+                <Button
+                  type="primary"
+                  onClick={() =>
+                    window.open(
+                      filePreview.fileUrl,
+                      '_blank',
+                      'noopener,noreferrer',
+                    )
+                  }
+                >
+                  新窗口打开
+                </Button>
+              </div>
+            </object>
+          )
+        ) : (
+          <Empty description="暂无可预览文件" />
+        )}
+      </Modal>
     </RecovListPage>
   );
 };

@@ -2,6 +2,7 @@ import { ruoyiRequest } from '@/adapters/ruoyi/request';
 import type { PageQuery } from './datelligence';
 
 export type FlowBatchStartFilter = {
+  debtNumber?: number | string;
   city?: string;
   organization?: string;
 };
@@ -58,3 +59,14 @@ export const retryFlowBatchFailures = (batchId: number | string) =>
   ruoyiRequest<FlowBatchStartResult>(`${BASE}/${batchId}/retry-failed`, {
     method: 'post',
   });
+
+export const retryFailedDebtFlowStart = (
+  batchId: number | string,
+  debtRecordId: number | string,
+) =>
+  ruoyiRequest<FlowBatchStartResult>(
+    `${BASE}/${batchId}/debt/${debtRecordId}/retry-start`,
+    {
+      method: 'post',
+    },
+  );

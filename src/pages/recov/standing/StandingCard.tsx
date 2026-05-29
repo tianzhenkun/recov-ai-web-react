@@ -5,9 +5,10 @@ import {
   EyeOutlined,
   FilePdfOutlined,
 } from '@ant-design/icons';
-import { Button, Space, Switch, Tooltip } from 'antd';
+import { Button, Switch, Tag, Tooltip, theme } from 'antd';
 import dayjs from 'dayjs';
 import type { StandingVO } from '@/services/ruoyi/standing';
+import { getStandingTypeName } from './_shared';
 
 export type StandingCardProps = {
   item: StandingVO;
@@ -19,9 +20,17 @@ export type StandingCardProps = {
   onToggleStatus: (item: StandingVO, nextStatus: '0' | '1') => void;
 };
 
+const isEmptyRangeValue = (value: unknown) => value == null || value === '';
+
 const formatRange = (record: StandingVO) => {
-  if (record.startNum == null && record.endNum == null) return '全部资产';
-  return `${record.startNum ?? '-'} - ${record.endNum ?? '-'}`;
+  const startEmpty = isEmptyRangeValue(record.startNum);
+  const endEmpty = isEmptyRangeValue(record.endNum);
+  if (startEmpty && endEmpty) {
+    return '全部资产';
+  }
+  return `${startEmpty ? '-' : record.startNum} - ${
+    endEmpty ? '-' : record.endNum
+  }`;
 };
 
 const StandingCard = ({
@@ -33,16 +42,23 @@ const StandingCard = ({
   onDelete,
   onToggleStatus,
 }: StandingCardProps) => {
+  const { token } = theme.useToken();
   const enabled = item.status === '1';
   const standingId = String(item.id);
   const shortStandingId =
     standingId.length > 12
       ? `${standingId.slice(0, 8)}...${standingId.slice(-4)}`
       : standingId;
-  const fileLabel = item.fileName || `OSS ${item.standingOssId}`;
   const updateLabel = item.updateTime
     ? dayjs(item.updateTime).format('YYYY-MM-DD HH:mm')
     : '-';
+  const rangeLabel = formatRange(item);
+  const standingTypeLabel = getStandingTypeName(item.standingCode);
+  const primaryTagStyle = {
+    backgroundColor: token.colorPrimaryBg,
+    borderColor: token.colorPrimaryBorder,
+    color: token.colorPrimaryText,
+  };
 
   return (
     <div className="rounded-xl border border-solid border-zinc-100 bg-white p-4 transition-shadow hover:shadow-sm">
@@ -79,19 +95,16 @@ const StandingCard = ({
 
       <div className="mt-4 space-y-3 text-sm">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-xs font-medium text-zinc-400">资产范围</span>
-          <span className="font-medium text-zinc-900">{formatRange(item)}</span>
+          <span className="text-xs font-medium text-zinc-400">材料类型</span>
+          <Tag variant="filled" className="!mr-0" style={primaryTagStyle}>
+            {standingTypeLabel}
+          </Tag>
         </div>
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
-          <span className="flex-shrink-0 text-xs font-medium leading-6 text-zinc-400">
-            PDF 文件
-          </span>
-          <Space size={6} className="min-w-0">
-            <FilePdfOutlined className="text-red-500" />
-            <span className="truncate text-zinc-700" title={fileLabel}>
-              {fileLabel}
-            </span>
-          </Space>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-xs font-medium text-zinc-400">资产范围</span>
+          <Tag variant="filled" className="!mr-0" style={primaryTagStyle}>
+            {rangeLabel}
+          </Tag>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="text-xs font-medium text-zinc-400">更新时间</span>

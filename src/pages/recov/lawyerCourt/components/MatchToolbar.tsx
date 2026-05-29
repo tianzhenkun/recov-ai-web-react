@@ -1,7 +1,6 @@
 import { ReloadOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
-import { Button, Space, Tag, Tooltip } from 'antd';
-import { MATCH_STRATEGIES } from '../_shared';
+import { Button } from 'antd';
 
 type MatchToolbarProps = {
   matching: boolean;
@@ -16,7 +15,7 @@ const toolbarCardStyles = {
 
 const MatchToolbar = ({ matching, onAutoMatch }: MatchToolbarProps) => (
   <ProCard size="small" styles={toolbarCardStyles}>
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex items-center">
       <Button
         type="primary"
         size="large"
@@ -26,13 +25,6 @@ const MatchToolbar = ({ matching, onAutoMatch }: MatchToolbarProps) => (
       >
         {matching ? '正在匹配...' : '一键匹配律师'}
       </Button>
-      <Space size={[8, 8]} wrap>
-        {MATCH_STRATEGIES.map((strategy) => (
-          <Tooltip key={strategy.key} title={strategy.tooltip}>
-            <Tag color="processing">{strategy.label}</Tag>
-          </Tooltip>
-        ))}
-      </Space>
     </div>
   </ProCard>
 );

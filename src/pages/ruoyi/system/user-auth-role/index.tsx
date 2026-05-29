@@ -148,7 +148,10 @@ const AuthRolePage = ({ userId: propUserId }: AuthRolePageProps) => {
         columns={columns}
         dataSource={roles}
         search={false}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         rowSelection={{
           selectedRowKeys,
           preserveSelectedRowKeys: true,

@@ -4,9 +4,14 @@ import {
   AlignRightOutlined,
   BoldOutlined,
   ItalicOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  OrderedListOutlined,
   TagOutlined,
   UnderlineOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
+import type { JSONContent } from '@tiptap/core';
 import { Color } from '@tiptap/extension-color';
 import { TextAlign } from '@tiptap/extension-text-align';
 import {
@@ -50,6 +55,8 @@ export type TemplateEditorProps = {
   variables?: TemplateVariable[];
   features?: TemplateEditorFeatures;
   height?: number;
+  maxLength?: number;
+  showCount?: boolean;
   disabled?: boolean;
   className?: string;
 };
@@ -59,6 +66,7 @@ const DEFAULT_FEATURES: TemplateEditorFeatures = {
   color: false,
   backgroundColor: false,
   align: false,
+  list: false,
   image: false,
   table: false,
   variable: true,
@@ -106,6 +114,8 @@ const TemplateEditor = ({
   variables = [],
   features,
   height = 200,
+  maxLength,
+  showCount = false,
   disabled = false,
   className,
 }: TemplateEditorProps) => {
@@ -119,13 +129,18 @@ const TemplateEditor = ({
   variablesRef.current = variables;
   const outputTypeRef = useRef(outputType);
   outputTypeRef.current = outputType;
+  const maxLengthRef = useRef(maxLength);
+  maxLengthRef.current = maxLength;
   const lastEmittedRef = useRef<string | null>(null);
 
   const [, bumpToolbar] = useReducer((n: number) => n + 1, 0);
 
   const toEditorContent = (raw: string | undefined) => {
     if (outputTypeRef.current === 'text') {
-      return textToEditorHtml(raw ?? '', variablesRef.current);
+      return textToEditorHtml(raw ?? '', variablesRef.current, {
+        enableVariables: resolved.variable,
+        enableLists: resolved.list,
+      });
     }
     return htmlToEditorHtml(raw ?? '<p></p>');
   };
@@ -138,32 +153,81 @@ const TemplateEditor = ({
     return serializeHtmlWithVariableTokens(instance.getHTML());
   };
 
+  const getDocTextLength = (doc: { toJSON: () => unknown }) => {
+    if (outputTypeRef.current === 'text') {
+      return editorJsonToText(doc.toJSON() as JSONContent).length;
+    }
+    return 0;
+  };
+
+  const wouldExceedMaxLength = (
+    doc: {
+      toJSON: () => unknown;
+      textBetween: (
+        from: number,
+        to: number,
+        blockSeparator: string,
+        leafText: string,
+      ) => string;
+    },
+    from: number,
+    to: number,
+    text: string,
+  ) => {
+    const limit = maxLengthRef.current;
+    if (!limit || outputTypeRef.current !== 'text') return false;
+    const currentLength = getDocTextLength(doc);
+    const selectedLength = doc.textBetween(from, to, '\n', '\n').length;
+    return currentLength - selectedLength + text.length > limit;
+  };
+
+  const editorExtensions = useMemo(
+    () => [
+      StarterKit.configure({
+        heading: false,
+        codeBlock: false,
+        blockquote: false,
+        ...(resolved.list
+          ? {}
+          : {
+              bulletList: false,
+              orderedList: false,
+              listItem: false,
+            }),
+      }),
+      Underline,
+      TextStyle,
+      FontFamily.configure({ types: ['textStyle'] }),
+      FontSize.configure({ types: ['textStyle'] }),
+      Color.configure({ types: ['textStyle'] }),
+      BackgroundColor.configure({ types: ['textStyle'] }),
+      TextAlign.configure({ types: ['paragraph'] }),
+      ...(resolved.variable ? [Variable] : []),
+      SealPlaceholder,
+    ],
+    [resolved.list, resolved.variable],
+  );
+
   const editor = useEditor(
     {
-      extensions: [
-        StarterKit.configure({
-          heading: false,
-          codeBlock: false,
-          blockquote: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-        }),
-        Underline,
-        TextStyle,
-        FontFamily.configure({ types: ['textStyle'] }),
-        FontSize.configure({ types: ['textStyle'] }),
-        Color.configure({ types: ['textStyle'] }),
-        BackgroundColor.configure({ types: ['textStyle'] }),
-        TextAlign.configure({ types: ['paragraph'] }),
-        Variable,
-        SealPlaceholder,
-      ],
+      extensions: editorExtensions,
       editable: !disabled,
       content: toEditorContent(value),
       editorProps: {
         attributes: {
           'data-placeholder': placeholder ?? '',
+        },
+        handleTextInput: (view, from, to, text) =>
+          wouldExceedMaxLength(view.state.doc, from, to, text),
+        handlePaste: (view, event) => {
+          const text = event.clipboardData?.getData('text/plain') ?? '';
+          if (!text) return false;
+          const { from, to } = view.state.selection;
+          const exceeded = wouldExceedMaxLength(view.state.doc, from, to, text);
+          if (exceeded) {
+            event.preventDefault();
+          }
+          return exceeded;
         },
       },
       onUpdate: ({ editor: instance }) => {
@@ -178,7 +242,7 @@ const TemplateEditor = ({
         bumpToolbar();
       },
     },
-    [],
+    [editorExtensions],
   );
 
   useEffect(() => {
@@ -213,6 +277,14 @@ const TemplateEditor = ({
   const toggleBold = () => editor?.chain().focus().toggleBold().run();
   const toggleItalic = () => editor?.chain().focus().toggleItalic().run();
   const toggleUnderline = () => editor?.chain().focus().toggleUnderline().run();
+  const toggleBulletList = () =>
+    editor?.chain().focus().toggleBulletList().run();
+  const toggleOrderedList = () =>
+    editor?.chain().focus().toggleOrderedList().run();
+  const sinkListItem = () =>
+    editor?.chain().focus().sinkListItem('listItem').run();
+  const liftListItem = () =>
+    editor?.chain().focus().liftListItem('listItem').run();
   const setAlign = (align: 'left' | 'center' | 'right') =>
     editor?.chain().focus().setTextAlign(align).run();
   const applyColor = (hex: string) => {
@@ -255,6 +327,9 @@ const TemplateEditor = ({
   const isBold = editor?.isActive('bold') ?? false;
   const isItalic = editor?.isActive('italic') ?? false;
   const isUnderline = editor?.isActive('underline') ?? false;
+  const isBulletList = editor?.isActive('bulletList') ?? false;
+  const isOrderedList = editor?.isActive('orderedList') ?? false;
+  const isInList = isBulletList || isOrderedList;
   const isAlignLeft = editor?.isActive({ textAlign: 'left' }) ?? true;
   const isAlignCenter = editor?.isActive({ textAlign: 'center' }) ?? false;
   const isAlignRight = editor?.isActive({ textAlign: 'right' }) ?? false;
@@ -264,6 +339,7 @@ const TemplateEditor = ({
     resolved.color ||
     resolved.backgroundColor ||
     resolved.align ||
+    resolved.list ||
     resolved.variable ||
     resolved.fontFamily ||
     resolved.fontSize;
@@ -316,6 +392,10 @@ const TemplateEditor = ({
       resolved.backgroundColor)
       ? 'template-editor-rich'
       : '';
+  const currentCountValue = String(value ?? lastEmittedRef.current ?? '');
+  const characterCount = currentCountValue.length;
+  const countOverLimit =
+    typeof maxLength === 'number' && characterCount > maxLength;
 
   return (
     <div
@@ -415,11 +495,70 @@ const TemplateEditor = ({
             </>
           ) : null}
 
-          {resolved.color ? (
+          {resolved.list ? (
             <>
               {resolved.textStyle ||
               resolved.fontFamily ||
               resolved.fontSize ? (
+                <span className="template-editor-toolbar-divider" />
+              ) : null}
+              <Tooltip title="无序列表">
+                <Button
+                  size="small"
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isBulletList,
+                  })}
+                  icon={<UnorderedListOutlined />}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={toggleBulletList}
+                  disabled={disabled}
+                />
+              </Tooltip>
+              <Tooltip title="有序列表">
+                <Button
+                  size="small"
+                  type="text"
+                  className={clsx('template-editor-icon-btn', {
+                    'template-editor-icon-btn-active': isOrderedList,
+                  })}
+                  icon={<OrderedListOutlined />}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={toggleOrderedList}
+                  disabled={disabled}
+                />
+              </Tooltip>
+              <Tooltip title="降低层级">
+                <Button
+                  size="small"
+                  type="text"
+                  className="template-editor-icon-btn"
+                  icon={<MenuUnfoldOutlined />}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={sinkListItem}
+                  disabled={disabled || !isInList}
+                />
+              </Tooltip>
+              <Tooltip title="提升层级">
+                <Button
+                  size="small"
+                  type="text"
+                  className="template-editor-icon-btn"
+                  icon={<MenuFoldOutlined />}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={liftListItem}
+                  disabled={disabled || !isInList}
+                />
+              </Tooltip>
+            </>
+          ) : null}
+
+          {resolved.color ? (
+            <>
+              {resolved.textStyle ||
+              resolved.fontFamily ||
+              resolved.fontSize ||
+              resolved.list ? (
                 <span className="template-editor-toolbar-divider" />
               ) : null}
               <Tooltip title="字体颜色">
@@ -453,7 +592,8 @@ const TemplateEditor = ({
               {resolved.textStyle ||
               resolved.fontFamily ||
               resolved.fontSize ||
-              resolved.color ? (
+              resolved.color ||
+              resolved.list ? (
                 <span className="template-editor-toolbar-divider" />
               ) : null}
               <Tooltip title="背景色">
@@ -492,7 +632,8 @@ const TemplateEditor = ({
               resolved.color ||
               resolved.backgroundColor ||
               resolved.fontFamily ||
-              resolved.fontSize ? (
+              resolved.fontSize ||
+              resolved.list ? (
                 <span className="template-editor-toolbar-divider" />
               ) : null}
               <Tooltip title="左对齐">
@@ -543,6 +684,7 @@ const TemplateEditor = ({
               resolved.color ||
               resolved.backgroundColor ||
               resolved.align ||
+              resolved.list ||
               resolved.fontFamily ||
               resolved.fontSize ? (
                 <span className="template-editor-toolbar-divider" />
@@ -569,6 +711,15 @@ const TemplateEditor = ({
       <div className="template-editor-body">
         <EditorContent editor={editor} />
       </div>
+      {showCount ? (
+        <div
+          className={clsx('template-editor-count', {
+            'template-editor-count-over': countOverLimit,
+          })}
+        >
+          {maxLength ? `${characterCount} / ${maxLength}` : characterCount}
+        </div>
+      ) : null}
     </div>
   );
 };

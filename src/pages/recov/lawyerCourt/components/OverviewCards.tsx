@@ -50,11 +50,11 @@ const OverviewCards = ({ overview, loading }: OverviewCardsProps) => (
         <ProCard
           key={meta.key}
           size="small"
-          loading={loading}
           style={{ minWidth: 0, height: '100%' }}
           styles={statCardStyles}
         >
           <div
+            aria-busy={loading || undefined}
             style={{
               minHeight: 62,
               display: 'flex',

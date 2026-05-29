@@ -47,6 +47,9 @@ export type FeedbackItem = {
   feedbackType: string;
   semanticTags: string[];
   startedAt: string;
+  startTime: string;
+  endTime: string;
+  durationSeconds: number;
   feedbackRecordCount: number;
 };
 
@@ -245,6 +248,9 @@ export const toFeedbackItem = (record: AiCallRecord): FeedbackItem => {
     feedbackType: firstText(record.feedbackType, '中性'),
     semanticTags: tags.length > 0 ? tags : keyPoints,
     startedAt: firstText(record.startedAt),
+    startTime: firstText(record.startedAt),
+    endTime: firstText(record.finishedAt),
+    durationSeconds: toNumber(record.durationSeconds),
     feedbackRecordCount: 1,
   };
 };
@@ -277,6 +283,9 @@ export const toDebtFeedbackItem = (
     feedbackType: firstText(record.latestFeedbackType, '中性'),
     semanticTags: tags.length > 0 ? tags : keyPoints,
     startedAt: firstText(record.latestFinishedAt, record.latestStartedAt),
+    startTime: firstText(record.latestStartedAt),
+    endTime: firstText(record.latestFinishedAt),
+    durationSeconds: toNumber(record.latestDurationSeconds),
     feedbackRecordCount: toNumber(record.feedbackRecordCount),
   };
 };

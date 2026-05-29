@@ -30,6 +30,13 @@ import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
 import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_LIST_COLUMN_WIDTH,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+  renderRecovSingleLineText,
+} from '@/pages/recov/components/RecovFilterControls';
+import {
   RecovListPage,
   RecovListStack,
   RecovStatsStrip,
@@ -59,14 +66,14 @@ import FlowTraceDrawer from './components/FlowTraceDrawer';
 const { Text, Title } = Typography;
 
 type QueryFormValues = {
+  debtNumber?: string;
   city?: string;
   organization?: string;
 };
 
-type InstanceQueryFormValues = QueryFormValues & {
+type InstanceQueryFormValues = {
   flowStatus?: number | string;
   debtNumber?: string;
-  debtorName?: string;
 };
 
 type StatCardProps = {
@@ -102,8 +109,10 @@ const toCleanString = (value: unknown) => {
 
 const toBatchFilter = (values: QueryFormValues) => {
   const filter: FlowBatchStartFilter = {};
+  const debtNumber = toCleanString(values.debtNumber);
   const city = toCleanString(values.city);
   const organization = toCleanString(values.organization);
+  if (debtNumber) filter.debtNumber = debtNumber;
   if (city) filter.city = city;
   if (organization) filter.organization = organization;
   return filter;
@@ -368,11 +377,8 @@ const FlowPage = () => {
     setInstanceQuery({
       pageNum: 1,
       pageSize: instanceQuery.pageSize || DEFAULT_PAGE_SIZE,
-      city: values.city,
-      organization: values.organization,
       flowStatus: values.flowStatus,
       debtNumber: values.debtNumber,
-      debtorName: values.debtorName,
     });
   };
 
@@ -463,27 +469,67 @@ const FlowPage = () => {
 
   const openStartConfirm = () => {
     const filter = toBatchFilter(form.getFieldsValue());
-    const hasEmptyFilter = !filter.city && !filter.organization;
+    const hasEmptyFilter =
+      !filter.debtNumber && !filter.city && !filter.organization;
+    const scopeItems = [
+      { label: '资产编号', value: filter.debtNumber || '全部' },
+      { label: '所属城市', value: filter.city || '全部' },
+      { label: '所属项目', value: filter.organization || '全部' },
+    ];
 
     modalApi.confirm({
-      title: hasEmptyFilter ? '确认发起全部范围流程' : '确认发起催收流程',
-      content: (
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
-            <Text type="secondary">所属城市</Text>
-            <Text>{filter.city || '全部'}</Text>
-            <Text type="secondary">所属项目</Text>
-            <Text>{filter.organization || '全部'}</Text>
+      width: 560,
+      centered: true,
+      icon: null,
+      title: (
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-lg text-blue-600">
+            <PlayCircleOutlined />
+          </span>
+          <div className="min-w-0">
+            <Title level={5} style={{ margin: 0 }}>
+              {hasEmptyFilter ? '确认发起全部范围流程' : '确认发起催收流程'}
+            </Title>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              系统将创建批量发起任务，并自动跳过已发起或发起中的债务。
+            </Text>
           </div>
-          <Text type={hasEmptyFilter ? 'danger' : 'secondary'}>
-            {hasEmptyFilter
-              ? '当前未设置城市或所属项目筛选，将对当前权限范围内全部债务尝试发起催收流程。请确认这是预期操作。'
-              : '将对当前筛选结果发起催收流程。已发起或正在发起的债务会自动跳过。'}
-          </Text>
+        </div>
+      ),
+      content: (
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            {scopeItems.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-lg border border-solid border-gray-100 bg-gray-50 px-4 py-3"
+              >
+                <div className="mb-1 text-xs text-gray-500">{item.label}</div>
+                <div className="truncate text-base font-semibold text-gray-900">
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Alert
+            showIcon
+            type={hasEmptyFilter ? 'warning' : 'info'}
+            message={
+              hasEmptyFilter
+                ? '当前未设置城市或所属项目筛选'
+                : '即将按当前筛选范围发起'
+            }
+            description={
+              hasEmptyFilter
+                ? '本次操作会对当前权限范围内的全部债务尝试发起催收流程，请确认这是预期范围。'
+                : '筛选范围内符合条件的债务将进入催收流程，重复发起的债务会自动跳过。'
+            }
+          />
           <Alert
             showIcon
             type="warning"
-            title="发起成功后会固化债务上下文快照；已发起或发起中的债务将不允许编辑或删除。"
+            message="发起后将固化债务上下文快照"
+            description="已发起或发起中的债务将不允许编辑或删除，后续进度可在流程实例中查看。"
           />
         </div>
       ),
@@ -554,8 +600,9 @@ const FlowPage = () => {
       {
         title: '资产编号',
         dataIndex: 'debtNumber',
-        width: 120,
-        render: toText,
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '业主姓名',
@@ -567,15 +614,15 @@ const FlowPage = () => {
       {
         title: '所属城市',
         dataIndex: 'city',
-        width: 120,
+        width: RECOV_LIST_COLUMN_WIDTH.city,
         render: toText,
       },
       {
         title: '所属项目',
         dataIndex: 'organization',
-        width: 180,
-        ellipsis: true,
-        render: toText,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '流程状态',
@@ -662,13 +709,14 @@ const FlowPage = () => {
   const failureColumns = useMemo<ColumnsType<FlowBatchFailureItem>>(
     () => [
       {
-        title: '债务编号',
+        title: '资产编号',
         dataIndex: 'debtNumber',
-        width: 120,
-        render: toText,
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
-        title: '债务人',
+        title: '业主姓名',
         dataIndex: 'debtorName',
         width: 140,
         render: (value) => <Text strong>{toText(value)}</Text>,
@@ -676,15 +724,15 @@ const FlowPage = () => {
       {
         title: '城市',
         dataIndex: 'city',
-        width: 120,
+        width: RECOV_LIST_COLUMN_WIDTH.city,
         render: toText,
       },
       {
         title: '所属项目',
         dataIndex: 'organization',
-        width: 160,
-        ellipsis: true,
-        render: toText,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '画像 ID',
@@ -751,17 +799,29 @@ const FlowPage = () => {
         <ProCard title="流程批量发起">
           <Form
             form={form}
-            initialValues={{ city: undefined, organization: undefined }}
+            initialValues={{
+              debtNumber: undefined,
+              city: undefined,
+              organization: undefined,
+            }}
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Space wrap size={12}>
+                <Form.Item name="debtNumber" noStyle>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder="资产编号"
+                    style={RECOV_FILTER_CONTROL_STYLE}
+                  />
+                </Form.Item>
                 <Form.Item name="city" noStyle>
                   <Select
                     allowClear
                     showSearch={{ optionFilterProp: 'label' }}
                     loading={filterLoading}
                     placeholder="选择所属城市"
-                    style={{ width: 180 }}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                     options={cityOptions.map((city) => ({
                       label: city,
                       value: city,
@@ -774,11 +834,15 @@ const FlowPage = () => {
                     showSearch={{ optionFilterProp: 'label' }}
                     loading={filterLoading}
                     placeholder="选择所属项目"
-                    style={{ width: 220 }}
                     options={projectOptions.map((project) => ({
                       label: project,
                       value: project,
                     }))}
+                    optionRender={(option) =>
+                      renderRecovSelectOptionLabel(option.label)
+                    }
+                    popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Button icon={<ReloadOutlined />} onClick={handleReset}>
@@ -800,37 +864,14 @@ const FlowPage = () => {
         </ProCard>
 
         <RecovTableCard title="流程实例">
-          <Form
-            form={instanceForm}
-            initialValues={{ city: undefined, organization: undefined }}
-            className="recov-table-toolbar"
-          >
+          <Form form={instanceForm} className="recov-table-toolbar">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Space wrap size={12}>
-                <Form.Item name="city" noStyle>
-                  <Select
+                <Form.Item name="debtNumber" noStyle>
+                  <Input
                     allowClear
-                    showSearch={{ optionFilterProp: 'label' }}
-                    loading={filterLoading}
-                    placeholder="选择所属城市"
-                    style={{ width: 180 }}
-                    options={cityOptions.map((city) => ({
-                      label: city,
-                      value: city,
-                    }))}
-                  />
-                </Form.Item>
-                <Form.Item name="organization" noStyle>
-                  <Select
-                    allowClear
-                    showSearch={{ optionFilterProp: 'label' }}
-                    loading={filterLoading}
-                    placeholder="选择所属项目"
-                    style={{ width: 220 }}
-                    options={projectOptions.map((project) => ({
-                      label: project,
-                      value: project,
-                    }))}
+                    placeholder="资产编号"
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Form.Item name="flowStatus" noStyle>
@@ -849,20 +890,6 @@ const FlowPage = () => {
                     ]}
                   />
                 </Form.Item>
-                <Form.Item name="debtNumber" noStyle>
-                  <Input
-                    allowClear
-                    placeholder="资产编号"
-                    style={{ width: 150 }}
-                  />
-                </Form.Item>
-                <Form.Item name="debtorName" noStyle>
-                  <Input
-                    allowClear
-                    placeholder="业主姓名"
-                    style={{ width: 150 }}
-                  />
-                </Form.Item>
                 <Button
                   type="primary"
                   icon={<SearchOutlined />}
@@ -874,13 +901,6 @@ const FlowPage = () => {
                   重置
                 </Button>
               </Space>
-              <Button
-                icon={<SyncOutlined />}
-                loading={instanceLoading}
-                onClick={refreshInstanceList}
-              >
-                刷新
-              </Button>
             </div>
           </Form>
 
@@ -900,8 +920,7 @@ const FlowPage = () => {
               pageSize: instanceQuery.pageSize || DEFAULT_PAGE_SIZE,
               total: instanceTotal,
               showSizeChanger: true,
-              showTotal: (nextTotal, range) =>
-                `第 ${range[0]}-${range[1]} 条/总共 ${nextTotal} 条`,
+              showTotal: (nextTotal) => `共 ${nextTotal} 条`,
               onChange: (pageNum, pageSize) => {
                 setInstanceQuery({
                   ...instanceQuery,

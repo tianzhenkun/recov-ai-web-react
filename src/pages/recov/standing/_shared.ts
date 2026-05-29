@@ -37,8 +37,8 @@ export const STANDING_TYPES: StandingTypeDef[] = [
 export const DEFAULT_STANDING_RANGE: StandingRangeVO = {
   usedRanges: [],
   wildcardUsed: false,
-  minAvailable: 1,
-  maxAvailable: 10000,
+  minAvailable: null,
+  maxAvailable: null,
 };
 
 export type UsedRangeRef = {
@@ -49,6 +49,21 @@ export type UsedRangeRef = {
 
 export const getStandingTypeName = (code?: string) =>
   STANDING_TYPES.find((item) => item.code === code)?.label || code || '-';
+
+export const normalizeRangeBoundary = (value: unknown): number | null => {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 ? next : null;
+};
+
+export const hasAvailableStandingRange = (
+  rangeInfo: StandingRangeVO,
+): boolean => {
+  const minAvailable = normalizeRangeBoundary(rangeInfo.minAvailable);
+  const maxAvailable = normalizeRangeBoundary(rangeInfo.maxAvailable);
+  return (
+    minAvailable != null && maxAvailable != null && minAvailable <= maxAvailable
+  );
+};
 
 export const defaultStandingForm = (): StandingForm => ({
   id: undefined,
@@ -107,20 +122,29 @@ export const computeRangeIssues = (input: {
   const rangeOrderInvalid =
     startNum != null && endNum != null && endNum < startNum;
 
-  const minAvailable = rangeInfo.minAvailable ?? 1;
-  const maxAvailable = rangeInfo.maxAvailable ?? 10000;
+  const minAvailable = normalizeRangeBoundary(rangeInfo.minAvailable);
+  const maxAvailable = normalizeRangeBoundary(rangeInfo.maxAvailable);
+  const hasAvailableRange =
+    minAvailable != null &&
+    maxAvailable != null &&
+    minAvailable <= maxAvailable;
   let rangeOutOfBounds = false;
   if (
+    hasAvailableRange &&
     startNum != null &&
     (startNum < minAvailable || startNum > maxAvailable)
   ) {
     rangeOutOfBounds = true;
   }
   if (
+    hasAvailableRange &&
     !rangeOutOfBounds &&
     endNum != null &&
     (endNum < minAvailable || endNum > maxAvailable)
   ) {
+    rangeOutOfBounds = true;
+  }
+  if (!hasAvailableRange && (startNum != null || endNum != null)) {
     rangeOutOfBounds = true;
   }
 

@@ -302,7 +302,10 @@ const TenantPackagePage = () => {
         actionRef={actionRef}
         rowKey={(record) => String(record.packageId)}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         columns={columns}
         scroll={{ x: 900 }}
         request={async (params) => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   RecovListPage,
   RecovListStack,
@@ -7,7 +7,6 @@ import type {
   LitigationNodeStatVO,
   LitigationNodeType,
   LitigationOverviewVO,
-  LitigationStatus,
 } from '@/services/ruoyi/litigation-process';
 import {
   DEFAULT_NODE_TYPE,
@@ -45,9 +44,9 @@ const LitigationProcessPage = () => {
     useState<LitigationNodeType>(DEFAULT_NODE_TYPE);
   const [pageNum, setPageNum] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [debtNumberFilter, setDebtNumberFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [organizationFilter, setOrganizationFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<LitigationStatus | ''>('');
 
   const [nodesLoading, setNodesLoading] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -56,22 +55,24 @@ const LitigationProcessPage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<DisplayRow | null>(null);
 
-  const activeNode = useMemo(
-    () => nodes.find((item) => item.nodeType === nodeType),
-    [nodes, nodeType],
-  );
-
   const buildListQuery = useCallback(
     (overrides: Partial<LitigationListQuery> = {}): LitigationListQuery => ({
       pageNum,
       pageSize,
       nodeType,
+      debtNumber: debtNumberFilter || undefined,
       city: cityFilter || undefined,
       organization: organizationFilter || undefined,
-      status: statusFilter || undefined,
       ...overrides,
     }),
-    [pageNum, pageSize, nodeType, cityFilter, organizationFilter, statusFilter],
+    [
+      pageNum,
+      pageSize,
+      nodeType,
+      debtNumberFilter,
+      cityFilter,
+      organizationFilter,
+    ],
   );
 
   const fetchOverview = useCallback(
@@ -131,13 +132,13 @@ const LitigationProcessPage = () => {
     if (nextNodeType === nodeType) return;
     setNodeType(nextNodeType);
     setPageNum(1);
-    setStatusFilter('');
     await Promise.all([
       fetchOverview(nextNodeType),
       fetchList({
         pageNum: 1,
         pageSize,
         nodeType: nextNodeType,
+        debtNumber: debtNumberFilter || undefined,
         city: cityFilter || undefined,
         organization: organizationFilter || undefined,
       }),
@@ -145,29 +146,29 @@ const LitigationProcessPage = () => {
   };
 
   const handleFilterSearch = async (filters: {
+    debtNumber: string;
     city: string;
     organization: string;
-    status: LitigationStatus | '';
   }) => {
+    setDebtNumberFilter(filters.debtNumber);
     setCityFilter(filters.city);
     setOrganizationFilter(filters.organization);
-    setStatusFilter(filters.status);
     setPageNum(1);
     await fetchList(
       buildListQuery({
         pageNum: 1,
+        debtNumber: filters.debtNumber || undefined,
         city: filters.city || undefined,
         organization: filters.organization || undefined,
-        status: filters.status || undefined,
       }),
     );
   };
 
   const handleFilterReset = async () => {
     await handleFilterSearch({
+      debtNumber: '',
       city: '',
       organization: '',
-      status: '',
     });
   };
 
@@ -197,8 +198,6 @@ const LitigationProcessPage = () => {
         <NodeRail
           nodes={nodes}
           activeNodeType={nodeType}
-          activeNodeDesc={activeNode?.nodeDesc}
-          total={total}
           loading={nodesLoading}
           onNodeChange={handleNodeChange}
         />
@@ -210,9 +209,9 @@ const LitigationProcessPage = () => {
           pageNum={pageNum}
           pageSize={pageSize}
           loading={tableLoading}
+          debtNumberFilter={debtNumberFilter}
           cityFilter={cityFilter}
           organizationFilter={organizationFilter}
-          statusFilter={statusFilter}
           onFilterSearch={handleFilterSearch}
           onFilterReset={handleFilterReset}
           onPageChange={handlePageChange}

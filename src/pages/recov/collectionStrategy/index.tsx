@@ -1,8 +1,4 @@
-import {
-  ArrowDownOutlined,
-  ArrowRightOutlined,
-  EditOutlined,
-} from '@ant-design/icons';
+import { ArrowRightOutlined, EditOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import {
@@ -16,6 +12,7 @@ import {
   Spin,
   Tabs,
   Tooltip,
+  theme,
 } from 'antd';
 import {
   type ReactNode,
@@ -31,6 +28,7 @@ import { useTemplateVariables } from '@/hooks/useTemplateVariables';
 import {
   type CallConfigVO,
   type FlowTemplateVO,
+  getDefaultPersonaFlowTemplate,
   listCurrentFlowTemplates,
   listFlowNodeTypes,
   listPersonaCallConfigs,
@@ -49,7 +47,6 @@ import {
   isSamePersonaId,
   normalizeSteps,
   type PreviewStep,
-  resolveDefaultPersonaId,
   resolveFlowPreviewColumns,
   skipStrategyLabelMap,
   upsertNodeTypeMeta,
@@ -61,9 +58,20 @@ const OPENING_TEMPLATE_FEATURES: TemplateEditorFeatures = {
   textStyle: false,
   color: false,
   align: false,
+  list: false,
   image: false,
   table: false,
   variable: true,
+};
+
+const STRATEGY_CORE_FEATURES: TemplateEditorFeatures = {
+  textStyle: false,
+  color: false,
+  align: false,
+  list: true,
+  image: false,
+  table: false,
+  variable: false,
 };
 
 type CallConfigForm = {
@@ -125,9 +133,9 @@ const CallConfigContentBlock = ({
 
 const renderOpeningTemplatePreview = (
   template: string,
-  identityName: string,
   variables: { label: string; value: string }[],
   emptyText: string,
+  variableTone: { bg: string; border: string; color: string },
 ) => {
   const content = template.trim();
   if (!content) {
@@ -156,16 +164,17 @@ const renderOpeningTemplatePreview = (
       lastIndex = match.index + match[0].length;
       continue;
     }
-    const label =
-      variableName === 'identityName'
-        ? identityName.trim() || variableLabel
-        : variableLabel;
     nodes.push(
       <span
         key={`${variableName}-${match.index}`}
-        className="mx-0.5 inline-flex items-center rounded border border-solid border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-medium leading-5 text-blue-700"
+        className="mx-0.5 inline-flex items-center rounded border border-solid px-1.5 py-0.5 text-xs font-medium leading-5"
+        style={{
+          background: variableTone.bg,
+          borderColor: variableTone.border,
+          color: variableTone.color,
+        }}
       >
-        {label}
+        {variableLabel}
       </span>,
     );
     lastIndex = match.index + match[0].length;
@@ -194,6 +203,7 @@ const useFlowPreviewColumns = (container: HTMLDivElement | null): number => {
 
 const CollectionStrategyPage = () => {
   const [searchParams] = useSearchParams();
+  const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [editCallConfigForm] = Form.useForm<CallConfigEditValues>();
   const { variables: templateVariables } = useTemplateVariables();
@@ -306,23 +316,18 @@ const CollectionStrategyPage = () => {
   );
 
   const loadDefaultPersonaTemplateSteps = useCallback(
-    async (
-      currentFlowModuleMap: Record<string, FlowModuleMeta>,
-      personas: PersonaItem[] = personaList,
-    ) => {
-      const template = await fetchCurrentFlowTemplate(
-        resolveDefaultPersonaId(personas),
-      );
+    async (currentFlowModuleMap: Record<string, FlowModuleMeta>) => {
+      const res = await getDefaultPersonaFlowTemplate();
+      const template = res.data ?? null;
       return resolveTemplateSteps(template, currentFlowModuleMap);
     },
-    [fetchCurrentFlowTemplate, personaList, resolveTemplateSteps],
+    [resolveTemplateSteps],
   );
 
   const loadPersonaFlow = useCallback(
     async (
       personaId: PersonaId,
       currentFlowModuleMap: Record<string, FlowModuleMeta>,
-      personas: PersonaItem[] = personaList,
     ) => {
       loadFlowRequestSeqRef.current += 1;
       const requestSeq = loadFlowRequestSeqRef.current;
@@ -332,10 +337,7 @@ const CollectionStrategyPage = () => {
         setCurrentTemplate(template);
         const steps = template
           ? resolveTemplateSteps(template, currentFlowModuleMap)
-          : await loadDefaultPersonaTemplateSteps(
-              currentFlowModuleMap,
-              personas,
-            );
+          : await loadDefaultPersonaTemplateSteps(currentFlowModuleMap);
         if (requestSeq !== loadFlowRequestSeqRef.current) return;
         setPreviewSteps(steps);
       } catch (error) {
@@ -348,7 +350,6 @@ const CollectionStrategyPage = () => {
     [
       fetchCurrentFlowTemplate,
       loadDefaultPersonaTemplateSteps,
-      personaList,
       resolveTemplateSteps,
     ],
   );
@@ -428,7 +429,7 @@ const CollectionStrategyPage = () => {
         if (firstPersonaId != null) {
           setActivePersonaId(firstPersonaId);
           await Promise.all([
-            loadPersonaFlow(firstPersonaId, map, rows),
+            loadPersonaFlow(firstPersonaId, map),
             loadPersonaCallConfigs(firstPersonaId),
           ]);
         }
@@ -565,11 +566,18 @@ const CollectionStrategyPage = () => {
     const hasNextRow = rowIdx < flowPreviewRows.length - 1;
     return (
       <div key={`flow-row-${rowIdx}`} className="flex flex-col">
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-4">
           {row.map((step, stepIdx) => {
             const meta = getFlowModuleMeta(flowModuleMap, step.nodeCode);
             const IconCmp = getFlowIconComponent(meta.icon);
+            const identityText = getNodeIdentityDisplayText(
+              flowModuleMap,
+              step,
+            );
             const waitMinutes = Number(step.config.waitMinutes || 0);
+            const showConnectorArrow =
+              stepIdx < row.length - 1 ||
+              (hasNextRow && stepIdx === row.length - 1);
             return (
               <div
                 key={step.id || `${rowIdx}-${stepIdx}-${step.nodeCode}`}
@@ -605,10 +613,10 @@ const CollectionStrategyPage = () => {
                   }
                 >
                   <div
-                    className="flex flex-col items-center"
+                    className="flex min-h-[124px] flex-col items-center justify-start"
                     style={{ width: 128 }}
                   >
-                    <div className="mb-1.5 text-sm font-semibold text-zinc-700 text-center">
+                    <div className="mb-1.5 flex min-h-[44px] items-end justify-center text-center text-sm font-semibold text-zinc-700">
                       {meta.label}
                     </div>
                     <div
@@ -624,12 +632,12 @@ const CollectionStrategyPage = () => {
                         }
                       />
                     </div>
-                    <div className="mt-1.5 max-w-[112px] truncate text-xs text-zinc-500">
-                      {getNodeIdentityDisplayText(flowModuleMap, step)}
+                    <div className="mt-1.5 h-5 max-w-[112px] truncate text-center text-xs text-zinc-500">
+                      {identityText || ''}
                     </div>
                   </div>
                 </Popover>
-                {stepIdx < row.length - 1 ? (
+                {showConnectorArrow ? (
                   <span className="mx-2 text-base text-zinc-400">
                     <ArrowRightOutlined />
                   </span>
@@ -638,11 +646,6 @@ const CollectionStrategyPage = () => {
             );
           })}
         </div>
-        {hasNextRow ? (
-          <div className="mb-3 mt-1 flex justify-center text-zinc-400">
-            <ArrowDownOutlined />
-          </div>
-        ) : null}
       </div>
     );
   };
@@ -704,12 +707,13 @@ const CollectionStrategyPage = () => {
             name="strategyCore"
             rules={[{ max: 1000, message: '策略核心不能超过 1000 字' }]}
           >
-            <Input.TextArea
-              variant="outlined"
-              rows={8}
+            <TemplateEditor
+              outputType="text"
+              height={180}
               maxLength={1000}
               showCount
-              style={{ resize: 'none' }}
+              placeholder="请输入策略核心"
+              features={STRATEGY_CORE_FEATURES}
             />
           </Form.Item>
         </Form>
@@ -774,9 +778,13 @@ const CollectionStrategyPage = () => {
                           >
                             {renderOpeningTemplatePreview(
                               callConfigForm.openingTemplate,
-                              callConfigForm.identityName,
                               templateVariables,
                               '暂无开场白',
+                              {
+                                bg: token.colorPrimaryBg,
+                                border: token.colorPrimaryBorder,
+                                color: token.colorPrimaryText,
+                              },
                             )}
                           </CallConfigContentBlock>
                           <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -826,7 +834,7 @@ const CollectionStrategyPage = () => {
                     className="min-w-0 overflow-x-auto"
                   >
                     {previewSteps.length > 0 ? (
-                      <div className="flex flex-col">
+                      <div className="flex flex-col gap-8">
                         {flowPreviewRows.map((row, rowIdx) =>
                           renderFlowRow(row, rowIdx),
                         )}

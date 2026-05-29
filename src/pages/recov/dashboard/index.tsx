@@ -9,7 +9,16 @@ import {
 } from '@ant-design/icons';
 import { Column, Line } from '@ant-design/plots';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Col, Empty, Row, Skeleton, Space, Tooltip, Typography } from 'antd';
+import {
+  Col,
+  Empty,
+  Row,
+  Skeleton,
+  Space,
+  Tooltip,
+  Typography,
+  theme,
+} from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import MetricIcon, {
   type MetricTone,
@@ -234,6 +243,7 @@ const DashboardStatCard = ({ meta, value }: DashboardStatCardProps) => {
 };
 
 const DashboardPage = () => {
+  const { token } = theme.useToken();
   const [overview, setOverview] = useState<DashboardOverview>({});
   const [trend, setTrend] = useState<RepaymentTrend>({});
   const [loading, setLoading] = useState(false);
@@ -495,6 +505,7 @@ const DashboardPage = () => {
               }}
               style={{
                 lineWidth: 3,
+                stroke: token.colorPrimary,
               }}
             />
           ) : (

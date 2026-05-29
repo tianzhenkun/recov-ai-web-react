@@ -6,12 +6,15 @@ export type DeliveryTaskItem = {
   taskId: string;
   deliveryId?: string | null;
   debtId?: string | null;
+  debtNumber?: string | number | null;
   businessId?: string | null;
   debtorName?: string | null;
   debtorPhone?: string | null;
   debtorEmail?: string | null;
+  city?: string | null;
   projectName?: string | null;
   debtAmount?: string | number | null;
+  overdueAmount?: string | number | null;
   overdueDays?: number | null;
   taskStatus?: DeliveryTaskStatus | number | null;
   taskStatusLabel?: string | null;
@@ -39,6 +42,9 @@ export type DeliveryTaskItem = {
 export type ListDeliveryTasksParams = {
   pageNum: number;
   pageSize: number;
+  debtNumber?: string;
+  city?: string;
+  organization?: string;
   keyword?: string;
   sceneCode?: string;
   wayCode?: string;
@@ -58,6 +64,9 @@ export type DeliveryOverview = {
 
 export type DeliveryTaskPageResult = {
   keyword?: string;
+  debtNumber?: string;
+  city?: string;
+  organization?: string;
   overview?: DeliveryOverview;
   total: number;
   rows: DeliveryTaskItem[];
@@ -85,6 +94,9 @@ const toPageResult = (value: unknown): DeliveryTaskPageResult => {
   };
   return {
     keyword: data.keyword,
+    debtNumber: data.debtNumber,
+    city: data.city,
+    organization: data.organization,
     overview: data.overview ?? {},
     total: Number(data.total ?? 0),
     rows: Array.isArray(data.rows) ? data.rows : [],
@@ -108,6 +120,16 @@ export const listDeliveryTasks = async (
   });
   return toPageResult(res.data);
 };
+
+export const listDeliveryCities = () =>
+  ruoyiRequest<string[]>('/system/recov/debt/cities', {
+    method: 'get',
+  });
+
+export const listDeliveryOrganizations = () =>
+  ruoyiRequest<string[]>('/system/recov/debt/organizations', {
+    method: 'get',
+  });
 
 export const getDeliveryTask = async (taskId: string) => {
   const res = await ruoyiRequest<DeliveryTaskItem>(`${BASE}/${taskId}`, {

@@ -38,22 +38,54 @@ export type PersonaForm = {
   dialogue?: string;
 };
 
-export const listPersona = (params: PersonaQuery) =>
-  ruoyiRequest<PersonaItem>('/system/persona/page', {
+type SortablePersona = {
+  id?: number | string;
+  personaName?: string | null;
+};
+
+const collator = new Intl.Collator('zh-Hans-CN', {
+  numeric: true,
+  sensitivity: 'base',
+});
+
+export const sortPersonasByName = <T extends SortablePersona>(items: T[]) =>
+  [...items].sort((left, right) => {
+    const nameCompare = collator.compare(
+      left.personaName?.trim() || '',
+      right.personaName?.trim() || '',
+    );
+    if (nameCompare !== 0) {
+      return nameCompare;
+    }
+    return String(left.id ?? '').localeCompare(String(right.id ?? ''));
+  });
+
+export const listPersona = async (params: PersonaQuery) => {
+  const res = await ruoyiRequest<PersonaItem>('/system/persona/page', {
     method: 'get',
     params,
   });
+  return Array.isArray(res.rows)
+    ? { ...res, rows: sortPersonasByName(res.rows) }
+    : res;
+};
 
 export type PersonaSimple = {
-  id: number;
+  id: number | string;
   personaName: string;
 };
 
 /**
  * 精简版画像列表，仅返回 id + personaName，用于下拉/多选场景。
  */
-export const listPersonasSimple = () =>
-  ruoyiRequest<PersonaSimple[]>('/system/persona/list', { method: 'get' });
+export const listPersonasSimple = async () => {
+  const res = await ruoyiRequest<PersonaSimple[]>('/system/persona/list', {
+    method: 'get',
+  });
+  return Array.isArray(res.data)
+    ? { ...res, data: sortPersonasByName(res.data) }
+    : res;
+};
 
 export const getPersona = (id: number | string) =>
   ruoyiRequest<PersonaItem>(`/system/persona/${id}`, {

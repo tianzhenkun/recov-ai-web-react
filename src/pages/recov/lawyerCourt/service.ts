@@ -528,7 +528,7 @@ export const exportUnmatchedCases = (rows: UnmatchedCaseRowVO[]): void => {
     '城市',
     '项目',
     '案号',
-    '业主',
+    '业主姓名',
     '涉案金额',
     '区域',
     '未匹配原因',

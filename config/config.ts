@@ -182,9 +182,10 @@ export default defineConfig({
   antd: {
     appConfig: {},
     configProvider: {
-      variant: 'filled',
       theme: {
         token: {
+          colorPrimary: defaultSettings.colorPrimary,
+          colorInfo: defaultSettings.colorPrimary,
           fontFamily: 'AlibabaSans, sans-serif',
         },
       },

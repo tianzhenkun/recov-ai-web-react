@@ -58,12 +58,21 @@ export const variableToHtml = (
 export const textToEditorHtml = (
   content: string,
   variables: TemplateVariable[] = [],
+  options: { enableVariables?: boolean; enableLists?: boolean } = {},
 ) => {
   const source = String(content ?? '');
   const lines = source.split(/\r?\n/);
+  const enableVariables = options.enableVariables ?? true;
+  const enableLists = options.enableLists ?? false;
   const tokenRE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+  const bulletLineRE = /^(\s*)[-*]\s+(.+)$/;
+  const orderedLineRE = /^(\s*)(\d+)[.)]\s+(.+)$/;
 
   const renderLine = (line: string) => {
+    if (!enableVariables) {
+      return escapeHtml(line);
+    }
+
     let cursor = 0;
     let html = '';
     tokenRE.lastIndex = 0;
@@ -78,7 +87,112 @@ export const textToEditorHtml = (
     return html;
   };
 
-  return lines.map((line) => `<p>${renderLine(line)}</p>`).join('');
+  const parseListLine = (line: string) => {
+    const bulletMatch = line.match(bulletLineRE);
+    if (bulletMatch) {
+      return {
+        content: bulletMatch[2],
+        depth: Math.floor(bulletMatch[1].replace(/\t/g, '  ').length / 2),
+        start: '',
+        tag: 'ul' as const,
+      };
+    }
+
+    const orderedMatch = line.match(orderedLineRE);
+    if (orderedMatch) {
+      return {
+        content: orderedMatch[3],
+        depth: Math.floor(orderedMatch[1].replace(/\t/g, '  ').length / 2),
+        start: orderedMatch[2],
+        tag: 'ol' as const,
+      };
+    }
+
+    return null;
+  };
+
+  const renderListBlock = (
+    startIndex: number,
+    depth: number,
+    tag: 'ul' | 'ol',
+    start = '',
+  ): { html: string; nextIndex: number } => {
+    const items: string[] = [];
+    let currentIndex = startIndex;
+
+    while (currentIndex < lines.length) {
+      const parsed = parseListLine(lines[currentIndex]);
+      if (!parsed || parsed.depth < depth) break;
+
+      if (parsed.depth > depth) {
+        if (items.length === 0) break;
+        const nested = renderListBlock(
+          currentIndex,
+          parsed.depth,
+          parsed.tag,
+          parsed.start,
+        );
+        items[items.length - 1] += nested.html;
+        currentIndex = nested.nextIndex;
+        continue;
+      }
+
+      if (parsed.tag !== tag) break;
+
+      items.push(`<li><p>${renderLine(parsed.content)}</p>`);
+      currentIndex += 1;
+
+      while (currentIndex < lines.length) {
+        const nestedParsed = parseListLine(lines[currentIndex]);
+        if (!nestedParsed || nestedParsed.depth <= depth) break;
+        const nested = renderListBlock(
+          currentIndex,
+          nestedParsed.depth,
+          nestedParsed.tag,
+          nestedParsed.start,
+        );
+        items[items.length - 1] += nested.html;
+        currentIndex = nested.nextIndex;
+      }
+
+      items[items.length - 1] += '</li>';
+    }
+
+    const startAttr =
+      tag === 'ol' && start ? ` start="${escapeHtml(start)}"` : '';
+    return {
+      html: `<${tag}${startAttr}>${items.join('')}</${tag}>`,
+      nextIndex: currentIndex,
+    };
+  };
+
+  if (!enableLists) {
+    return lines.map((line) => `<p>${renderLine(line)}</p>`).join('');
+  }
+
+  const blocks: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const parsed = parseListLine(lines[index]);
+
+    if (parsed) {
+      const listBlock = renderListBlock(
+        index,
+        parsed.depth,
+        parsed.tag,
+        parsed.start,
+      );
+      blocks.push(listBlock.html);
+      index = listBlock.nextIndex;
+      continue;
+    }
+
+    blocks.push(`<p>${renderLine(lines[index])}</p>`);
+    index += 1;
+  }
+
+  return blocks.join('');
 };
 
 export const htmlToEditorHtml = (content: string) => {
@@ -104,19 +218,77 @@ export const serializeHtmlWithVariableTokens = (content: string) => {
   );
 };
 
-const nodeToText = (node: JSONContent): string => {
+const inlineNodeToText = (node: JSONContent): string => {
   if (node.type === 'text') return node.text ?? '';
   if (node.type === 'variable')
     return toVariableToken(String(node.attrs?.name ?? ''));
   if (node.type === 'hardBreak') return '\n';
   if (!node.content?.length) return '';
-  return node.content.map(nodeToText).join('');
+  return node.content.map(inlineNodeToText).join('');
+};
+
+const paragraphToText = (node: JSONContent): string => {
+  if (!node.content?.length) return '';
+  return node.content.map(inlineNodeToText).join('');
+};
+
+const listItemToText = (
+  node: JSONContent,
+  marker: string,
+  depth: number,
+): string => {
+  const indent = '  '.repeat(depth);
+  const primaryBlocks: string[] = [];
+  const nestedBlocks: string[] = [];
+
+  for (const child of node.content ?? []) {
+    if (child.type === 'paragraph') {
+      primaryBlocks.push(paragraphToText(child));
+      continue;
+    }
+    if (child.type === 'bulletList' || child.type === 'orderedList') {
+      nestedBlocks.push(blockNodeToText(child, depth + 1));
+      continue;
+    }
+    primaryBlocks.push(blockNodeToText(child, depth));
+  }
+
+  const primaryText = primaryBlocks.join('\n');
+  const primaryLines = primaryText ? primaryText.split('\n') : [''];
+  const firstLine = `${indent}${marker}${primaryLines[0] ?? ''}`;
+  const remainingLines = primaryLines
+    .slice(1)
+    .map((line) => `${indent}  ${line}`);
+
+  return [firstLine, ...remainingLines, ...nestedBlocks.filter(Boolean)].join(
+    '\n',
+  );
+};
+
+const blockNodeToText = (node: JSONContent, depth = 0): string => {
+  if (node.type === 'paragraph') return paragraphToText(node);
+  if (node.type === 'bulletList') {
+    return (node.content ?? [])
+      .map((item) => listItemToText(item, '- ', depth))
+      .join('\n');
+  }
+  if (node.type === 'orderedList') {
+    const start = Number(node.attrs?.start ?? 1);
+    const firstIndex = Number.isFinite(start) ? start : 1;
+    return (node.content ?? [])
+      .map((item, itemIndex) =>
+        listItemToText(item, `${firstIndex + itemIndex}. `, depth),
+      )
+      .join('\n');
+  }
+  if (node.type === 'listItem') return listItemToText(node, '- ', depth);
+  return inlineNodeToText(node);
 };
 
 export const editorJsonToText = (json: JSONContent) => {
   if (!json.content?.length) return '';
   return json.content
-    .map(nodeToText)
+    .map((node) => blockNodeToText(node))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n');
 };

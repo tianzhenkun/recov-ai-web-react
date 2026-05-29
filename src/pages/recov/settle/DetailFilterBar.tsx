@@ -1,5 +1,10 @@
 import { SearchOutlined } from '@ant-design/icons';
 import { Button, Input, Select, Space } from 'antd';
+import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+} from '@/pages/recov/components/RecovFilterControls';
 
 export type DetailFilterQuery = {
   pageNum?: number;
@@ -24,7 +29,7 @@ const DetailFilterBar = ({
     <Input
       allowClear
       placeholder="资产编号"
-      className="!w-40"
+      style={RECOV_FILTER_CONTROL_STYLE}
       prefix={<SearchOutlined className="text-gray-400" />}
       value={query.debtNumber}
       onChange={(e) =>
@@ -35,7 +40,9 @@ const DetailFilterBar = ({
     <Select
       allowClear
       placeholder="所属城市"
-      className="!w-36"
+      showSearch
+      optionFilterProp="label"
+      style={RECOV_FILTER_CONTROL_STYLE}
       value={query.city || undefined}
       options={[{ label: '全部城市', value: '' }]}
       onChange={(city) =>
@@ -49,7 +56,11 @@ const DetailFilterBar = ({
     <Select
       allowClear
       placeholder="所属项目"
-      className="!w-40"
+      showSearch
+      optionFilterProp="label"
+      optionRender={(option) => renderRecovSelectOptionLabel(option.label)}
+      popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+      style={RECOV_FILTER_CONTROL_STYLE}
       value={query.organization || undefined}
       options={[{ label: '全部项目', value: '' }]}
       onChange={(organization) =>

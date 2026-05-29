@@ -1,4 +1,4 @@
-import { EyeOutlined, ReloadOutlined, TagOutlined } from '@ant-design/icons';
+import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Button,
   Drawer,
@@ -13,7 +13,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FeedbackItem } from './_shared';
-import { toDebtFeedbackItem } from './_shared';
+import { formatDuration, toDebtFeedbackItem } from './_shared';
 import { getAiCallDebtFeedbackPage } from './service';
 
 const { Paragraph, Text } = Typography;
@@ -27,10 +27,23 @@ type FeedbackAllDrawerProps = {
   onItemClick: (item: FeedbackItem) => void;
 };
 
-const feedbackTypeColor = (feedbackType: string) => {
-  if (feedbackType === '正向') return 'success';
-  if (feedbackType === '负向') return 'error';
-  return 'default';
+const renderSingleLineText = (
+  value: string,
+  options?: { strong?: boolean; secondary?: boolean },
+) => {
+  const text = value || '';
+  if (!text) return <Text type="secondary">-</Text>;
+  return (
+    <Tooltip title={text}>
+      <Text
+        strong={options?.strong}
+        type={options?.secondary ? 'secondary' : undefined}
+        className="block max-w-full truncate"
+      >
+        {text}
+      </Text>
+    </Tooltip>
+  );
 };
 
 const FeedbackAllDrawer = ({
@@ -77,8 +90,10 @@ const FeedbackAllDrawer = ({
         dataIndex: 'ownerName',
         title: '债务人',
         fixed: 'left',
-        width: 120,
-        render: (value: string) => <Text strong>{value}</Text>,
+        width: 160,
+        ellipsis: true,
+        render: (value: string) =>
+          renderSingleLineText(value, { strong: true }),
       },
       {
         key: 'project',
@@ -86,20 +101,17 @@ const FeedbackAllDrawer = ({
         title: '项目',
         width: 180,
         ellipsis: true,
-        render: (value: string) => (
-          <Tooltip title={value}>
-            <Text>{value}</Text>
-          </Tooltip>
-        ),
+        render: (value: string) => renderSingleLineText(value),
       },
       {
         key: 'summary',
         dataIndex: 'summary',
         title: '通话语义概要',
-        minWidth: 360,
+        width: 300,
+        ellipsis: true,
         render: (value: string) => (
           <Paragraph
-            ellipsis={{ rows: 2, tooltip: value }}
+            ellipsis={{ rows: 1, tooltip: value }}
             style={{
               marginBottom: 0,
               color: token.colorTextSecondary,
@@ -116,11 +128,29 @@ const FeedbackAllDrawer = ({
         dataIndex: 'feedbackType',
         title: '倾向',
         width: 96,
-        render: (value: string) => (
-          <Tag color={feedbackTypeColor(value)} style={{ marginInlineEnd: 0 }}>
-            {value}
-          </Tag>
-        ),
+        render: (value: string) => {
+          const tone =
+            value === '正向'
+              ? {
+                  color: token.colorPrimary,
+                  backgroundColor: token.colorPrimaryBg,
+                  borderColor: token.colorPrimaryBorder,
+                }
+              : value === '负向'
+                ? {
+                    color: token.colorError,
+                    backgroundColor: token.colorErrorBg,
+                    borderColor: token.colorErrorBorder,
+                  }
+                : {
+                    color: token.colorTextSecondary,
+                    backgroundColor: token.colorFillQuaternary,
+                    borderColor: token.colorBorderSecondary,
+                  };
+          return (
+            <Tag style={{ marginInlineEnd: 0, ...tone }}>{value || '中性'}</Tag>
+          );
+        },
       },
       {
         key: 'feedbackRecordCount',
@@ -133,20 +163,23 @@ const FeedbackAllDrawer = ({
         key: 'semanticTags',
         dataIndex: 'semanticTags',
         title: '标签',
-        width: 220,
+        width: 210,
+        ellipsis: true,
         render: (tags: string[]) => {
           const visibleTags = (tags || []).slice(0, MAX_VISIBLE_TAGS);
           const hiddenTags = (tags || []).slice(MAX_VISIBLE_TAGS);
           if (visibleTags.length === 0) return <Text type="secondary">-</Text>;
           return (
             <Space size={[4, 4]} wrap>
-              <TagOutlined style={{ color: token.colorTextTertiary }} />
               {visibleTags.map((tag) => (
                 <Tooltip key={tag} title={tag}>
                   <Tag
                     style={{
                       maxWidth: 88,
                       marginInlineEnd: 0,
+                      color: token.colorTextSecondary,
+                      backgroundColor: token.colorFillQuaternary,
+                      borderColor: token.colorBorderSecondary,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -158,7 +191,16 @@ const FeedbackAllDrawer = ({
               ))}
               {hiddenTags.length > 0 ? (
                 <Tooltip title={hiddenTags.join('、')}>
-                  <Tag style={{ marginInlineEnd: 0 }}>+{hiddenTags.length}</Tag>
+                  <Tag
+                    style={{
+                      marginInlineEnd: 0,
+                      color: token.colorTextSecondary,
+                      backgroundColor: token.colorFillQuaternary,
+                      borderColor: token.colorBorderSecondary,
+                    }}
+                  >
+                    +{hiddenTags.length}
+                  </Tag>
                 </Tooltip>
               ) : null}
             </Space>
@@ -166,12 +208,32 @@ const FeedbackAllDrawer = ({
         },
       },
       {
-        key: 'startedAt',
-        dataIndex: 'startedAt',
-        title: '最近反馈时间',
-        width: 170,
-        render: (value: string) => (
-          <Text type="secondary">{value || '未记录'}</Text>
+        key: 'startTime',
+        dataIndex: 'startTime',
+        title: '开始时间',
+        width: 160,
+        ellipsis: true,
+        render: (value: string) =>
+          renderSingleLineText(value, { secondary: true }),
+      },
+      {
+        key: 'endTime',
+        dataIndex: 'endTime',
+        title: '结束时间',
+        width: 160,
+        ellipsis: true,
+        render: (value: string) =>
+          renderSingleLineText(value, { secondary: true }),
+      },
+      {
+        key: 'durationSeconds',
+        dataIndex: 'durationSeconds',
+        title: '通话时长',
+        width: 110,
+        render: (value: number) => (
+          <Text type="secondary">
+            {Number(value || 0) > 0 ? formatDuration(value) : '-'}
+          </Text>
         ),
       },
       {
@@ -196,14 +258,25 @@ const FeedbackAllDrawer = ({
         ),
       },
     ],
-    [onItemClick, token.colorTextSecondary, token.colorTextTertiary],
+    [
+      onItemClick,
+      token.colorBorderSecondary,
+      token.colorError,
+      token.colorErrorBg,
+      token.colorErrorBorder,
+      token.colorFillQuaternary,
+      token.colorPrimary,
+      token.colorPrimaryBg,
+      token.colorPrimaryBorder,
+      token.colorTextSecondary,
+    ],
   );
 
   return (
     <Drawer
       title="用户反馈与语义分析"
       open={open}
-      width="min(1040px, 92vw)"
+      size="min(1180px, 94vw)"
       destroyOnHidden
       onClose={onClose}
       extra={
@@ -227,7 +300,8 @@ const FeedbackAllDrawer = ({
         size="middle"
         dataSource={items}
         columns={columns}
-        scroll={{ x: 1280 }}
+        tableLayout="fixed"
+        scroll={{ x: 1420 }}
         locale={{ emptyText: <Empty description="暂无用户反馈" /> }}
         onRow={(record) => ({
           onClick: () => onItemClick(record),

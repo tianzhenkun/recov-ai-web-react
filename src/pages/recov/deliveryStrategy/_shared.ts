@@ -78,7 +78,7 @@ export const isDeliveryWayEnabled = (
 export const EXPRESS_EXCEL_TEMPLATE_TYPE = 'expressDebtExcel';
 
 export const EXPRESS_EXCEL_FIELDS_FALLBACK: DeliveryExpressExcelField[] = [
-  { key: 'debtorName', label: '债务人姓名', sortOrder: 10 },
+  { key: 'debtorName', label: '业主姓名', sortOrder: 10 },
   { key: 'debtorPhone', label: '手机号', sortOrder: 20 },
   { key: 'address', label: '住址', sortOrder: 30 },
 ];
@@ -148,13 +148,100 @@ export const stringifyExpressExcelTemplate = (fields: string[]) =>
 export const cloneTemplates = (t: DeliveryContentTemplates) =>
   JSON.parse(JSON.stringify(t)) as DeliveryContentTemplates;
 
+const normalizeTemplateText = (value: string | null | undefined) =>
+  String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, name: string) => {
+      return `{{${String(name).trim()}}}`;
+    })
+    .trim();
+
+const decodeBasicHtmlEntities = (value: string) =>
+  value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+
+const normalizeVariableSpanText = (value: string) =>
+  value.replace(
+    /<span\b([^>]*data-type=(["'])variable\2[^>]*)>[\s\S]*?<\/span>/gi,
+    (full, attrs: string) => {
+      const name =
+        attrs.match(/\sdata-name=(["'])(.*?)\1/i)?.[2] ||
+        attrs.match(/\sdata-token=(["'])(.*?)\1/i)?.[2];
+      return name ? `{{${String(name).replace(/[{}]/g, '').trim()}}}` : full;
+    },
+  );
+
+const toSimpleTemplateText = (value: string | null | undefined) => {
+  const normalized = normalizeVariableSpanText(normalizeTemplateText(value));
+  if (!normalized) return '';
+
+  const textLike = normalized
+    .replace(/<\/p>\s*<p>/gi, '\n')
+    .replace(/^<p>/i, '')
+    .replace(/<\/p>$/i, '')
+    .replace(/<br\s*\/?>/gi, '\n');
+
+  if (/<[^>]+>/.test(textLike)) return null;
+  return normalizeTemplateText(decodeBasicHtmlEntities(textLike));
+};
+
+const isTemplateTextDirty = (
+  saved: string | null | undefined,
+  current: string | null | undefined,
+) => normalizeTemplateText(saved) !== normalizeTemplateText(current);
+
+const isTemplateHtmlDirty = (
+  saved: string | null | undefined,
+  current: string | null | undefined,
+) => {
+  const savedNormalized = normalizeTemplateText(
+    normalizeVariableSpanText(saved ?? ''),
+  );
+  const currentNormalized = normalizeTemplateText(
+    normalizeVariableSpanText(current ?? ''),
+  );
+  if (savedNormalized === currentNormalized) return false;
+
+  const savedSimpleText = toSimpleTemplateText(saved);
+  const currentSimpleText = toSimpleTemplateText(current);
+  if (
+    savedSimpleText !== null &&
+    currentSimpleText !== null &&
+    savedSimpleText === currentSimpleText
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 export const isTabDirty = (
   saved: DeliveryContentTemplates | null,
   current: DeliveryContentTemplates,
   tab: DeliveryTemplateTabId,
 ) => {
   if (!saved) return false;
-  return JSON.stringify(current[tab]) !== JSON.stringify(saved[tab]);
+  if (tab === 'sms') {
+    return isTemplateTextDirty(saved.sms.content, current.sms.content);
+  }
+  if (tab === 'email') {
+    return (
+      isTemplateTextDirty(saved.email.subject, current.email.subject) ||
+      isTemplateHtmlDirty(saved.email.html, current.email.html)
+    );
+  }
+  if (tab === 'express') {
+    return (
+      JSON.stringify(saved.express.excelFields) !==
+      JSON.stringify(current.express.excelFields)
+    );
+  }
+  return isTemplateTextDirty(saved.call.script, current.call.script);
 };
 
 export type FlowDrawerNode = {

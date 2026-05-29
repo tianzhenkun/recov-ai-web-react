@@ -68,8 +68,5 @@ export const buildRangeText = (
   pageSize: number,
   total: number,
 ): string => {
-  if (total <= 0) return '暂无数据';
-  const start = (pageNum - 1) * pageSize + 1;
-  const end = Math.min(pageNum * pageSize, total);
-  return `显示 ${start} 到 ${end} 条，共 ${total} 条`;
+  return `共 ${total} 条`;
 };

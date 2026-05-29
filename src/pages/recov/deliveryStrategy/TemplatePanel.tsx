@@ -1,9 +1,8 @@
-import { CheckCircleOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
-import { Button, Checkbox, Empty, Spin, Table, Tabs } from 'antd';
+import { Button, Empty, Spin, Tabs, Transfer } from 'antd';
 import type { HookAPI } from 'antd/es/modal/useModal';
-import type { ColumnsType } from 'antd/es/table';
-import { useRef } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import TemplateEditor from '@/components/TemplateEditor';
 import type {
   TemplateEditorFeatures,
@@ -32,12 +31,6 @@ const EMAIL_FEATURES: TemplateEditorFeatures = {
   variable: true,
   fontFamily: true,
   fontSize: true,
-};
-
-const EXPRESS_SAMPLE_ROW: Record<string, string> = {
-  debtorName: '刘先生',
-  debtorPhone: '13800138000',
-  address: '深圳市南山区科技园1号',
 };
 
 export type TemplatePanelProps = {
@@ -72,14 +65,45 @@ const TemplatePanel = ({
   modalApi,
 }: TemplatePanelProps) => {
   const hasEnabledTabs = availableTabs.length > 0;
-  const dirty = hasEnabledTabs
-    ? isTabDirty(savedSnapshot, templates, activeTab)
-    : false;
   const pendingTabRef = useRef<DeliveryTemplateTabId | null>(null);
+  const editedTabsRef = useRef<Set<DeliveryTemplateTabId>>(new Set());
+  const [, bumpDirtyState] = useReducer((value: number) => value + 1, 0);
+
+  const isDirtyTab = (tab: DeliveryTemplateTabId) =>
+    hasEnabledTabs &&
+    editedTabsRef.current.has(tab) &&
+    isTabDirty(savedSnapshot, templates, tab);
+
+  const dirty = isDirtyTab(activeTab);
+
+  useEffect(() => {
+    const nextEditedTabs = new Set<DeliveryTemplateTabId>();
+    for (const tab of editedTabsRef.current) {
+      if (isTabDirty(savedSnapshot, templates, tab)) {
+        nextEditedTabs.add(tab);
+      }
+    }
+
+    if (
+      nextEditedTabs.size === editedTabsRef.current.size &&
+      [...nextEditedTabs].every((tab) => editedTabsRef.current.has(tab))
+    ) {
+      return;
+    }
+
+    editedTabsRef.current = nextEditedTabs;
+    bumpDirtyState();
+  }, [savedSnapshot, templates]);
+
+  const markTabEdited = (tab: DeliveryTemplateTabId) => {
+    if (editedTabsRef.current.has(tab)) return;
+    editedTabsRef.current.add(tab);
+    bumpDirtyState();
+  };
 
   const handleTabClick = (nextTab: DeliveryTemplateTabId) => {
     if (nextTab === activeTab || saving) return;
-    if (!isTabDirty(savedSnapshot, templates, activeTab)) {
+    if (!isDirtyTab(activeTab)) {
       void onActiveTabChange(nextTab);
       return;
     }
@@ -109,40 +133,48 @@ const TemplatePanel = ({
     });
   };
 
-  const handleSmsContentChange = (value: string) =>
+  const handleSmsContentChange = (value: string) => {
+    markTabEdited('sms');
     setTemplates((prev) => ({
       ...prev,
       sms: { ...prev.sms, content: value },
     }));
+  };
 
-  const handleEmailSubjectChange = (value: string) =>
+  const handleEmailSubjectChange = (value: string) => {
+    markTabEdited('email');
     setTemplates((prev) => ({
       ...prev,
       email: { ...prev.email, subject: value },
     }));
+  };
 
-  const handleEmailHtmlChange = (value: string) =>
+  const handleEmailHtmlChange = (value: string) => {
+    markTabEdited('email');
     setTemplates((prev) => ({
       ...prev,
       email: { ...prev.email, html: value },
     }));
+  };
 
-  const handleExpressExcelFieldsChange = (
-    checkedValues: Array<string | number | boolean>,
-  ) =>
+  const handleExpressExcelFieldsChange = (nextKeys: string[]) => {
+    markTabEdited('express');
     setTemplates((prev) => ({
       ...prev,
       express: {
         ...prev.express,
-        excelFields: checkedValues.map((item) => String(item)),
+        excelFields: nextKeys,
       },
     }));
+  };
 
-  const handleCallScriptChange = (value: string) =>
+  const handleCallScriptChange = (value: string) => {
+    markTabEdited('call');
     setTemplates((prev) => ({
       ...prev,
       call: { ...prev.call, script: value },
     }));
+  };
 
   const renderSms = () => (
     <div className="flex flex-col gap-4">
@@ -196,57 +228,60 @@ const TemplatePanel = ({
     </div>
   );
 
-  const renderExpress = () => (
-    <div className="flex flex-col gap-4">
-      <div>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold text-slate-900">
-            Excel导出字段
-          </span>
-          <span className="text-xs text-slate-500">
-            {templates.express.excelFields.length} 列
-          </span>
+  const renderExpress = () => {
+    const transferItems = expressExcelFields.map((field) => ({
+      key: field.key,
+      title: field.label,
+    }));
+
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="rounded-lg border border-solid border-slate-200 bg-slate-50/70 p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-xl text-emerald-600">
+                <FileExcelOutlined />
+              </span>
+              <div className="leading-snug">
+                <div className="text-base font-semibold text-slate-900">
+                  Excel导出字段
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500">智能快递</div>
+              </div>
+            </div>
+            <span className="inline-flex items-center rounded-md bg-white px-3 py-1 text-sm font-semibold text-slate-700 shadow-sm">
+              {templates.express.excelFields.length} 列
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <Transfer
+              oneWay
+              className="min-w-[620px]"
+              dataSource={transferItems}
+              targetKeys={templates.express.excelFields}
+              titles={['可选字段', '导出字段']}
+              locale={{
+                itemUnit: '列',
+                itemsUnit: '列',
+                notFoundContent: '暂无字段',
+                searchPlaceholder: '搜索字段',
+              }}
+              listStyle={() => ({
+                flex: 1,
+                height: 220,
+                minWidth: 280,
+              })}
+              render={(item) => item.title}
+              showSearch={expressExcelFields.length > 8}
+              onChange={(nextTargetKeys) =>
+                handleExpressExcelFieldsChange(nextTargetKeys.map(String))
+              }
+            />
+          </div>
         </div>
-        <Checkbox.Group
-          value={templates.express.excelFields}
-          onChange={handleExpressExcelFieldsChange}
-          className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3"
-        >
-          {expressExcelFields.map((field) => (
-            <Checkbox
-              key={field.key}
-              value={field.key}
-              className="!m-0 rounded-md border border-slate-200 px-3 py-2"
-            >
-              {field.label}
-            </Checkbox>
-          ))}
-        </Checkbox.Group>
       </div>
-      <Table<Record<string, string>>
-        size="small"
-        rowKey="key"
-        pagination={false}
-        columns={templates.express.excelFields
-          .map((key) => expressExcelFields.find((field) => field.key === key))
-          .filter(
-            (field): field is DeliveryExpressExcelField => field !== undefined,
-          )
-          .map<ColumnsType<Record<string, string>>[number]>((field) => ({
-            title: field.label,
-            dataIndex: field.key,
-            ellipsis: true,
-          }))}
-        dataSource={
-          templates.express.excelFields.length > 0
-            ? [{ key: 'sample', ...EXPRESS_SAMPLE_ROW }]
-            : []
-        }
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: '请选择导出字段' }}
-      />
-    </div>
-  );
+    );
+  };
 
   const renderCall = () => (
     <div className="flex flex-col gap-4">
@@ -286,17 +321,15 @@ const TemplatePanel = ({
     <ProCard
       title="送达模板配置"
       extra={
-        dirty ? (
-          <Button
-            type="primary"
-            size="small"
-            icon={<CheckCircleOutlined />}
-            loading={saving}
-            onClick={onSave}
-          >
-            保存配置
-          </Button>
-        ) : null
+        <Button
+          type="primary"
+          icon={<CheckCircleOutlined />}
+          loading={saving}
+          disabled={!dirty || !hasEnabledTabs}
+          onClick={onSave}
+        >
+          保存配置
+        </Button>
       }
     >
       <Spin spinning={loading}>

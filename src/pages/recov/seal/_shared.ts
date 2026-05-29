@@ -42,8 +42,8 @@ export const SEAL_CODE_SET: ReadonlySet<string> = new Set(
 
 export const DEFAULT_SEAL_RANGE: SealRangeVO = {
   usedRanges: [],
-  minAvailable: 1,
-  maxAvailable: 10000,
+  minAvailable: null,
+  maxAvailable: null,
 };
 
 /**
@@ -52,6 +52,19 @@ export const DEFAULT_SEAL_RANGE: SealRangeVO = {
 export const parseRangeInput = (value: string | number | null | undefined) => {
   const raw = String(value ?? '').replace(/[^\d]/g, '');
   return raw ? Number(raw) : null;
+};
+
+export const normalizeRangeBoundary = (value: unknown): number | null => {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 ? next : null;
+};
+
+export const hasAvailableSealRange = (rangeInfo: SealRangeVO): boolean => {
+  const minAvailable = normalizeRangeBoundary(rangeInfo.minAvailable);
+  const maxAvailable = normalizeRangeBoundary(rangeInfo.maxAvailable);
+  return (
+    minAvailable != null && maxAvailable != null && minAvailable <= maxAvailable
+  );
 };
 
 export type UsedRangeRef = {
@@ -101,19 +114,29 @@ export const computeRangeIssues = (input: {
   const rangeOrderInvalid =
     startNum != null && endNum != null && endNum < startNum;
 
-  const { minAvailable, maxAvailable } = rangeInfo;
+  const minAvailable = normalizeRangeBoundary(rangeInfo.minAvailable);
+  const maxAvailable = normalizeRangeBoundary(rangeInfo.maxAvailable);
+  const hasAvailableRange =
+    minAvailable != null &&
+    maxAvailable != null &&
+    minAvailable <= maxAvailable;
   let rangeOutOfBounds = false;
   if (
+    hasAvailableRange &&
     startNum != null &&
     (startNum < minAvailable || startNum > maxAvailable)
   ) {
     rangeOutOfBounds = true;
   }
   if (
+    hasAvailableRange &&
     !rangeOutOfBounds &&
     endNum != null &&
     (endNum < minAvailable || endNum > maxAvailable)
   ) {
+    rangeOutOfBounds = true;
+  }
+  if (!hasAvailableRange && (startNum != null || endNum != null)) {
     rangeOutOfBounds = true;
   }
 

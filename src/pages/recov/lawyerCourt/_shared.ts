@@ -88,24 +88,6 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
   },
 ];
 
-export const MATCH_STRATEGIES = [
-  {
-    key: 'fee',
-    label: '代开庭费用最低',
-    tooltip: '优先匹配代开庭费用更低的律师资源',
-  },
-  {
-    key: 'region',
-    label: '地域匹配',
-    tooltip: '按案件所在城市与律师执业区域匹配',
-  },
-  {
-    key: 'multi',
-    label: '多维度匹配',
-    tooltip: '综合费用、地域、评分与办案经验',
-  },
-] as const;
-
 export const TAB_OPTIONS: { label: string; value: LawyerCourtTab }[] = [
   { label: '已匹配律师', value: 'matched' },
   { label: '未匹配律师', value: 'unmatched' },

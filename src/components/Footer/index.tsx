@@ -3,6 +3,8 @@ import React from 'react';
 
 const useStyles = createStyles(({ token, css }) => ({
   footer: css`
+    flex-shrink: 0;
+    margin-top: auto;
     padding: 16px 24px;
     text-align: center;
     color: ${token.colorTextDescription};

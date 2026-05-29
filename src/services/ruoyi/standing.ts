@@ -51,8 +51,8 @@ export interface StandingRangeUsedItem {
 export interface StandingRangeVO {
   usedRanges: StandingRangeUsedItem[];
   wildcardUsed?: boolean;
-  minAvailable?: number;
-  maxAvailable?: number;
+  minAvailable?: number | null;
+  maxAvailable?: number | null;
 }
 
 export interface StandingMatchItem {

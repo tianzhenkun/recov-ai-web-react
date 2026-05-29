@@ -7,10 +7,12 @@ import {
   Empty,
   Modal,
   message,
+  Progress,
   Space,
   Spin,
   Steps,
   Table,
+  Tabs,
   Tag,
   Timeline,
   Typography,
@@ -33,7 +35,7 @@ import {
   getFlowModuleMeta,
 } from '../../collectionStrategy/_shared';
 
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph, Text } = Typography;
 
 const TRACE_POLLING_INTERVAL = 4000;
 const flowModuleMap = buildInitialFlowModuleMap();
@@ -45,15 +47,35 @@ type FlowTraceDrawerProps = {
   onChanged?: () => void;
 };
 
+type FlowTraceAttemptRow = FlowTraceAttempt & {
+  rowKey: string;
+  stepName: string;
+  stepIndex?: number;
+  stepStatus?: string;
+  stepStatusName?: string;
+};
+
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
+
+const toNumber = (value: unknown) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const shouldShowNodeIdentity = (nodeCode?: string | null) =>
+  nodeCode === 'ai_call';
+
+const FLOW_IDENTITY_NAMES = ['项目员工', '企业法务', '企业客服', '律师'];
 
 const formatNodeName = (nodeCode?: string | null, identity?: string | null) => {
   if (!nodeCode && !identity) return '-';
   if (!nodeCode) return toText(identity);
   const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
   const label = meta.label || nodeCode;
-  if (identity && identity !== label) return `${label}（${identity}）`;
+  if (shouldShowNodeIdentity(nodeCode) && identity && identity !== label) {
+    return `${label}（${identity}）`;
+  }
   return label;
 };
 
@@ -127,6 +149,16 @@ const currentStepOf = (trace?: FlowExecutionTrace | null) => {
   );
 };
 
+const progressStatusOf = (
+  trace?: FlowExecutionTrace | null,
+): 'success' | 'exception' | 'active' | 'normal' | undefined => {
+  if (!trace) return undefined;
+  if (isNodeFailedStatus(trace.flowStatus)) return 'exception';
+  if (normalizeStatus(trace.flowStatus) === '2') return 'success';
+  if (isPollingFlowStatus(trace.flowStatus)) return 'active';
+  return 'normal';
+};
+
 const renderMessage = (
   value?: string | null,
   type: 'secondary' | 'danger' = 'secondary',
@@ -181,6 +213,22 @@ const renderEventChange = (event: FlowEventItem) => {
   );
 };
 
+const normalizeEventNodeText = (
+  value?: string | null,
+  event?: FlowEventItem,
+) => {
+  if (!value || !event?.nodeCode) return value || '';
+  const nodeName = formatNodeName(event.nodeCode);
+  if (!nodeName || nodeName === '-') return value;
+  return FLOW_IDENTITY_NAMES.reduce(
+    (next, identity) =>
+      next
+        .replaceAll(`当前节点：${identity}`, `当前节点：${nodeName}`)
+        .replaceAll(`${identity}节点`, nodeName),
+    value,
+  );
+};
+
 const FlowTraceDrawer = ({
   open,
   instanceId,
@@ -209,6 +257,56 @@ const FlowTraceDrawer = ({
     !!trace?.canTerminate && !isTerminalFlowStatus(trace.flowStatus);
   const shouldPollTrace =
     open && !!trace && isPollingFlowStatus(trace.flowStatus);
+  const flowSteps = useMemo(() => trace?.steps ?? [], [trace?.steps]);
+  const rawStepTotal = toNumber(
+    trace?.totalStepCount ?? detail?.totalStepCount ?? flowSteps.length,
+  );
+  const stepTotal = rawStepTotal > 0 ? rawStepTotal : flowSteps.length;
+  const completedStepCount = toNumber(
+    trace?.completedStepCount ?? detail?.completedStepCount,
+  );
+  const failedStepCount = toNumber(
+    trace?.failedStepCount ?? detail?.failedStepCount,
+  );
+  const skippedStepCount = toNumber(
+    trace?.skippedStepCount ?? detail?.skippedStepCount,
+  );
+  const stepProgressPercent =
+    stepTotal > 0
+      ? Math.min(100, Math.round((completedStepCount / stepTotal) * 100))
+      : 0;
+  const currentStepItemIndex = flowSteps.findIndex(
+    (step) =>
+      step.current ||
+      step.stepId === trace?.currentStepId ||
+      step.stepIndex === trace?.currentStepIndex,
+  );
+  const currentStepIndex =
+    currentStepItemIndex >= 0
+      ? currentStepItemIndex
+      : Math.max(0, trace?.currentStepIndex ?? 0);
+  const allAttemptRows = useMemo<FlowTraceAttemptRow[]>(
+    () =>
+      flowSteps.flatMap((step) => {
+        const stepName = step.nodeCode
+          ? formatNodeName(step.nodeCode, step.identity)
+          : step.identity || `步骤 ${toText(step.stepIndex)}`;
+        return (step.attempts ?? []).map((attempt, attemptIndex) => ({
+          ...attempt,
+          rowKey: `${step.stepId ?? step.stepIndex ?? 'step'}-${String(
+            attempt.recordId ??
+              attempt.taskId ??
+              attempt.businessId ??
+              attemptIndex,
+          )}`,
+          stepName,
+          stepIndex: step.stepIndex,
+          stepStatus: step.stepStatus,
+          stepStatusName: step.stepStatusName,
+        }));
+      }),
+    [flowSteps],
+  );
 
   const stopPolling = useCallback(() => {
     if (pollingTimerRef.current) {
@@ -344,9 +442,9 @@ const FlowTraceDrawer = ({
     });
   };
 
-  const stepItems = (trace?.steps ?? []).map((step) => {
+  const stepItems = flowSteps.map((step) => {
     const nodeTitle = step.nodeCode
-      ? formatNodeName(step.nodeCode)
+      ? formatNodeName(step.nodeCode, step.identity)
       : step.identity || `步骤 ${toText(step.stepIndex)}`;
     return {
       title: nodeTitle,
@@ -357,7 +455,9 @@ const FlowTraceDrawer = ({
             <Tag color={stepStatusColor(step.stepStatus)}>
               {step.stepStatusName || step.stepStatus || '未开始'}
             </Tag>
-            {step.identity && step.identity !== nodeTitle ? (
+            {shouldShowNodeIdentity(step.nodeCode) &&
+            step.identity &&
+            step.identity !== nodeTitle ? (
               <Tag color="geekblue">{step.identity}</Tag>
             ) : null}
             <Text type="secondary">{step.nodeCode || '-'}</Text>
@@ -370,8 +470,22 @@ const FlowTraceDrawer = ({
     };
   });
 
-  const attemptColumns = useMemo<ColumnsType<FlowTraceAttempt>>(
+  const attemptColumns = useMemo<ColumnsType<FlowTraceAttemptRow>>(
     () => [
+      {
+        title: '节点',
+        dataIndex: 'stepName',
+        width: 180,
+        ellipsis: true,
+        render: (value, record) => (
+          <Space size={4} wrap>
+            <Text>{toText(value)}</Text>
+            <Tag color={stepStatusColor(record.stepStatus)}>
+              {record.stepStatusName || record.stepStatus || '未开始'}
+            </Tag>
+          </Space>
+        ),
+      },
       {
         title: '任务 ID',
         dataIndex: 'taskId',
@@ -425,39 +539,46 @@ const FlowTraceDrawer = ({
     [],
   );
 
-  const eventItems = events.map((event) => ({
-    color: eventColor(event.eventType),
-    children: (
-      <div className="min-w-0">
-        <Space size={6} wrap>
-          <Text strong>
-            {event.eventTitle || event.eventType || '流程事件'}
-          </Text>
-          {event.nodeCode ? <Tag>{formatNodeName(event.nodeCode)}</Tag> : null}
-        </Space>
-        {event.eventContent ? (
-          <Paragraph style={{ marginBottom: 0, marginTop: 4 }}>
-            {event.eventContent}
-          </Paragraph>
-        ) : null}
-        {event.reasonText ? (
+  const eventItems = events.map((event) => {
+    const eventTitle =
+      normalizeEventNodeText(event.eventTitle, event) ||
+      event.eventType ||
+      '流程事件';
+    const eventContent = normalizeEventNodeText(event.eventContent, event);
+    return {
+      color: eventColor(event.eventType),
+      children: (
+        <div className="min-w-0">
+          <Space size={6} wrap>
+            <Text strong>{eventTitle}</Text>
+            {event.nodeCode ? (
+              <Tag>{formatNodeName(event.nodeCode)}</Tag>
+            ) : null}
+          </Space>
+          {eventContent ? (
+            <Paragraph style={{ marginBottom: 0, marginTop: 4 }}>
+              {eventContent}
+            </Paragraph>
+          ) : null}
+          {event.reasonText ? (
+            <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+              {event.reasonText}
+            </Text>
+          ) : null}
+          {renderEventChange(event)}
           <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-            {event.reasonText}
+            {toText(event.createTime)}
           </Text>
-        ) : null}
-        {renderEventChange(event)}
-        <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-          {toText(event.createTime)}
-        </Text>
-      </div>
-    ),
-  }));
+        </div>
+      ),
+    };
+  });
 
   return (
     <Drawer
       title="流程执行详情"
       open={open}
-      size={980}
+      size="min(1080px, calc(100vw - 48px))"
       destroyOnHidden
       extra={
         <Space wrap>
@@ -498,155 +619,197 @@ const FlowTraceDrawer = ({
       {modalContextHolder}
       <Spin spinning={loading}>
         {trace ? (
-          <div className="flex flex-col gap-4">
-            {isNodeFailedStatus(trace.flowStatus) ? (
-              <Alert
-                showIcon
-                type="error"
-                title="当前节点失败阻塞"
-                description={
-                  currentStep?.latestResultMessage ||
-                  '请到业务资料归属模块修复资料后，再重试当前节点。'
-                }
-              />
-            ) : isPendingTriggerStatus(trace.flowStatus) ? (
-              <Alert
-                showIcon
-                type="info"
-                title="等待节点触发"
-                description={
-                  trace.wakeUpTime
-                    ? `下次触发时间：${trace.wakeUpTime}`
-                    : '当前节点已进入待触发队列，等待调度器扫描。'
-                }
-              />
-            ) : isWaitingCallbackStatus(trace.flowStatus) ? (
-              <Alert
-                showIcon
-                type="info"
-                title="等待节点回调"
-                description={
-                  currentStep?.latestProgressMessage ||
-                  currentStep?.latestExecStatusName ||
-                  '节点任务已触发，正在等待业务节点返回最终结果。'
-                }
-              />
-            ) : null}
+          <Tabs
+            defaultActiveKey="overview"
+            items={[
+              {
+                key: 'overview',
+                label: '执行概览',
+                children: (
+                  <div className="flex flex-col gap-4">
+                    {isNodeFailedStatus(trace.flowStatus) ? (
+                      <Alert
+                        showIcon
+                        type="error"
+                        title="当前节点失败阻塞"
+                        description={
+                          currentStep?.latestResultMessage ||
+                          '请到业务资料归属模块修复资料后，再重试当前节点。'
+                        }
+                      />
+                    ) : isPendingTriggerStatus(trace.flowStatus) ? (
+                      <Alert
+                        showIcon
+                        type="info"
+                        title="等待节点触发"
+                        description={
+                          trace.wakeUpTime
+                            ? `下次触发时间：${trace.wakeUpTime}`
+                            : '当前节点已进入待触发队列，等待调度器扫描。'
+                        }
+                      />
+                    ) : isWaitingCallbackStatus(trace.flowStatus) ? (
+                      <Alert
+                        showIcon
+                        type="info"
+                        title="等待节点回调"
+                        description={
+                          currentStep?.latestProgressMessage ||
+                          currentStep?.latestExecStatusName ||
+                          '节点任务已触发，正在等待业务节点返回最终结果。'
+                        }
+                      />
+                    ) : null}
 
-            <Descriptions
-              bordered
-              size="small"
-              column={{ xs: 1, md: 2 }}
-              items={[
-                {
-                  key: 'flowStatus',
-                  label: '当前流程状态',
-                  children: (
-                    <Tag
-                      color={flowStatusColor(
-                        trace.flowStatus ?? detail?.flowStatus,
-                      )}
-                    >
-                      {flowStatusText(
-                        trace.flowStatus ?? detail?.flowStatus,
-                        trace.flowStatusName ?? detail?.flowStatusName,
-                      )}
-                    </Tag>
+                    <Descriptions
+                      bordered
+                      size="small"
+                      column={{ xs: 1, md: 2 }}
+                      items={[
+                        {
+                          key: 'flowStatus',
+                          label: '当前流程状态',
+                          children: (
+                            <Tag
+                              color={flowStatusColor(
+                                trace.flowStatus ?? detail?.flowStatus,
+                              )}
+                            >
+                              {flowStatusText(
+                                trace.flowStatus ?? detail?.flowStatus,
+                                trace.flowStatusName ?? detail?.flowStatusName,
+                              )}
+                            </Tag>
+                          ),
+                        },
+                        {
+                          key: 'currentNode',
+                          label: '当前节点',
+                          children: formatNodeName(
+                            trace.currentNodeCode ?? detail?.currentNodeCode,
+                            trace.currentIdentity ?? detail?.currentIdentity,
+                          ),
+                        },
+                        {
+                          key: 'currentTaskId',
+                          label: '当前任务 ID',
+                          children: toText(
+                            trace.currentTaskId ?? detail?.currentTaskId,
+                          ),
+                        },
+                        {
+                          key: 'wakeUpTime',
+                          label: '下次触发时间',
+                          children: toText(
+                            trace.wakeUpTime ?? detail?.wakeUpTime,
+                          ),
+                        },
+                        {
+                          key: 'debtRecordId',
+                          label: '债务记录 ID',
+                          children: toText(
+                            trace.debtRecordId ?? detail?.debtRecordId,
+                          ),
+                        },
+                        {
+                          key: 'debtNumber',
+                          label: '资产编号',
+                          children: toText(
+                            trace.debtNumber ?? detail?.debtNumber,
+                          ),
+                        },
+                        {
+                          key: 'debtorName',
+                          label: '业主姓名',
+                          children: toText(
+                            trace.debtorName ?? detail?.debtorName,
+                          ),
+                        },
+                        {
+                          key: 'personaId',
+                          label: '画像 ID',
+                          children: toText(
+                            trace.personaId ?? detail?.personaId,
+                          ),
+                        },
+                        {
+                          key: 'stepCount',
+                          label: '步骤进度',
+                          children: `${completedStepCount}/${stepTotal}`,
+                        },
+                      ]}
+                    />
+
+                    <div className="rounded-md border border-solid border-gray-100 bg-gray-50 px-4 py-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <Text strong>步骤进度</Text>
+                        <Text type="secondary">
+                          {completedStepCount}/{stepTotal}
+                        </Text>
+                      </div>
+                      <Progress
+                        percent={stepProgressPercent}
+                        size="small"
+                        status={progressStatusOf(trace)}
+                      />
+                      {failedStepCount > 0 || skippedStepCount > 0 ? (
+                        <Space className="mt-2" size={8} wrap>
+                          {failedStepCount > 0 ? (
+                            <Tag color="red">失败 {failedStepCount}</Tag>
+                          ) : null}
+                          {skippedStepCount > 0 ? (
+                            <Tag color="default">跳过 {skippedStepCount}</Tag>
+                          ) : null}
+                        </Space>
+                      ) : null}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: 'steps',
+                label: '流程步骤',
+                children:
+                  stepItems.length > 0 ? (
+                    <Steps
+                      orientation="vertical"
+                      current={currentStepIndex}
+                      items={stepItems}
+                    />
+                  ) : (
+                    <Empty description="暂无步骤轨迹" />
                   ),
-                },
-                {
-                  key: 'currentNode',
-                  label: '当前节点',
-                  children: formatNodeName(
-                    trace.currentNodeCode ?? detail?.currentNodeCode,
-                    trace.currentIdentity ?? detail?.currentIdentity,
+              },
+              {
+                key: 'events',
+                label: '流程动态',
+                children:
+                  eventItems.length > 0 ? (
+                    <Timeline items={eventItems} />
+                  ) : (
+                    <Empty description="暂无流程动态" />
                   ),
-                },
-                {
-                  key: 'currentTaskId',
-                  label: '当前任务 ID',
-                  children: toText(
-                    trace.currentTaskId ?? detail?.currentTaskId,
-                  ),
-                },
-                {
-                  key: 'wakeUpTime',
-                  label: '下次触发时间',
-                  children: toText(trace.wakeUpTime ?? detail?.wakeUpTime),
-                },
-                {
-                  key: 'debtRecordId',
-                  label: '债务记录 ID',
-                  children: toText(trace.debtRecordId ?? detail?.debtRecordId),
-                },
-                {
-                  key: 'debtNumber',
-                  label: '资产编号',
-                  children: toText(detail?.debtNumber),
-                },
-                {
-                  key: 'debtorName',
-                  label: '业主姓名',
-                  children: toText(detail?.debtorName),
-                },
-                {
-                  key: 'personaId',
-                  label: '画像 ID',
-                  children: toText(trace.personaId ?? detail?.personaId),
-                },
-                {
-                  key: 'stepCount',
-                  label: '步骤进度',
-                  children: `${toText(trace.completedStepCount ?? detail?.completedStepCount)}/${toText(trace.totalStepCount ?? detail?.totalStepCount)}`,
-                },
-              ]}
-            />
-
-            <div>
-              <Title level={5}>流程步骤</Title>
-              {stepItems.length > 0 ? (
-                <Steps
-                  orientation="vertical"
-                  current={Math.max(0, trace.currentStepIndex ?? 0)}
-                  items={stepItems}
-                />
-              ) : (
-                <Empty description="暂无步骤轨迹" />
-              )}
-            </div>
-
-            <div>
-              <Title level={5}>流程动态</Title>
-              {eventItems.length > 0 ? (
-                <Timeline items={eventItems} />
-              ) : (
-                <Empty description="暂无流程动态" />
-              )}
-            </div>
-
-            <div>
-              <Title level={5}>当前节点执行记录</Title>
-              <Table<FlowTraceAttempt>
-                bordered
-                size="small"
-                columns={attemptColumns}
-                dataSource={currentStep?.attempts ?? []}
-                rowKey={(record) =>
-                  String(record.recordId ?? record.taskId ?? record.businessId)
-                }
-                scroll={{ x: 1000 }}
-                pagination={false}
-                locale={{ emptyText: <Empty description="暂无执行记录" /> }}
-              />
-            </div>
-
-            <Alert
-              showIcon
-              type="info"
-              title="资料修复不在流程模块内完成"
-              description="如果节点因邮箱、电话、地址、金额等业务资料失败，请到债务资料、联系人或案件资料等归属模块维护后，再回到这里重试当前节点。"
-            />
-          </div>
+              },
+              {
+                key: 'attempts',
+                label: '执行记录',
+                children: (
+                  <Table<FlowTraceAttemptRow>
+                    bordered
+                    size="small"
+                    columns={attemptColumns}
+                    dataSource={allAttemptRows}
+                    rowKey={(record) => record.rowKey}
+                    scroll={{ x: 1180 }}
+                    pagination={false}
+                    locale={{
+                      emptyText: <Empty description="暂无执行记录" />,
+                    }}
+                  />
+                ),
+              },
+            ]}
+          />
         ) : (
           <Empty description="暂无流程轨迹" />
         )}

@@ -273,69 +273,70 @@ const PersonaPage = () => {
     }
   };
 
+  const pageActions = (
+    <Space wrap size={8}>
+      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+        新增画像类型
+      </Button>
+      <Dropdown
+        trigger={['click']}
+        menu={{
+          items: [
+            {
+              key: 'download',
+              icon: <DownloadOutlined />,
+              label: '下载模板',
+            },
+            {
+              key: 'upload',
+              icon: <UploadOutlined />,
+              label: '上传画像文档',
+            },
+          ],
+          onClick: ({ key }) => {
+            if (key === 'download') {
+              void handleDownloadTemplate();
+            } else if (key === 'upload') {
+              uploadTriggerRef.current?.click();
+            }
+          },
+        }}
+      >
+        <Button loading={uploadLoading}>
+          <Space size={4}>
+            <UploadOutlined />
+            导入
+            <DownOutlined />
+          </Space>
+        </Button>
+      </Dropdown>
+      <Upload
+        accept=".xlsx,.xls"
+        showUploadList={false}
+        beforeUpload={beforeUpload}
+        customRequest={customRequest}
+        style={{ display: 'none' }}
+      >
+        <button
+          ref={uploadTriggerRef}
+          type="button"
+          aria-hidden
+          style={{ display: 'none' }}
+        />
+      </Upload>
+    </Space>
+  );
+
   return (
-    <PageContainer breadcrumbRender={false} title="目标群体画像管理">
+    <PageContainer
+      breadcrumbRender={false}
+      title="目标群体画像管理"
+      extra={pageActions}
+    >
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
         <ProCard className="min-w-0 overflow-hidden">
-          <div className="mb-4 flex justify-end">
-            <Space wrap size={8}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openCreate}
-              >
-                新增画像类型
-              </Button>
-              <Dropdown
-                trigger={['click']}
-                menu={{
-                  items: [
-                    {
-                      key: 'download',
-                      icon: <DownloadOutlined />,
-                      label: '下载模板',
-                    },
-                    {
-                      key: 'upload',
-                      icon: <UploadOutlined />,
-                      label: '上传画像文档',
-                    },
-                  ],
-                  onClick: ({ key }) => {
-                    if (key === 'download') {
-                      void handleDownloadTemplate();
-                    } else if (key === 'upload') {
-                      uploadTriggerRef.current?.click();
-                    }
-                  },
-                }}
-              >
-                <Button loading={uploadLoading}>
-                  <Space size={4}>
-                    <UploadOutlined />
-                    导入
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
-              <Upload
-                accept=".xlsx,.xls"
-                showUploadList={false}
-                beforeUpload={beforeUpload}
-                customRequest={customRequest}
-                style={{ display: 'none' }}
-              >
-                <button
-                  ref={uploadTriggerRef}
-                  type="button"
-                  aria-hidden
-                  style={{ display: 'none' }}
-                />
-              </Upload>
-            </Space>
-          </div>
           <Spin spinning={loading}>
             {profileList.length > 0 ? (
               <Tabs

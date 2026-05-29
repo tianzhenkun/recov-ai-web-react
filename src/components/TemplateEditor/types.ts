@@ -9,6 +9,7 @@ export interface TemplateEditorFeatures {
   textStyle?: boolean;
   color?: boolean;
   align?: boolean;
+  list?: boolean;
   image?: boolean;
   table?: boolean;
   variable?: boolean;

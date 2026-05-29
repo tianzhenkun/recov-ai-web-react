@@ -50,12 +50,13 @@ const FeeConfigPage = () => {
       AMOUNT_RANGES.map((range) => ({
         label: (
           <span
-            className="inline-flex min-w-[88px] justify-center px-1"
+            className="inline-flex min-w-[84px] justify-center px-2"
             style={{
               color:
                 currentAmountRangeType === range.type
                   ? token.colorPrimary
                   : undefined,
+              fontSize: token.fontSize,
               fontWeight: currentAmountRangeType === range.type ? 600 : 400,
             }}
           >
@@ -65,7 +66,7 @@ const FeeConfigPage = () => {
         tooltip: range.label,
         value: range.type,
       })),
-    [currentAmountRangeType, token.colorPrimary],
+    [currentAmountRangeType, token.colorPrimary, token.fontSize],
   );
 
   const fetchMatrix = useCallback(async () => {
@@ -228,18 +229,19 @@ const FeeConfigPage = () => {
 
       <ProCard title="服务费费率矩阵">
         <div
-          className="mb-4 flex flex-col gap-3 rounded-lg border border-solid px-4 py-3 md:flex-row md:items-center md:justify-between"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-solid px-3 py-2"
           style={{
             backgroundColor: token.colorFillAlter,
             borderColor: token.colorBorderSecondary,
           }}
         >
-          <Typography.Text strong>金额区间</Typography.Text>
-          <div className="w-full md:w-auto">
+          <Typography.Text strong style={{ fontSize: token.fontSize }}>
+            金额区间
+          </Typography.Text>
+          <div className="max-w-full overflow-x-auto">
             <Segmented
-              block
               shape="round"
-              size="large"
+              size="medium"
               value={currentAmountRangeType}
               options={amountRangeOptions}
               onChange={(value) => {

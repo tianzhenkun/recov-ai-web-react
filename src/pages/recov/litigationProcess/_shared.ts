@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { createElement, type ReactNode } from 'react';
 import type { MetricTone } from '@/pages/recov/components/MetricIcon';
+import { RECOV_LIST_COLUMN_WIDTH } from '@/pages/recov/components/RecovFilterControls';
 import {
   formatCompactCurrencyDisplay,
   formatCurrencyDisplay,
@@ -33,7 +34,10 @@ export const PAGE_TITLE = '智能法律诉讼管理';
 export const DEFAULT_PAGE_SIZE = 10;
 export const DEFAULT_NODE_TYPE: LitigationNodeType = 'MATERIAL_SUBMIT';
 
-export type DisplayRow = LitigationRowVO & { _fee?: FeeManagementResult };
+export type DisplayRow = LitigationRowVO & {
+  _fee?: FeeManagementResult;
+  _result?: LitigationResultPayload;
+};
 
 export type ColumnProp =
   | 'debtNumber'
@@ -46,6 +50,7 @@ export type ColumnProp =
   | 'courtName'
   | 'caseNo'
   | 'status'
+  | 'courtStatus'
   | 'failReason'
   | 'paymentDeadline'
   | 'paymentAmount'
@@ -63,42 +68,44 @@ export type ColumnSchema = {
     | 'money'
     | 'days'
     | 'status'
+    | 'courtStatus'
     | 'warning'
     | 'feeStatus'
     | 'remainDays'
     | 'party'
     | 'mono';
   feeOnly?: boolean;
+  blankWhenEmpty?: boolean;
 };
 
 export const BASE_COLUMNS: ColumnSchema[] = [
-  { prop: 'debtNumber', label: '资产编号', minWidth: 120, type: 'asset' },
-  { prop: 'city', label: '所属城市', minWidth: 110 },
-  { prop: 'organization', label: '所属项目', minWidth: 140 },
-  { prop: 'debtorName', label: '当事人姓名', minWidth: 100, type: 'party' },
+  {
+    prop: 'debtNumber',
+    label: '资产编号',
+    minWidth: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+    type: 'asset',
+  },
+  { prop: 'city', label: '所属城市', minWidth: RECOV_LIST_COLUMN_WIDTH.city },
+  {
+    prop: 'organization',
+    label: '所属项目',
+    minWidth: RECOV_LIST_COLUMN_WIDTH.organization,
+  },
+  { prop: 'debtorName', label: '业主名称', minWidth: 100, type: 'party' },
   {
     prop: 'debtAmount',
-    label: '债务金额',
+    label: '逾期金额',
     minWidth: 120,
     align: 'right',
     type: 'money',
   },
   {
     prop: 'overdueAmount',
-    label: '滞纳/违约金额',
+    label: '违约（滞纳）金',
     minWidth: 120,
     align: 'right',
     type: 'money',
   },
-  {
-    prop: 'overdueDays',
-    label: '逾期天数',
-    minWidth: 110,
-    align: 'center',
-    type: 'days',
-  },
-  { prop: 'caseNo', label: '案号', minWidth: 180, type: 'mono' },
-  { prop: 'courtName', label: '立案法院', minWidth: 170 },
   {
     prop: 'status',
     label: '节点状态',
@@ -106,7 +113,25 @@ export const BASE_COLUMNS: ColumnSchema[] = [
     align: 'center',
     type: 'status',
   },
-  { prop: 'failReason', label: '失败原因', minWidth: 170 },
+  {
+    prop: 'caseNo',
+    label: '案号',
+    minWidth: 180,
+    type: 'mono',
+    blankWhenEmpty: true,
+  },
+  {
+    prop: 'courtName',
+    label: '立案法院',
+    minWidth: 170,
+    blankWhenEmpty: true,
+  },
+  {
+    prop: 'failReason',
+    label: '失败原因',
+    minWidth: 170,
+    blankWhenEmpty: true,
+  },
 ];
 
 export const FEE_COLUMNS: ColumnSchema[] = [
@@ -148,6 +173,17 @@ export const FEE_COLUMNS: ColumnSchema[] = [
     align: 'center',
     type: 'feeStatus',
     feeOnly: true,
+  },
+];
+
+export const WAITING_FILING_COLUMNS: ColumnSchema[] = [
+  {
+    prop: 'courtStatus',
+    label: '法院状态',
+    minWidth: 130,
+    align: 'center',
+    type: 'courtStatus',
+    blankWhenEmpty: true,
   },
 ];
 
@@ -327,6 +363,14 @@ export const OVERVIEW_CARD_METAS: OverviewCardMeta[] = [
 ];
 
 export type LitigationResultPayload = {
+  nodeType?: string;
+  nodeStatus?: string;
+  courtStatusRaw?: string | null;
+  courtStatusCode?: string | null;
+  courtCaseNo?: string | null;
+  rejectReason?: string | null;
+  supplementRequired?: boolean;
+  supplementItems?: string[];
   screenshots?: { name?: string; ossId?: string }[];
   attributes?: Record<string, unknown>;
   rawSummary?: string;
@@ -337,10 +381,35 @@ export type LitigationResultPayload = {
   paid?: boolean;
 };
 
-export const getVisibleColumns = (nodeType: LitigationNodeType) =>
-  nodeType === 'FEE_MANAGEMENT'
-    ? [...BASE_COLUMNS, ...FEE_COLUMNS]
+const HIDE_CASE_NO_NODE_TYPES = new Set<LitigationNodeType>([
+  'MATERIAL_SUBMIT',
+  'PRE_MEDIATION',
+  'WAITING_FILING',
+]);
+
+const getBaseColumns = (nodeType: LitigationNodeType) =>
+  HIDE_CASE_NO_NODE_TYPES.has(nodeType)
+    ? BASE_COLUMNS.filter((item) => item.prop !== 'caseNo')
     : BASE_COLUMNS;
+
+export const getVisibleColumns = (nodeType: LitigationNodeType) => {
+  const baseColumns = getBaseColumns(nodeType);
+
+  if (nodeType === 'FEE_MANAGEMENT') {
+    return [...baseColumns, ...FEE_COLUMNS];
+  }
+
+  if (nodeType === 'WAITING_FILING') {
+    const statusIndex = baseColumns.findIndex((item) => item.prop === 'status');
+    return [
+      ...baseColumns.slice(0, statusIndex + 1),
+      ...WAITING_FILING_COLUMNS,
+      ...baseColumns.slice(statusIndex + 1),
+    ];
+  }
+
+  return baseColumns;
+};
 
 export const parseLitigationResult = (
   result: string | null,
@@ -389,10 +458,7 @@ export const buildRangeText = (
   pageSize: number,
   total: number,
 ) => {
-  if (!total) return '暂无数据';
-  const start = (pageNum - 1) * pageSize + 1;
-  const end = Math.min(pageNum * pageSize, total);
-  return `当前显示 ${start}-${end} 条，共 ${total} 条`;
+  return `共 ${total} 条`;
 };
 
 export const getLitigationStatusLabel = (status: LitigationStatus) =>
@@ -413,6 +479,17 @@ export const getLitigationStatusColor = (
     '4': 'default',
   };
   return map[status] ?? 'default';
+};
+
+export const getCourtStatusColor = (
+  statusCode?: string | null,
+): 'default' | 'processing' | 'success' | 'warning' | 'error' => {
+  const code = String(statusCode || '').toUpperCase();
+  if (['FILED', 'APPROVED'].includes(code)) return 'success';
+  if (['PENDING_REVIEW', 'DRAFT'].includes(code)) return 'processing';
+  if (['NEED_SUPPLEMENT', 'WITHDRAWN'].includes(code)) return 'warning';
+  if (['REJECTED', 'NOT_ACCEPTED'].includes(code)) return 'error';
+  return 'default';
 };
 
 export const getOverdueDaysColor = (days: number) => {

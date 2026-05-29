@@ -25,7 +25,6 @@ import {
   AvatarDropdown,
   ErrorBoundary,
   Footer,
-  LangDropdown,
   NotificationCenter,
   OfflineBanner,
   SseBootstrap,
@@ -47,8 +46,6 @@ const recovListPagePaths = new Set([
   '/litigation-process',
   '/reconciliation',
   '/sys/instrument-standing',
-  '/sys/standing',
-  '/sys/settle',
   '/test11',
 ]);
 
@@ -224,7 +221,6 @@ export const layout: RunTimeLayoutConfig = ({
       // <DocLink key="doc" />,
       // 历史版本入口暂时隐藏。
       // <VersionDropdown key="version" />,
-      <LangDropdown key="lang" />,
     ],
     avatarProps: {
       src: initialState?.currentUser?.avatar,

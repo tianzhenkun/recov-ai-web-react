@@ -18,6 +18,13 @@ import {
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useMemo } from 'react';
 import TableActions from '@/components/TableActions';
+import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_LIST_COLUMN_WIDTH,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+  renderRecovSingleLineText,
+} from '@/pages/recov/components/RecovFilterControls';
 import { RecovTableCard } from '@/pages/recov/components/RecovListLayout';
 import {
   formatCompactCurrencyDisplay,
@@ -92,18 +99,21 @@ const MatchListSection = ({
       {
         title: '资产编号',
         dataIndex: 'assetNo',
-        width: 110,
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '城市',
         dataIndex: 'city',
-        width: 96,
+        width: RECOV_LIST_COLUMN_WIDTH.city,
       },
       {
         title: '项目',
         dataIndex: 'project',
-        width: 120,
-        ellipsis: true,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '案号',
@@ -112,7 +122,7 @@ const MatchListSection = ({
         ellipsis: true,
       },
       {
-        title: '业主',
+        title: '业主姓名',
         dataIndex: 'ownerName',
         width: 88,
       },
@@ -192,18 +202,21 @@ const MatchListSection = ({
       {
         title: '资产编号',
         dataIndex: 'assetNo',
-        width: 110,
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '城市',
         dataIndex: 'city',
-        width: 96,
+        width: RECOV_LIST_COLUMN_WIDTH.city,
       },
       {
         title: '项目',
         dataIndex: 'project',
-        width: 120,
-        ellipsis: true,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '案号',
@@ -212,7 +225,7 @@ const MatchListSection = ({
         ellipsis: true,
       },
       {
-        title: '业主',
+        title: '业主姓名',
         dataIndex: 'ownerName',
         width: 88,
       },
@@ -287,7 +300,9 @@ const MatchListSection = ({
             <Select
               allowClear
               placeholder="城市"
-              style={{ width: 120 }}
+              showSearch
+              optionFilterProp="label"
+              style={RECOV_FILTER_CONTROL_STYLE}
               options={cityOptions}
               value={cityFilter || undefined}
               onChange={(value) => onCityFilterChange(value || '')}
@@ -295,7 +310,13 @@ const MatchListSection = ({
             <Select
               allowClear
               placeholder="项目"
-              style={{ width: 140 }}
+              showSearch
+              optionFilterProp="label"
+              optionRender={(option) =>
+                renderRecovSelectOptionLabel(option.label)
+              }
+              popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+              style={RECOV_FILTER_CONTROL_STYLE}
               options={projectOptions}
               value={projectFilter || undefined}
               onChange={(value) => onProjectFilterChange(value || '')}

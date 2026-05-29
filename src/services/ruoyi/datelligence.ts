@@ -15,6 +15,7 @@ export type TableDataInfo<T> = {
 };
 
 export type DebtRecordQuery = PageQuery & {
+  debtNumber?: number | string;
   city?: string;
   organization?: string;
 };
@@ -52,10 +53,12 @@ export type DebtRecordItem = {
   overdueDays?: number | string;
   overdueAmount?: number | string;
   currentStatus?: string;
+  currentStatusReason?: string | null;
   createBy?: number | string;
   createTime?: string;
   tenantId?: string;
   updateTime?: string;
+  initialPersonaId?: number | string;
 };
 
 export type DebtAttachmentItem = {
@@ -215,6 +218,7 @@ export const getAssetPackagePipelineProgress = (taskId: string | number) =>
     `/system/recov/debt/import/tasks/${taskId}/progress`,
     {
       method: 'get',
+      skipErrorHandler: true,
     },
   );
 

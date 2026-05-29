@@ -215,7 +215,10 @@ const RoleAuthUserPage = ({ roleId: propRoleId }: RoleAuthUserPageProps) => {
         rowKey={(record) => String(record.userId)}
         columns={columns}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         request={async (tableParams) => {
           if (!roleId) {
             return { data: [], total: 0, success: true };
@@ -296,7 +299,10 @@ const RoleAuthUserPage = ({ roleId: propRoleId }: RoleAuthUserPageProps) => {
           rowKey={(record) => String(record.userId)}
           columns={selectColumns}
           search={{ labelWidth: 96 }}
-          pagination={{ defaultPageSize: 10 }}
+          pagination={{
+            defaultPageSize: 10,
+            showTotal: (total: number) => `共 ${total} 条`,
+          }}
           request={async (tableParams) => {
             if (!selectOpen || !roleId) {
               return { data: [], total: 0, success: true };

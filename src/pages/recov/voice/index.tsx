@@ -163,11 +163,13 @@ const VoiceEngineConfigPage = () => {
     _changed: Partial<ConcurrencyConfigVo>,
     all: ConcurrencyConfigVo,
   ) => {
-    setConcurrencyCurrent({
-      maxConcurrency: Number(all.maxConcurrency) || 0,
+    setConcurrencyCurrent((prev) => ({
+      maxConcurrency:
+        Number(all.maxConcurrency ?? prev.maxConcurrency) ||
+        defaultConcurrencyForm.maxConcurrency,
       maxRetry: Number(all.maxRetry) || 0,
       retryInterval: Number(all.retryInterval) || 0,
-    });
+    }));
   };
 
   const handleSaveConcurrency = async () => {
@@ -184,7 +186,7 @@ const VoiceEngineConfigPage = () => {
         retryInterval: concurrencyCurrent.retryInterval,
       };
       await saveConfig(payload);
-      messageApi.success('并发与重拨策略保存成功');
+      messageApi.success('重拨策略保存成功');
       setConcurrencyOriginal(concurrencyCurrent);
     } finally {
       setSavingConcurrency(false);
@@ -279,7 +281,7 @@ const VoiceEngineConfigPage = () => {
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
         <ProCard
-          title="并发与重拨策略"
+          title="重拨策略"
           extra={
             isConcurrencyDirty ? (
               <Button
@@ -301,19 +303,7 @@ const VoiceEngineConfigPage = () => {
               onValuesChange={handleConcurrencyValuesChange}
               className="[&_.ant-form-item]:!mb-0"
             >
-              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
-                <Form.Item
-                  label="外呼并发上限"
-                  name="maxConcurrency"
-                  rules={[{ required: true, message: '请输入外呼并发上限' }]}
-                >
-                  <InputNumber
-                    min={1}
-                    precision={0}
-                    suffix="并发线路"
-                    style={{ width: '100%' }}
-                  />
-                </Form.Item>
+              <div className="grid grid-cols-1 gap-x-8 gap-y-4 lg:grid-cols-2">
                 <Form.Item
                   label="重拨间隔下限"
                   name="retryInterval"
@@ -323,6 +313,7 @@ const VoiceEngineConfigPage = () => {
                     options={retryIntervalOptions}
                     loading={retryIntervalDict.loading}
                     placeholder="请选择重拨间隔"
+                    style={{ width: '100%' }}
                   />
                 </Form.Item>
                 <Form.Item

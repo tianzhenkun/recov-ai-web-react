@@ -1,3 +1,8 @@
+.recov-list-page .instrument-stats-strip > .ant-pro-card {
+  min-width: 132px;
+  flex-basis: 132px;
+}
+
 .instrument-workspace {
   display: flex;
   flex-direction: column;

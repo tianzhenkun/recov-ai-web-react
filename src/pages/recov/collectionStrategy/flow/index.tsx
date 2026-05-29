@@ -27,6 +27,7 @@ import {
   type CreateFlowTemplateDTO,
   createFlowTemplate,
   type FlowTemplateVO,
+  getDefaultPersonaFlowTemplate,
   listCurrentFlowTemplates,
   listFlowNodeTypes,
   type StepFailStrategy,
@@ -41,7 +42,6 @@ import {
   buildDefaultSteps,
   buildInitialFlowModuleMap,
   cloneStrategySteps,
-  corpLetterSealOptions,
   createStepId,
   defaultStepConfig,
   type FlowModuleMeta,
@@ -49,12 +49,12 @@ import {
   getFlowIconComponent,
   getFlowModuleMeta,
   getNodeIdentityDisplayText,
+  isFrontendSupportedFlowNode,
   isSamePersonaId,
   type NormalizedStrategyStep,
   normalizeAiCallRole,
   normalizeStep,
   normalizeSteps,
-  resolveDefaultPersonaId,
   skipStrategyOptions,
   upsertNodeTypeMeta,
   validateStrategySteps,
@@ -76,7 +76,6 @@ const aiCallRoleDictFallbackOptions: RuoyiDictOption[] =
 
 type SelectedNodeForm = {
   aiRole: AiCallRole | '';
-  sealId: string;
   waitMinutes: number;
   failStrategy: StepFailStrategy;
   skipStrategy: StepSkipStrategy;
@@ -84,7 +83,6 @@ type SelectedNodeForm = {
 
 const defaultSelectedNodeForm: SelectedNodeForm = {
   aiRole: '',
-  sealId: '',
   waitMinutes: defaultStepConfig.waitMinutes,
   failStrategy: defaultStepConfig.failStrategy,
   skipStrategy: defaultStepConfig.skipStrategy,
@@ -147,7 +145,9 @@ const CollectionStrategyFlowEditor = () => {
   const activePersonaName = activePersona?.personaName ?? '未命名画像';
 
   const availableModules = useMemo(() => {
-    const modules = Object.values(flowModuleMap);
+    const modules = Object.values(flowModuleMap).filter((module) =>
+      isFrontendSupportedFlowNode(module.code),
+    );
     if (backendNodeCodes.size === 0) return modules;
     return modules.filter((module) => backendNodeCodes.has(module.code));
   }, [backendNodeCodes, flowModuleMap]);
@@ -176,7 +176,6 @@ const CollectionStrategyFlowEditor = () => {
       }
       setSelectedNodeForm({
         aiRole: normalizeAiCallRole(node.params?.aiRole) ?? '',
-        sealId: node.params?.sealId ?? '',
         waitMinutes: node.config.waitMinutes,
         failStrategy: node.config.failStrategy,
         skipStrategy: node.config.skipStrategy,
@@ -247,30 +246,25 @@ const CollectionStrategyFlowEditor = () => {
   );
 
   const loadDefaultPersonaTemplateSteps = useCallback(
-    async (
-      currentFlowModuleMap: Record<string, FlowModuleMeta>,
-      personas: PersonaItem[] = personaList,
-    ) => {
-      const template = await fetchCurrentFlowTemplate(
-        resolveDefaultPersonaId(personas),
-      );
+    async (currentFlowModuleMap: Record<string, FlowModuleMeta>) => {
+      const res = await getDefaultPersonaFlowTemplate();
+      const template = res.data ?? null;
       return resolveTemplateSteps(template, currentFlowModuleMap);
     },
-    [fetchCurrentFlowTemplate, personaList, resolveTemplateSteps],
+    [resolveTemplateSteps],
   );
 
   const loadPersonaFlow = useCallback(
     async (
       personaId: PersonaId,
       currentFlowModuleMap: Record<string, FlowModuleMeta>,
-      personas: PersonaItem[] = personaList,
     ) => {
       const template = await fetchCurrentFlowTemplate(personaId);
       setCurrentTemplate(template);
       setCurrentTemplateId(template?.id ?? null);
       const steps = template
         ? resolveTemplateSteps(template, currentFlowModuleMap)
-        : await loadDefaultPersonaTemplateSteps(currentFlowModuleMap, personas);
+        : await loadDefaultPersonaTemplateSteps(currentFlowModuleMap);
       setDraftSteps(steps);
       setSelectedNodeId(steps[0]?.id ?? null);
       setDirty(false);
@@ -278,7 +272,6 @@ const CollectionStrategyFlowEditor = () => {
     [
       fetchCurrentFlowTemplate,
       loadDefaultPersonaTemplateSteps,
-      personaList,
       resolveTemplateSteps,
     ],
   );
@@ -299,7 +292,7 @@ const CollectionStrategyFlowEditor = () => {
           null;
         if (personaId == null) return;
         setActivePersonaId(personaId);
-        await loadPersonaFlow(personaId, map, rows);
+        await loadPersonaFlow(personaId, map);
       } catch (error) {
         console.error('初始化催收流程编排页失败', error);
         messageApi.error('初始化催收流程编排页失败');
@@ -374,11 +367,6 @@ const CollectionStrategyFlowEditor = () => {
         '企业客服',
       params: { aiRole: role },
     });
-  };
-
-  const handleCorpLetterSealChange = (sealId: string) => {
-    setSelectedNodeForm((prev) => ({ ...prev, sealId }));
-    applySelectedNodeData({ params: { sealId } });
   };
 
   const openNodeDrawer = () => {
@@ -739,6 +727,10 @@ const CollectionStrategyFlowEditor = () => {
                 {draftSteps.map((node, idx) => {
                   const meta = getFlowModuleMeta(flowModuleMap, node.nodeCode);
                   const IconCmp = getFlowIconComponent(meta.icon);
+                  const identityText = getNodeIdentityDisplayText(
+                    flowModuleMap,
+                    node,
+                  );
                   const isSelected = selectedNodeId === node.id;
                   return (
                     <div key={node.id}>
@@ -793,9 +785,11 @@ const CollectionStrategyFlowEditor = () => {
                             <span className="truncate text-sm font-semibold text-zinc-800">
                               {meta.label}
                             </span>
-                            <span className="truncate text-xs text-zinc-500">
-                              {getNodeIdentityDisplayText(flowModuleMap, node)}
-                            </span>
+                            {identityText ? (
+                              <span className="truncate text-xs text-zinc-500">
+                                {identityText}
+                              </span>
+                            ) : null}
                           </span>
                         </button>
                         <Button
@@ -870,14 +864,6 @@ const CollectionStrategyFlowEditor = () => {
                         loading={aiCallRoleLoading}
                         options={aiCallRoleSelectOptions}
                         onChange={handleAiCallRoleChange}
-                      />
-                    </Form.Item>
-                  ) : selectedNode.nodeCode === 'corp_letter' ? (
-                    <Form.Item label="印章" required>
-                      <Select<string>
-                        value={selectedNodeForm.sealId || undefined}
-                        options={corpLetterSealOptions}
-                        onChange={handleCorpLetterSealChange}
                       />
                     </Form.Item>
                   ) : null}

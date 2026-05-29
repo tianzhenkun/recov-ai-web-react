@@ -358,7 +358,10 @@ const PostPage = () => {
             rowKey={(record) => String(record.postId)}
             columns={columns}
             search={{ labelWidth: 96 }}
-            pagination={{ defaultPageSize: 10 }}
+            pagination={{
+              defaultPageSize: 10,
+              showTotal: (total: number) => `共 ${total} 条`,
+            }}
             params={{ belongDeptId: selectedDeptId }}
             request={async (params) => {
               if (deptTree.length === 0) {

@@ -1,7 +1,7 @@
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
-  FileDoneOutlined,
+  FileImageOutlined,
   FilePdfOutlined,
   MailOutlined,
   PhoneOutlined,
@@ -29,17 +29,34 @@ export type AiCallRole = string;
 
 export type StrategyStepParams = {
   aiRole?: AiCallRole;
-  sealId?: string;
   scriptId?: string;
+  [key: string]: unknown;
 };
 
 export type NormalizedStrategyStep = StrategyStep & {
-  identity: string;
+  identity?: string;
   config: Required<StepExecutionConfig>;
   params: StrategyStepParams;
 };
 
 export type PreviewStep = NormalizedStrategyStep;
+
+const frontendSupportedFlowNodeCodes = new Set([
+  'ai_call',
+  'corp_letter',
+  'law_letter',
+  'filing_material_submit',
+]);
+
+const frontendLegacyFlowNodeCodeMap: Record<string, string> = {
+  litigation_screenshot: 'filing_material_submit',
+};
+
+export const normalizeFrontendFlowNodeCode = (nodeCode?: string) =>
+  nodeCode ? (frontendLegacyFlowNodeCodeMap[nodeCode] ?? nodeCode) : '';
+
+export const isFrontendSupportedFlowNode = (nodeCode?: string) =>
+  !!nodeCode && frontendSupportedFlowNodeCodes.has(nodeCode);
 
 type AntdIcon = ComponentType<{
   className?: string;
@@ -52,7 +69,7 @@ export type FlowModuleMeta = {
   icon: string;
   bgColor: string;
   iconColor: string;
-  defaultIdentity: string;
+  defaultIdentity?: string;
   description?: string;
 };
 
@@ -60,7 +77,7 @@ export const FLOW_ICON_MAP: Record<string, AntdIcon> = {
   phone: PhoneOutlined,
   email: MailOutlined,
   pdf: FilePdfOutlined,
-  filing: FileDoneOutlined,
+  screenshot: FileImageOutlined,
   upload: UploadOutlined,
   finish: CheckCircleOutlined,
   workflow: ApartmentOutlined,
@@ -83,7 +100,7 @@ export const buildInitialFlowModuleMap = (): Record<
 > => ({
   ai_call: {
     code: 'ai_call',
-    label: 'AI 电话催收',
+    label: '智能外呼',
     icon: 'phone',
     bgColor: '#3F51B5',
     iconColor: '#ffffff',
@@ -95,7 +112,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'email',
     bgColor: '#9C27B0',
     iconColor: '#ffffff',
-    defaultIdentity: '企业法务',
   },
   law_letter: {
     code: 'law_letter',
@@ -103,15 +119,13 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'pdf',
     bgColor: '#FF9800',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   filing_material_submit: {
     code: 'filing_material_submit',
-    label: '发送诉讼申请截图',
-    icon: 'filing',
+    label: '发送申请诉讼截图',
+    icon: 'screenshot',
     bgColor: '#0F766E',
     iconColor: '#ffffff',
-    defaultIdentity: '项目员工',
   },
   litigation_screenshot: {
     code: 'litigation_screenshot',
@@ -119,7 +133,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'upload',
     bgColor: '#5C6BC0',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   litigation_result: {
     code: 'litigation_result',
@@ -127,7 +140,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'finish',
     bgColor: '#5C6BC0',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   lawyer_court: {
     code: 'lawyer_court',
@@ -135,7 +147,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'workflow',
     bgColor: '#5C6BC0',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   enforcement_screenshot: {
     code: 'enforcement_screenshot',
@@ -143,7 +154,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'upload',
     bgColor: '#4CAF50',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   enforcement_result: {
     code: 'enforcement_result',
@@ -151,7 +161,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'finish',
     bgColor: '#4CAF50',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   restrict_consumption: {
     code: 'restrict_consumption',
@@ -159,7 +168,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'warning',
     bgColor: '#607D8B',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
   credit_blacklist: {
     code: 'credit_blacklist',
@@ -167,7 +175,6 @@ export const buildInitialFlowModuleMap = (): Record<
     icon: 'blacklist',
     bgColor: '#455A64',
     iconColor: '#ffffff',
-    defaultIdentity: '律师',
   },
 });
 
@@ -177,7 +184,6 @@ export const fallbackFlowModuleMeta: FlowModuleMeta = {
   icon: 'workflow',
   bgColor: '#64748b',
   iconColor: '#ffffff',
-  defaultIdentity: '项目员工',
 };
 
 export const defaultFlowSteps: Array<
@@ -186,14 +192,15 @@ export const defaultFlowSteps: Array<
   { nodeCode: 'ai_call', identity: '项目员工' },
   { nodeCode: 'ai_call', identity: '企业客服' },
   { nodeCode: 'ai_call', identity: '企业法务' },
-  { nodeCode: 'corp_letter', identity: '企业法务' },
+  { nodeCode: 'corp_letter' },
   { nodeCode: 'ai_call', identity: '律师' },
-  { nodeCode: 'law_letter', identity: '律师' },
-  { nodeCode: 'filing_material_submit', identity: '项目员工' },
+  { nodeCode: 'law_letter' },
+  { nodeCode: 'filing_material_submit' },
 ];
 
 const flowModuleLabelOverrideMap: Record<string, string> = {
-  filing_material_submit: '发送诉讼申请截图',
+  ai_call: '智能外呼',
+  filing_material_submit: '发送申请诉讼截图',
 };
 
 export const aiCallRoleOptions: Array<{ label: string; value: AiCallRole }> =
@@ -212,12 +219,6 @@ export const normalizeAiCallRole = (role?: unknown): AiCallRole | undefined => {
   if (!value) return undefined;
   return legacyAiCallRoleMap[value] ?? value;
 };
-
-export const corpLetterSealOptions: Array<{ label: string; value: string }> = [
-  { label: '企业默认公章', value: 'company_default' },
-  { label: '合同专用章', value: 'contract_seal' },
-  { label: '法务专用章', value: 'legal_seal' },
-];
 
 export const failStrategyOptions: Array<{
   label: string;
@@ -287,13 +288,11 @@ export const getNodeIdentityDisplayText = (
     return (
       normalizeAiCallRole(step.identity) ??
       step.identity ??
-      getFlowModuleMeta(flowModuleMap, step.nodeCode).defaultIdentity
+      getFlowModuleMeta(flowModuleMap, step.nodeCode).defaultIdentity ??
+      '企业客服'
     );
   }
-  return (
-    step.identity ??
-    getFlowModuleMeta(flowModuleMap, step.nodeCode).defaultIdentity
-  );
+  return '';
 };
 
 export const withDefaultStepConfig = (
@@ -308,12 +307,11 @@ export const withDefaultStepConfig = (
 
 export const buildDefaultNodeParams = (
   nodeCode: string,
-  identity: string,
+  identity?: string,
 ): StrategyStepParams => {
   if (nodeCode === 'ai_call') {
     return { aiRole: normalizeAiCallRole(identity) ?? '企业客服' };
   }
-  if (nodeCode === 'corp_letter') return { sealId: 'company_default' };
   return {};
 };
 
@@ -330,7 +328,11 @@ export const sanitizeStepParams = (
     } else {
       delete nextParams.aiRole;
     }
+  } else {
+    delete nextParams.aiRole;
+    delete nextParams.scriptId;
   }
+  delete nextParams.sealId;
   return nextParams;
 };
 
@@ -348,8 +350,9 @@ export const normalizeStep = (
       ? (normalizeAiCallRole(step.params?.aiRole) ??
         normalizeAiCallRole(step.identity) ??
         step.identity ??
-        meta.defaultIdentity)
-      : step.identity || meta.defaultIdentity;
+        meta.defaultIdentity ??
+        '企业客服')
+      : undefined;
   const baseParams = buildDefaultNodeParams(step.nodeCode, identity);
   const mergedParams: StrategyStepParams = {
     ...baseParams,
@@ -370,7 +373,20 @@ export const normalizeSteps = (
   steps?: StrategyStep[],
 ): NormalizedStrategyStep[] => {
   if (!Array.isArray(steps) || steps.length === 0) return [];
-  return steps.map((step, idx) => normalizeStep(flowModuleMap, step, idx));
+  return steps
+    .map((step) => {
+      const nodeCode = normalizeFrontendFlowNodeCode(step.nodeCode);
+      if (!nodeCode || nodeCode === step.nodeCode) return step;
+      const meta = getFlowModuleMeta(flowModuleMap, nodeCode);
+      return {
+        ...step,
+        nodeCode,
+        identity: meta.defaultIdentity,
+        params: {},
+      };
+    })
+    .filter((step) => isFrontendSupportedFlowNode(step.nodeCode))
+    .map((step, idx) => normalizeStep(flowModuleMap, step, idx));
 };
 
 export const buildDefaultSteps = (
@@ -402,7 +418,7 @@ export const upsertNodeTypeMeta = (
       ...(current ?? {
         ...fallbackFlowModuleMeta,
         code: nodeType.code,
-        defaultIdentity: '项目员工',
+        defaultIdentity: nodeType.code === 'ai_call' ? '企业客服' : undefined,
       }),
       code: nodeType.code,
       label:
@@ -443,18 +459,13 @@ export const validateStrategySteps = (
     seenIds.add(step.id);
     if (step.config.waitMinutes < 0) return '触发前等待不能小于 0';
     if (step.nodeCode === 'ai_call' && !step.params?.aiRole) {
-      return 'AI 电话催收步骤必须配置催收角色';
-    }
-    if (step.nodeCode === 'corp_letter' && !step.params?.sealId) {
-      return '企业催收函步骤必须配置印章';
+      return '智能外呼步骤必须配置催收角色';
     }
   }
   return '';
 };
 
 export const resolveFlowPreviewColumns = (width: number) => {
-  if (width >= 1500) return 10;
-  if (width >= 1260) return 8;
   if (width >= 1020) return 6;
   if (width >= 820) return 5;
   if (width >= 620) return 4;

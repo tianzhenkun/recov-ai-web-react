@@ -146,6 +146,14 @@ export const getFlowTemplateByPersonaId = (personaId: number | string) =>
   );
 
 /**
+ * 查询当前租户默认画像的当前有效模板。
+ */
+export const getDefaultPersonaFlowTemplate = () =>
+  ruoyiRequest<FlowTemplateVO>('/system/recov/flow/template/default-persona', {
+    method: 'get',
+  });
+
+/**
  * 删除当前有效模板。
  */
 export const deleteFlowTemplate = (id: number | string) =>

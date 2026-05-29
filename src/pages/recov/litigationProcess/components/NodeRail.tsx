@@ -1,12 +1,10 @@
 import { ProCard } from '@ant-design/pro-components';
-import { Badge, Spin, Typography, theme } from 'antd';
+import { Badge, Spin, theme } from 'antd';
 import type {
   LitigationNodeStatVO,
   LitigationNodeType,
 } from '@/services/ruoyi/litigation-process';
 import { DEFAULT_NODE_TYPE, NODE_VISUAL_MAP } from '../_shared';
-
-const { Text } = Typography;
 
 const getNodeVisual = (nodeType: LitigationNodeType) =>
   NODE_VISUAL_MAP[nodeType] ?? NODE_VISUAL_MAP[DEFAULT_NODE_TYPE];
@@ -14,8 +12,6 @@ const getNodeVisual = (nodeType: LitigationNodeType) =>
 type NodeRailProps = {
   nodes: LitigationNodeStatVO[];
   activeNodeType: LitigationNodeType;
-  activeNodeDesc?: string;
-  total: number;
   loading?: boolean;
   onNodeChange: (nodeType: LitigationNodeType) => void;
 };
@@ -23,22 +19,13 @@ type NodeRailProps = {
 const NodeRail = ({
   nodes,
   activeNodeType,
-  activeNodeDesc,
-  total,
   loading,
   onNodeChange,
 }: NodeRailProps) => {
   const { token } = theme.useToken();
 
   return (
-    <ProCard
-      title="案件推进节点"
-      extra={
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          当前节点：{activeNodeDesc || '-'} · {total} 条
-        </Text>
-      }
-    >
+    <ProCard title="案件推进节点">
       <Spin spinning={loading}>
         <div className="relative pb-1 pt-3">
           <div

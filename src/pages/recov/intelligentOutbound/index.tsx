@@ -1,8 +1,8 @@
 import {
   MessageOutlined,
   ReloadOutlined,
+  RightOutlined,
   TeamOutlined,
-  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { Button, Flex, message, Pagination, Space, theme } from 'antd';
@@ -195,7 +195,8 @@ const IntelligentOutboundPage = () => {
             }
             extra={
               <Button
-                icon={<UnorderedListOutlined />}
+                icon={<RightOutlined />}
+                iconPlacement="end"
                 size="small"
                 type="text"
                 onClick={() => setFeedbackDrawerOpen(true)}
@@ -204,10 +205,10 @@ const IntelligentOutboundPage = () => {
                   fontSize: 13,
                   fontWeight: 500,
                   height: 28,
-                  paddingInline: 8,
+                  paddingInline: '8px 0',
                 }}
               >
-                全部反馈
+                查看所有
               </Button>
             }
             styles={{

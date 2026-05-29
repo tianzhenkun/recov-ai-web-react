@@ -1,5 +1,5 @@
 import { WarningOutlined } from '@ant-design/icons';
-import { Form, Input, InputNumber, Modal, Space, Spin, Tag } from 'antd';
+import { Alert, Form, Input, InputNumber, Modal, Space, Spin, Tag } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -16,6 +16,8 @@ import {
   DEFAULT_STANDING_RANGE,
   defaultStandingForm,
   getStandingTypeName,
+  hasAvailableStandingRange,
+  normalizeRangeBoundary,
   type UsedRangeRef,
 } from './_shared';
 import StandingPdfUpload from './StandingPdfUpload';
@@ -60,6 +62,10 @@ const StandingFormDrawer = ({
     startNum: number | null;
     endNum: number | null;
   }>({ startNum: null, endNum: null });
+  const [ownedRange, setOwnedRange] = useState<{
+    startNum: number | null;
+    endNum: number | null;
+  }>({ startNum: null, endNum: null });
   const [currentStandingCode, setCurrentStandingCode] =
     useState<StandingCode>(standingCode);
 
@@ -90,13 +96,17 @@ const StandingFormDrawer = ({
               startNum: next.startNum,
               endNum: next.endNum,
             });
+            setOwnedRange({
+              startNum: next.startNum,
+              endNum: next.endNum,
+            });
             const rangeRes = await getStandingRange(code, editingId);
             if (cancelled) return;
             setRangeInfo({
               usedRanges: rangeRes.data?.usedRanges ?? [],
               wildcardUsed: rangeRes.data?.wildcardUsed ?? false,
-              minAvailable: rangeRes.data?.minAvailable ?? 1,
-              maxAvailable: rangeRes.data?.maxAvailable ?? 10000,
+              minAvailable: normalizeRangeBoundary(rangeRes.data?.minAvailable),
+              maxAvailable: normalizeRangeBoundary(rangeRes.data?.maxAvailable),
             });
           }
         } else {
@@ -111,13 +121,14 @@ const StandingFormDrawer = ({
           setCurrentStandingCode(standingCode);
           form.setFieldsValue(next);
           setRangeValues({ startNum: null, endNum: null });
+          setOwnedRange({ startNum: null, endNum: null });
           const rangeRes = await getStandingRange(standingCode);
           if (cancelled) return;
           setRangeInfo({
             usedRanges: rangeRes.data?.usedRanges ?? [],
             wildcardUsed: rangeRes.data?.wildcardUsed ?? false,
-            minAvailable: rangeRes.data?.minAvailable ?? 1,
-            maxAvailable: rangeRes.data?.maxAvailable ?? 10000,
+            minAvailable: normalizeRangeBoundary(rangeRes.data?.minAvailable),
+            maxAvailable: normalizeRangeBoundary(rangeRes.data?.maxAvailable),
           });
         }
       } catch {
@@ -143,19 +154,45 @@ const StandingFormDrawer = ({
     [allUsedRanges, rangeInfo.usedRanges, currentStandingCode],
   );
 
+  const rangeAvailable = hasAvailableStandingRange(rangeInfo);
+  const ownedRangeAvailable =
+    mode === 'edit' &&
+    ownedRange.startNum != null &&
+    ownedRange.endNum != null &&
+    ownedRange.startNum <= ownedRange.endNum;
+  const shrinkOnly = ownedRangeAvailable;
+  const rangeEditable = !loading && (rangeAvailable || ownedRangeAvailable);
+  const rangeValidationEnabled = rangeAvailable || ownedRangeAvailable;
+  const effectiveRangeInfo = useMemo(
+    () =>
+      ownedRangeAvailable
+        ? {
+            ...rangeInfo,
+            minAvailable: ownedRange.startNum,
+            maxAvailable: ownedRange.endNum,
+          }
+        : rangeInfo,
+    [rangeAvailable, ownedRangeAvailable, rangeInfo, ownedRange],
+  );
+
   const issues = useMemo(
     () =>
       computeRangeIssues({
         startNum: rangeValues.startNum,
         endNum: rangeValues.endNum,
-        rangeInfo,
+        rangeInfo: effectiveRangeInfo,
         usedRanges,
         wildcardUsed: wildcardUsed ?? rangeInfo.wildcardUsed,
       }),
-    [rangeValues, rangeInfo, usedRanges, wildcardUsed],
+    [rangeValues, effectiveRangeInfo, usedRanges, wildcardUsed, rangeInfo],
   );
+  const shrinkRangeCleared =
+    shrinkOnly && (rangeValues.startNum == null || rangeValues.endNum == null);
 
-  const handleValuesChange = (all: Partial<FormShape>) => {
+  const handleValuesChange = (
+    _: Partial<FormShape>,
+    all: Partial<FormShape>,
+  ) => {
     setRangeValues({
       startNum: all.startNum ?? null,
       endNum: all.endNum ?? null,
@@ -163,30 +200,49 @@ const StandingFormDrawer = ({
   };
 
   const handleSubmit = async () => {
+    if (mode === 'add' && !rangeAvailable) {
+      messageApi.warning('暂无可用资产编号范围，无法新增主体资格材料');
+      return;
+    }
+
     try {
       const values = await form.validateFields();
-      if (issues.partialRange) {
+      const submitIssues = computeRangeIssues({
+        startNum: values.startNum ?? null,
+        endNum: values.endNum ?? null,
+        rangeInfo: effectiveRangeInfo,
+        usedRanges,
+        wildcardUsed: wildcardUsed ?? rangeInfo.wildcardUsed,
+      });
+      const submitShrinkRangeCleared =
+        shrinkOnly && (values.startNum == null || values.endNum == null);
+
+      if (submitShrinkRangeCleared) {
+        messageApi.warning('当前仅支持缩小已有资产编号范围');
+        return;
+      }
+      if (rangeValidationEnabled && submitIssues.partialRange) {
         messageApi.warning('资产编号范围必须同时填写起始和结束编号');
         return;
       }
-      if (issues.wildcardConflict) {
+      if (rangeValidationEnabled && submitIssues.wildcardConflict) {
         messageApi.warning('同一材料类型下只能启用一个全量适用材料');
         return;
       }
-      if (issues.rangeOrderInvalid) {
+      if (rangeValidationEnabled && submitIssues.rangeOrderInvalid) {
         messageApi.warning('结束编号不能小于起始编号');
         return;
       }
-      if (issues.rangeOutOfBounds) {
+      if (rangeValidationEnabled && submitIssues.rangeOutOfBounds) {
         messageApi.warning(
-          `资产编号范围需在 ${rangeInfo.minAvailable ?? 1} - ${
-            rangeInfo.maxAvailable ?? 10000
-          } 之间`,
+          shrinkOnly
+            ? '只能在当前资产编号范围内缩小'
+            : `资产编号范围需在 ${effectiveRangeInfo.minAvailable} - ${effectiveRangeInfo.maxAvailable} 之间`,
         );
         return;
       }
-      if (issues.rangeConflict) {
-        messageApi.warning(issues.conflictDetail || '资产编号范围冲突');
+      if (rangeValidationEnabled && submitIssues.rangeConflict) {
+        messageApi.warning(submitIssues.conflictDetail || '资产编号范围冲突');
         return;
       }
 
@@ -216,21 +272,21 @@ const StandingFormDrawer = ({
     }
   };
 
-  const confirmDisabled =
-    loading ||
-    issues.partialRange ||
-    issues.wildcardConflict ||
-    issues.rangeOrderInvalid ||
-    issues.rangeOutOfBounds ||
-    issues.rangeConflict;
+  const confirmDisabled = loading || submitting;
+  const standingTypeLabel = getStandingTypeName(currentStandingCode);
 
   return (
     <Modal
       open={open}
       title={
-        <span className="text-base font-semibold text-zinc-900">
-          {mode === 'edit' ? '编辑主体资格材料' : '新增主体资格材料'}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base font-semibold text-zinc-900">
+            {mode === 'edit' ? '编辑主体资格材料' : '新增主体资格材料'}
+          </span>
+          <Tag color="blue" className="!mr-0">
+            {standingTypeLabel}
+          </Tag>
+        </div>
       }
       width={560}
       centered
@@ -254,15 +310,23 @@ const StandingFormDrawer = ({
           layout="vertical"
           requiredMark={false}
           variant="outlined"
+          disabled={loading}
           onValuesChange={handleValuesChange}
           preserve={false}
           className="[&_.ant-form-item-label>label]:!font-medium [&_.ant-form-item-label>label]:!text-zinc-800"
         >
-          <Form.Item label="材料类型">
-            <Tag color="blue" className="!mr-0">
-              {getStandingTypeName(currentStandingCode)}
-            </Tag>
-          </Form.Item>
+          {!rangeAvailable && !loading ? (
+            <Alert
+              type="warning"
+              showIcon
+              title={
+                shrinkOnly
+                  ? '暂无新增可用资产编号范围，仅支持缩小当前资产编号范围'
+                  : '暂无可用资产编号范围，资产编号范围暂不可编辑'
+              }
+              className="!mb-4"
+            />
+          ) : null}
 
           <Form.Item
             label="材料名称"
@@ -291,9 +355,10 @@ const StandingFormDrawer = ({
                 <InputNumber
                   placeholder="起始编号"
                   precision={0}
-                  min={rangeInfo.minAvailable ?? 1}
-                  max={rangeInfo.maxAvailable ?? 10000}
+                  min={effectiveRangeInfo.minAvailable ?? undefined}
+                  max={effectiveRangeInfo.maxAvailable ?? undefined}
                   controls={false}
+                  disabled={!rangeEditable}
                   style={{ width: '100%' }}
                 />
               </Form.Item>
@@ -302,58 +367,69 @@ const StandingFormDrawer = ({
                 <InputNumber
                   placeholder="结束编号"
                   precision={0}
-                  min={rangeInfo.minAvailable ?? 1}
-                  max={rangeInfo.maxAvailable ?? 10000}
+                  min={effectiveRangeInfo.minAvailable ?? undefined}
+                  max={effectiveRangeInfo.maxAvailable ?? undefined}
                   controls={false}
+                  disabled={!rangeEditable}
                   style={{ width: '100%' }}
                 />
               </Form.Item>
             </div>
-            <div className="mt-2 text-xs text-gray-500">
-              留空表示全部资产；可选范围：{rangeInfo.minAvailable ?? 1} -{' '}
-              {rangeInfo.maxAvailable ?? 10000}
-              {usedRanges.length > 0 ? (
-                <span className="ml-3 inline-flex flex-wrap items-center gap-1">
-                  同类型已占用：
-                  <Space size={[4, 4]} wrap>
-                    {usedRanges.map((r) => (
-                      <Tag
-                        key={`${r.standingName}-${r.startNum}-${r.endNum}`}
-                        color="default"
-                        className="font-mono"
-                      >
-                        {r.standingName}({r.startNum}-{r.endNum})
-                      </Tag>
-                    ))}
-                  </Space>
-                </span>
-              ) : null}
-            </div>
-            {issues.partialRange ? (
+            {rangeAvailable ? (
+              <div className="mt-2 text-xs text-gray-500">
+                留空表示全部资产；可填写资产编号：{rangeInfo.minAvailable} -{' '}
+                {rangeInfo.maxAvailable}
+                {usedRanges.length > 0 ? (
+                  <span className="ml-3 inline-flex flex-wrap items-center gap-1">
+                    同类型已占用：
+                    <Space size={[4, 4]} wrap>
+                      {usedRanges.map((r) => (
+                        <Tag
+                          key={`${r.standingName}-${r.startNum}-${r.endNum}`}
+                          color="default"
+                          className="font-mono"
+                        >
+                          {r.standingName}({r.startNum}-{r.endNum})
+                        </Tag>
+                      ))}
+                    </Space>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {shrinkRangeCleared ? (
+              <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
+                <WarningOutlined />
+                当前仅支持缩小已有资产编号范围
+              </div>
+            ) : null}
+            {rangeValidationEnabled && issues.partialRange ? (
               <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
                 <WarningOutlined />
                 资产编号范围必须同时填写起始和结束编号
               </div>
             ) : null}
-            {issues.wildcardConflict ? (
+            {rangeValidationEnabled && issues.wildcardConflict ? (
               <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
                 <WarningOutlined />
                 同一材料类型下已存在全量适用材料
               </div>
             ) : null}
-            {issues.rangeOrderInvalid ? (
+            {rangeValidationEnabled && issues.rangeOrderInvalid ? (
               <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
                 <WarningOutlined />
                 结束编号不能小于起始编号
               </div>
             ) : null}
-            {issues.rangeOutOfBounds ? (
+            {rangeValidationEnabled && issues.rangeOutOfBounds ? (
               <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
                 <WarningOutlined />
-                输入编号需在可选范围内
+                {shrinkOnly
+                  ? '只能在当前资产编号范围内缩小'
+                  : '输入编号需在可选范围内'}
               </div>
             ) : null}
-            {issues.rangeConflict ? (
+            {rangeValidationEnabled && issues.rangeConflict ? (
               <div className="mt-2 flex items-center gap-1 text-xs text-red-500">
                 <WarningOutlined />
                 {issues.conflictDetail || '所选范围冲突，请重新选择'}

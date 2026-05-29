@@ -62,8 +62,8 @@ export interface SealRangeUsedItem {
 
 export interface SealRangeVO {
   usedRanges: SealRangeUsedItem[];
-  minAvailable: number;
-  maxAvailable: number;
+  minAvailable?: number | null;
+  maxAvailable?: number | null;
 }
 
 /**

@@ -376,7 +376,10 @@ const ClientPage = () => {
         actionRef={actionRef}
         rowKey={(record) => String(record.id)}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         scroll={{ x: 1500 }}
         columns={columns}
         request={async (params) => {

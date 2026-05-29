@@ -8,14 +8,13 @@ import {
 } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
 import {
+  Badge,
   Button,
-  Col,
   Form,
   Input,
   InputNumber,
   Modal,
   message,
-  Row,
   Select,
   Space,
   Table,
@@ -30,6 +29,13 @@ import TableActions from '@/components/TableActions';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_LIST_COLUMN_WIDTH,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+  renderRecovSingleLineText,
+} from '@/pages/recov/components/RecovFilterControls';
 import {
   RecovListPage,
   RecovListStack,
@@ -50,7 +56,7 @@ import {
   type ReconciliationStatistics,
 } from '@/services/ruoyi/reconciliation';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 type QueryFormValues = {
   debtNumber?: string;
@@ -69,6 +75,11 @@ type DifferenceFormValues = {
 };
 
 const DEFAULT_PAGE_SIZE = 10;
+
+const tableScrollX = {
+  manual: 1016,
+  system: 1240,
+} as const;
 
 const currencyFormatter = new Intl.NumberFormat('zh-CN', {
   style: 'currency',
@@ -115,7 +126,7 @@ const getStatusColor = (status: unknown) => {
   const value = Number(status);
   if (value === 1 || value === 3) return 'green';
   if (value === 2) return 'orange';
-  return 'blue';
+  return undefined;
 };
 
 const getStatusText = (status: unknown) => {
@@ -254,24 +265,24 @@ const ModeIndicator = ({ label }: { label: string }) => {
 
   return (
     <div
-      className="inline-flex items-center gap-2 rounded-md border border-solid px-3 py-1 text-sm font-medium"
+      className="inline-flex items-center gap-1.5 rounded-md border border-solid px-2.5 py-0.5"
       style={{
         color: token.colorPrimaryText,
         background: token.colorPrimaryBg,
         borderColor: token.colorPrimaryBorder,
       }}
     >
-      <span
-        className="h-2 w-2 rounded-full"
-        style={{ background: token.colorPrimary }}
-      />
-      <span className="text-zinc-500">当前模式：</span>
-      <span>{label}</span>
+      <Badge status="processing" />
+      <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>
+        当前模式：
+      </Text>
+      <Text style={{ fontSize: 12, lineHeight: 1.6 }}>{label}</Text>
     </div>
   );
 };
 
 const ReconciliationPage = () => {
+  const { token } = theme.useToken();
   const [queryForm] = Form.useForm<QueryFormValues>();
   const [repaymentForm] = Form.useForm<RepaymentFormValues>();
   const [differenceForm] = Form.useForm<DifferenceFormValues>();
@@ -532,41 +543,43 @@ const ReconciliationPage = () => {
       {
         title: '资产编号',
         dataIndex: 'debtNumber',
-        width: 150,
-        render: (value) => <Text code>{toText(value)}</Text>,
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: toText,
       },
       {
         title: '所属城市',
         dataIndex: 'city',
-        width: 120,
+        width: RECOV_LIST_COLUMN_WIDTH.city,
         render: toText,
       },
       {
         title: '所属项目',
         dataIndex: 'organization',
-        width: 160,
-        ellipsis: true,
-        render: toText,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
-        title: '业主',
+        title: '业主姓名',
         dataIndex: 'debtorName',
-        width: 110,
-        render: (value) => <Text strong>{toText(value)}</Text>,
+        width: 150,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '逾期金额',
         dataIndex: 'debtAmount',
-        width: 140,
+        width: 112,
         align: 'right',
-        render: formatAmount,
+        render: (value) => <Text strong>{formatAmount(value)}</Text>,
       },
       {
         title: '违约（滞纳）金',
         dataIndex: 'overdueAmount',
-        width: 150,
+        width: 124,
         align: 'right',
-        render: (value) => <Text type="secondary">{formatAmount(value)}</Text>,
+        render: (value) => <Text strong>{formatAmount(value)}</Text>,
       },
     ];
 
@@ -575,17 +588,17 @@ const ReconciliationPage = () => {
         {
           title: '系统金额',
           dataIndex: 'systemAmount',
-          width: 150,
+          width: 120,
           align: 'right',
           render: (value) => <Text strong>{formatAmount(value)}</Text>,
         },
         {
           title: '物业公司金额',
           dataIndex: 'recordedAmount',
-          width: 150,
+          width: 124,
           align: 'right',
           render: (value) => (
-            <Text style={{ color: '#059669' }} strong>
+            <Text style={{ color: token.colorPrimary }} strong>
               {formatAmount(value)}
             </Text>
           ),
@@ -593,7 +606,7 @@ const ReconciliationPage = () => {
         {
           title: '差异',
           dataIndex: 'difference',
-          width: 130,
+          width: 104,
           align: 'right',
           render: (_, record) =>
             hasRowDifference(record) ? (
@@ -609,10 +622,10 @@ const ReconciliationPage = () => {
       baseColumns.push({
         title: '物业公司金额',
         dataIndex: 'recordedAmount',
-        width: 150,
+        width: 124,
         align: 'right',
         render: (value) => (
-          <Text style={{ color: '#059669' }} strong>
+          <Text style={{ color: token.colorPrimary }} strong>
             {formatAmount(value)}
           </Text>
         ),
@@ -623,18 +636,32 @@ const ReconciliationPage = () => {
       {
         title: '状态',
         dataIndex: 'status',
-        width: 120,
+        width: 78,
         align: 'center',
-        render: (value, record) => (
-          <Tag color={getStatusColor(value)}>
-            {record.statusDesc || getStatusText(value)}
-          </Tag>
-        ),
+        render: (value, record) => {
+          const statusColor = getStatusColor(value);
+          return (
+            <Tag
+              color={statusColor}
+              style={
+                statusColor
+                  ? undefined
+                  : {
+                      color: token.colorPrimaryText,
+                      background: token.colorPrimaryBg,
+                      borderColor: token.colorPrimaryBorder,
+                    }
+              }
+            >
+              {record.statusDesc || getStatusText(value)}
+            </Tag>
+          );
+        },
       },
       {
         title: '操作',
         key: 'action',
-        width: 150,
+        width: 84,
         fixed: 'right',
         align: 'center',
         render: (_, record) => {
@@ -696,13 +723,13 @@ const ReconciliationPage = () => {
             );
           }
 
-          return <Text type="secondary">-</Text>;
+          return null;
         },
       },
     );
 
     return baseColumns;
-  }, [systemMode]);
+  }, [systemMode, token.colorPrimary]);
 
   const differenceAmount = getRowDifference(currentRow);
   const minAdjustedAmount = differenceAmount;
@@ -752,7 +779,7 @@ const ReconciliationPage = () => {
                     allowClear
                     prefix={<SearchOutlined />}
                     placeholder="搜索资产编号"
-                    style={{ width: 190 }}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Form.Item name="city" noStyle>
@@ -766,7 +793,7 @@ const ReconciliationPage = () => {
                     }))}
                     placeholder="所属城市"
                     showSearch
-                    style={{ width: 150 }}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Form.Item name="organization" noStyle>
@@ -778,9 +805,13 @@ const ReconciliationPage = () => {
                       label: item,
                       value: item,
                     }))}
+                    optionRender={(option) =>
+                      renderRecovSelectOptionLabel(option.label)
+                    }
                     placeholder="所属项目"
+                    popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
                     showSearch
-                    style={{ width: 170 }}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Button
@@ -804,14 +835,15 @@ const ReconciliationPage = () => {
             dataSource={tableData}
             loading={loading}
             rowKey={getRowKey}
-            scroll={{ x: systemMode === 1 ? 1460 : 1180 }}
+            scroll={{
+              x: systemMode === 1 ? tableScrollX.system : tableScrollX.manual,
+            }}
             pagination={{
               current: query.pageNum || 1,
               pageSize: query.pageSize || DEFAULT_PAGE_SIZE,
               total,
               showSizeChanger: true,
-              showTotal: (nextTotal, range) =>
-                `第 ${range[0]}-${range[1]} 条/总共 ${nextTotal} 条`,
+              showTotal: (nextTotal) => `共 ${nextTotal} 条`,
               onChange: (pageNum, pageSize) => {
                 applyQuery({
                   ...query,
@@ -827,7 +859,8 @@ const ReconciliationPage = () => {
       <Modal
         title="录入回款金额"
         open={repaymentOpen}
-        width={500}
+        width={560}
+        centered
         destroyOnHidden
         okText="确认提交"
         cancelText="取消"
@@ -837,45 +870,49 @@ const ReconciliationPage = () => {
           void submitRepayment();
         }}
       >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <ProCard>
-            <Row gutter={[16, 12]}>
-              <Col span={12}>
-                <Text type="secondary">资产编号</Text>
-                <div>
-                  <Text strong>{toText(currentRow?.debtNumber)}</Text>
-                </div>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary">业主姓名</Text>
-                <div>
-                  <Text strong>{toText(currentRow?.debtorName)}</Text>
-                </div>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary">所属城市</Text>
-                <div>{toText(currentRow?.city)}</div>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary">所属项目</Text>
-                <div>{toText(currentRow?.organization)}</div>
-              </Col>
-              <Col span={24}>
-                <Text type="secondary">当前已录入金额</Text>
-                <div>
-                  <Text strong style={{ color: '#059669', fontSize: 18 }}>
-                    {formatAmount(currentRow?.recordedAmount)}
-                  </Text>
-                </div>
-              </Col>
-            </Row>
-          </ProCard>
+        <Space direction="vertical" size={18} style={{ width: '100%' }}>
+          <div
+            className="grid grid-cols-1 gap-3 rounded-lg border border-solid p-4 sm:grid-cols-2"
+            style={{
+              background: token.colorFillQuaternary,
+              borderColor: token.colorBorderSecondary,
+            }}
+          >
+            <div className="min-w-0 break-words">
+              <Text type="secondary">资产编号</Text>
+              <div>{toText(currentRow?.debtNumber)}</div>
+            </div>
+            <div className="min-w-0 break-words">
+              <Text type="secondary">业主姓名</Text>
+              <div>{toText(currentRow?.debtorName)}</div>
+            </div>
+            <div className="min-w-0 break-words">
+              <Text type="secondary">所属城市</Text>
+              <div>{toText(currentRow?.city)}</div>
+            </div>
+            <div className="min-w-0 break-words">
+              <Text type="secondary">所属项目</Text>
+              <div>{toText(currentRow?.organization)}</div>
+            </div>
+            <div className="min-w-0 break-words sm:col-span-2">
+              <Text type="secondary">当前已录入金额</Text>
+              <div>
+                <Text
+                  strong
+                  style={{ color: token.colorPrimary, fontSize: 18 }}
+                >
+                  {formatAmount(currentRow?.recordedAmount)}
+                </Text>
+              </div>
+            </div>
+          </div>
 
           <Form form={repaymentForm} layout="vertical">
             <Form.Item
               name="amount"
               label="录入金额"
               rules={[{ required: true, message: '请输入回款金额' }]}
+              extra={`最低输入金额：${formatAmount(currentRow?.recordedAmount)}`}
             >
               <InputNumber
                 min={toNumber(currentRow?.recordedAmount)}
@@ -884,17 +921,22 @@ const ReconciliationPage = () => {
                 placeholder="请输入回款金额"
               />
             </Form.Item>
-            <Text type="secondary">
-              最低输入金额：{formatAmount(currentRow?.recordedAmount)}
-            </Text>
-            <Form.Item name="remark" label="备注" style={{ marginTop: 16 }}>
+            <Form.Item name="remark" label="备注">
               <Input.TextArea rows={2} placeholder="请输入备注（可选）..." />
             </Form.Item>
           </Form>
 
-          <Paragraph type="warning">
-            提示：请输入累计回款金额，不能低于当前已录入金额。
-          </Paragraph>
+          <div
+            className="flex items-start gap-2 rounded-lg border border-solid px-3 py-2 text-sm"
+            style={{
+              color: token.colorWarningText,
+              background: token.colorWarningBg,
+              borderColor: token.colorWarningBorder,
+            }}
+          >
+            <ExclamationCircleOutlined style={{ marginTop: 2 }} />
+            <span>请输入累计回款金额，不能低于当前已录入金额。</span>
+          </div>
         </Space>
       </Modal>
 
@@ -902,6 +944,7 @@ const ReconciliationPage = () => {
         title="差异处理复核"
         open={differenceOpen}
         width={560}
+        centered
         destroyOnHidden
         okText="确认处理"
         cancelText="取消"
@@ -911,45 +954,45 @@ const ReconciliationPage = () => {
           void submitDifference();
         }}
       >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <ProCard>
-            <Row gutter={[16, 12]}>
-              <Col span={12}>
-                <Text type="secondary">资产编号</Text>
-                <div>
-                  <Text strong>{toText(currentRow?.debtNumber)}</Text>
-                </div>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary">业主姓名</Text>
-                <div>
-                  <Text strong>{toText(currentRow?.debtorName)}</Text>
-                </div>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary">系统金额</Text>
-                <div>
-                  <Text strong>{formatAmount(currentRow?.systemAmount)}</Text>
-                </div>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary">物业公司金额</Text>
-                <div>
-                  <Text strong style={{ color: '#059669' }}>
-                    {formatAmount(currentRow?.recordedAmount)}
-                  </Text>
-                </div>
-              </Col>
-              <Col span={24}>
-                <Text type="secondary">差异金额</Text>
-                <div>
-                  <Text type="danger" strong style={{ fontSize: 18 }}>
-                    {formatAmount(Math.abs(differenceAmount))}
-                  </Text>
-                </div>
-              </Col>
-            </Row>
-          </ProCard>
+        <Space direction="vertical" size={18} style={{ width: '100%' }}>
+          <div
+            className="grid grid-cols-1 gap-3 rounded-lg border border-solid p-4 sm:grid-cols-2"
+            style={{
+              background: token.colorFillQuaternary,
+              borderColor: token.colorBorderSecondary,
+            }}
+          >
+            <div className="min-w-0 break-words">
+              <Text type="secondary">资产编号</Text>
+              <div>{toText(currentRow?.debtNumber)}</div>
+            </div>
+            <div className="min-w-0 break-words">
+              <Text type="secondary">业主姓名</Text>
+              <div>{toText(currentRow?.debtorName)}</div>
+            </div>
+            <div className="min-w-0 break-words">
+              <Text type="secondary">系统金额</Text>
+              <div>
+                <Text strong>{formatAmount(currentRow?.systemAmount)}</Text>
+              </div>
+            </div>
+            <div className="min-w-0 break-words">
+              <Text type="secondary">物业公司金额</Text>
+              <div>
+                <Text strong style={{ color: token.colorPrimary }}>
+                  {formatAmount(currentRow?.recordedAmount)}
+                </Text>
+              </div>
+            </div>
+            <div className="min-w-0 break-words sm:col-span-2">
+              <Text type="secondary">差异金额</Text>
+              <div>
+                <Text type="danger" strong style={{ fontSize: 18 }}>
+                  {formatAmount(Math.abs(differenceAmount))}
+                </Text>
+              </div>
+            </div>
+          </div>
 
           <Form form={differenceForm} layout="vertical">
             <Form.Item name="adjustedAmount" label="调整金额">
@@ -985,9 +1028,19 @@ const ReconciliationPage = () => {
             </Form.Item>
           </Form>
 
-          <Paragraph type="secondary">
-            确认处理后，系统将自动同步差异状态并更新对账日志。请确保已完成线下核实。
-          </Paragraph>
+          <div
+            className="flex items-start gap-2 rounded-lg border border-solid px-3 py-2 text-sm"
+            style={{
+              color: token.colorTextSecondary,
+              background: token.colorFillQuaternary,
+              borderColor: token.colorBorderSecondary,
+            }}
+          >
+            <ExclamationCircleOutlined style={{ marginTop: 2 }} />
+            <span>
+              确认处理后，系统将自动同步差异状态并更新对账日志。请确保已完成线下核实。
+            </span>
+          </div>
         </Space>
       </Modal>
     </RecovListPage>

@@ -4,7 +4,6 @@ import {
   InboxOutlined,
   MehOutlined,
   SmileOutlined,
-  TagOutlined,
 } from '@ant-design/icons';
 import { Skeleton, Space, Tag, Tooltip, Typography, theme } from 'antd';
 import type { ReactNode } from 'react';
@@ -24,7 +23,9 @@ type FeedbackFeedProps = {
 type SentimentMeta = {
   color: string;
   iconBg: string;
-  tagColor: 'error' | 'success' | 'default';
+  tagColor: string;
+  tagBg: string;
+  tagBorder: string;
   icon: ReactNode;
 };
 
@@ -41,19 +42,25 @@ const FeedbackFeed = ({
     negative: {
       color: token.colorError,
       iconBg: token.colorErrorBg,
-      tagColor: 'error',
+      tagColor: token.colorError,
+      tagBg: token.colorErrorBg,
+      tagBorder: token.colorErrorBorder,
       icon: <FrownOutlined />,
     },
     positive: {
-      color: token.colorSuccess,
-      iconBg: token.colorSuccessBg,
-      tagColor: 'success',
+      color: token.colorPrimary,
+      iconBg: token.colorPrimaryBg,
+      tagColor: token.colorPrimary,
+      tagBg: token.colorPrimaryBg,
+      tagBorder: token.colorPrimaryBorder,
       icon: <SmileOutlined />,
     },
     neutral: {
       color: token.colorTextSecondary,
       iconBg: token.colorFillQuaternary,
-      tagColor: 'default',
+      tagColor: token.colorTextSecondary,
+      tagBg: token.colorFillQuaternary,
+      tagBorder: token.colorBorderSecondary,
       icon: <MehOutlined />,
     },
   };
@@ -164,16 +171,18 @@ const FeedbackFeed = ({
                   “{item.summary}”
                 </Text>
               </Tooltip>
-              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+              <div className="mt-auto flex min-w-0 overflow-hidden">
                 {visibleTags.length > 0 ? (
                   <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
-                    <TagOutlined style={{ color: token.colorTextTertiary }} />
                     {visibleTags.map((tag) => (
                       <Tooltip key={tag} title={tag}>
                         <Tag
                           style={{
                             maxWidth: 96,
                             marginInlineEnd: 0,
+                            color: token.colorTextSecondary,
+                            backgroundColor: token.colorFillQuaternary,
+                            borderColor: token.colorBorderSecondary,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             verticalAlign: 'bottom',
@@ -186,33 +195,47 @@ const FeedbackFeed = ({
                     ))}
                     {hiddenTags.length > 0 ? (
                       <Tooltip title={hiddenTags.join('、')}>
-                        <Tag style={{ marginInlineEnd: 0 }}>
+                        <Tag
+                          style={{
+                            marginInlineEnd: 0,
+                            color: token.colorTextSecondary,
+                            backgroundColor: token.colorFillQuaternary,
+                            borderColor: token.colorBorderSecondary,
+                          }}
+                        >
                           +{hiddenTags.length}
                         </Tag>
                       </Tooltip>
                     ) : null}
                   </div>
-                ) : null}
-                {item.startedAt ? (
-                  <Space className="shrink-0" size={4}>
-                    <ClockCircleOutlined
-                      style={{ color: token.colorTextTertiary }}
-                    />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {item.startedAt}
-                    </Text>
-                  </Space>
-                ) : null}
+                ) : (
+                  <span className="min-w-0" />
+                )}
               </div>
             </div>
-            <Tag
-              className="shrink-0"
-              color={meta.tagColor}
-              icon={meta.icon}
-              style={{ marginInlineEnd: 0 }}
-            >
-              {item.feedbackType}
-            </Tag>
+            <div className="flex self-stretch shrink-0 flex-col items-end justify-between gap-2">
+              <Tag
+                icon={meta.icon}
+                style={{
+                  marginInlineEnd: 0,
+                  color: meta.tagColor,
+                  backgroundColor: meta.tagBg,
+                  borderColor: meta.tagBorder,
+                }}
+              >
+                {item.feedbackType}
+              </Tag>
+              {item.startedAt ? (
+                <Space className="shrink-0" size={4}>
+                  <ClockCircleOutlined
+                    style={{ color: token.colorTextTertiary }}
+                  />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {item.startedAt}
+                  </Text>
+                </Space>
+              ) : null}
+            </div>
           </button>
         );
       })}

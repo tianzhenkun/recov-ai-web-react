@@ -12,7 +12,11 @@ import {
   unwrapLitigationPage,
 } from '@/services/ruoyi/litigation-process';
 
-import { type DisplayRow, parseFeeResult } from './_shared';
+import {
+  type DisplayRow,
+  parseFeeResult,
+  parseLitigationResult,
+} from './_shared';
 
 /** 设为 true 时页面仅使用本地数据，不请求后端接口。 */
 
@@ -368,13 +372,18 @@ const filterRows = (
   query: LitigationPageQuery,
 ): LitigationRowVO[] =>
   rows.filter((row) => {
+    if (
+      query.debtNumber &&
+      !String(row.debtNumber ?? '').includes(String(query.debtNumber))
+    ) {
+      return false;
+    }
+
     if (query.city && row.city !== query.city) return false;
 
     if (query.organization && row.organization !== query.organization) {
       return false;
     }
-
-    if (query.status && row.status !== query.status) return false;
 
     return true;
   });
@@ -402,6 +411,8 @@ const toDisplayRows = (
 ): DisplayRow[] =>
   rows.map((row) => ({
     ...row,
+
+    _result: parseLitigationResult(row.result),
 
     _fee:
       nodeType === 'FEE_MANAGEMENT' ? parseFeeResult(row.result) : undefined,
@@ -456,6 +467,8 @@ const fetchLitigationPageFromApi = async (
   return {
     rows: page.rows.map((row) => ({
       ...row,
+
+      _result: parseLitigationResult(row.result),
 
       _fee:
         query.nodeType === 'FEE_MANAGEMENT'

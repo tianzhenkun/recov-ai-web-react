@@ -1,4 +1,5 @@
 import type { ColumnsType } from 'antd/es/table';
+import { RECOV_LIST_COLUMN_WIDTH } from '@/pages/recov/components/RecovFilterControls';
 import type { ServiceFeeDetail } from '@/services/ruoyi/settle';
 import { formatAmount } from './_shared';
 
@@ -6,17 +7,13 @@ export const serviceFeeDetailColumns: ColumnsType<ServiceFeeDetail> = [
   {
     title: '资产编号',
     dataIndex: 'debtNumber',
-    minWidth: 130,
-    render: (value: string) => (
-      <span className="rounded border border-gray-100 bg-gray-50 px-2 py-1 font-mono text-[11px] text-gray-500">
-        {value}
-      </span>
-    ),
+    minWidth: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+    render: (value: string) => value,
   },
   {
     title: '所属城市',
     dataIndex: 'city',
-    minWidth: 100,
+    minWidth: RECOV_LIST_COLUMN_WIDTH.city,
     render: (value: string) => (
       <span className="text-xs font-medium text-gray-700">{value}</span>
     ),
@@ -24,7 +21,7 @@ export const serviceFeeDetailColumns: ColumnsType<ServiceFeeDetail> = [
   {
     title: '所属项目',
     dataIndex: 'organization',
-    minWidth: 140,
+    minWidth: RECOV_LIST_COLUMN_WIDTH.organization,
     ellipsis: true,
     render: (value: string) => (
       <span className="text-xs font-medium text-gray-700">{value}</span>

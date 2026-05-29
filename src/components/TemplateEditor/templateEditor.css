@@ -100,6 +100,37 @@
   margin-bottom: 0;
 }
 
+.template-editor-body .ProseMirror ul,
+.template-editor-body .ProseMirror ol {
+  margin: 0 0 12px;
+  padding-left: 24px;
+}
+
+.template-editor-body .ProseMirror li {
+  margin: 4px 0;
+}
+
+.template-editor-body .ProseMirror li p {
+  margin: 0;
+}
+
+.template-editor-body .ProseMirror li ul,
+.template-editor-body .ProseMirror li ol {
+  margin: 4px 0 0;
+}
+
+.template-editor-count {
+  padding: 0 12px 8px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: right;
+}
+
+.template-editor-count-over {
+  color: #ff4d4f;
+}
+
 .template-editor-body .ProseMirror p.is-editor-empty:first-child::before {
   color: #bfbfbf;
   content: attr(data-placeholder);

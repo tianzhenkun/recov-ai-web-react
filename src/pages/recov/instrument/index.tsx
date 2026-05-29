@@ -16,6 +16,7 @@ import {
   SearchOutlined,
   SendOutlined,
   SyncOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
@@ -49,8 +50,14 @@ import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import { useTemplateVariables } from '@/hooks/useTemplateVariables';
 import MetricIcon, {
   type MetricTone,
-  useMetricToneColors,
 } from '@/pages/recov/components/MetricIcon';
+import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_LIST_COLUMN_WIDTH,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+  renderRecovSingleLineText,
+} from '@/pages/recov/components/RecovFilterControls';
 import {
   RecovStatsStrip,
   RecovTableCard,
@@ -96,7 +103,7 @@ type WorkspaceMode = 'preview' | 'edit' | 'add';
 type DebtSelectorMode = 'attach' | 'generate';
 
 type QueryValues = {
-  status?: number;
+  debtNumber?: string;
   city?: string;
   organization?: string;
 };
@@ -144,6 +151,7 @@ const FILING_GROUP_CODES = new Set([
   AUTHORIZATION_GROUP_CODE,
   SUBJECT_STANDING_GROUP_CODE,
 ]);
+const CURRENCY_METRIC_KEYS = new Set(['recovered', 'stageRepaymentAmount']);
 
 const categoryGroupMap: Record<
   Exclude<InstrumentCategory, '催收函件'>,
@@ -162,17 +170,6 @@ const categoryGroupMap: Record<
     displayGroupName: SUBJECT_STANDING_GROUP_NAME,
   },
 };
-
-const statusOptions: { value: number; label: string }[] = [
-  { value: 0, label: '待生成' },
-  { value: 1, label: '生成中' },
-  { value: 2, label: '已生成' },
-  { value: 3, label: '生成失败' },
-  { value: 4, label: '盖章中' },
-  { value: 5, label: '已盖章' },
-  { value: 6, label: '盖章失败' },
-  { value: 8, label: '盖章阻塞' },
-];
 
 const statusMap: Record<number, { label: string; color: string }> = {
   0: { label: '待生成', color: 'default' },
@@ -241,6 +238,8 @@ const formatCompactAmount = (value: unknown) => {
   }
   return formatAmount(amount);
 };
+
+const trimCurrencySymbol = (value: string) => value.replace(/^CN¥|^¥/, '');
 
 const formatDateTime = (value?: string) => {
   if (!value) return '-';
@@ -313,7 +312,7 @@ const buildSealPlaceholderHtml = () =>
   '<p style="text-align:right;margin-top:32px;"><span class="instrument-seal-placeholder" data-seal-placeholder="company_seal" data-seal-code="company_seal" data-width-mm="36" data-height-mm="36" style="display:inline-block;width:36mm;height:36mm;border:1px dashed #cbd5e1;border-radius:4px;"></span></p>';
 
 const buildDefaultSupplementalHtml = (title = '补充材料') =>
-  `<h2 style="text-align:center;">${title}</h2><p>债务人：{{debtorName}}</p><p>债务编号：{{debtNumber}}</p><p></p>${buildSealPlaceholderHtml()}`;
+  `<h2 style="text-align:center;">${title}</h2><p>业主姓名：{{debtorName}}</p><p>资产编号：{{debtNumber}}</p><p></p>${buildSealPlaceholderHtml()}`;
 
 const previewViewerStyle = `
   @page { size: A4; margin: 0; }
@@ -437,7 +436,6 @@ type StatCardProps = {
 };
 
 const StatCard = ({ title, value, tone, icon }: StatCardProps) => {
-  const toneColors = useMetricToneColors(tone);
   const hasTooltip = Boolean(value.tooltip && value.tooltip !== value.primary);
   const valueNode = (
     <span
@@ -450,7 +448,6 @@ const StatCard = ({ title, value, tone, icon }: StatCardProps) => {
         <Text
           strong
           style={{
-            color: toneColors.color,
             cursor: 'inherit',
             fontSize: 22,
             lineHeight: 1.2,
@@ -678,7 +675,7 @@ const InstrumentListPage = () => {
     const timer = window.setInterval(() => {
       void fetchList();
       if (groupVisible) void refreshGroupDetail();
-    }, 3000);
+    }, 6000);
     return () => window.clearInterval(timer);
   }, [fetchList, groupVisible, refreshGroupDetail, tableData]);
 
@@ -687,13 +684,19 @@ const InstrumentListPage = () => {
     [metrics],
   );
 
+  const getMetricTitle = (key: string, fallback: string) =>
+    metricMap.get(key)?.label || fallback;
+
   const getMetricValue = (key: string): StatDisplayValue => {
     const metric = metricMap.get(key);
-    if (key === 'recovered') {
+    if (CURRENCY_METRIC_KEYS.has(key)) {
       const amount = metric?.value ?? 0;
       return {
-        primary: metric?.displayValue || formatCompactAmount(amount),
+        primary: trimCurrencySymbol(
+          metric?.displayValue || formatCompactAmount(amount),
+        ),
         tooltip: formatAmount(amount),
+        unit: metric?.unit || '元',
       };
     }
     return {
@@ -704,28 +707,46 @@ const InstrumentListPage = () => {
 
   const statCards: StatCardProps[] = [
     {
-      title: '文书总数',
-      value: getMetricValue('total'),
+      title: getMetricTitle('genLetter', '已生成催收函件'),
+      value: getMetricValue('genLetter'),
       tone: 'primary',
       icon: <FileTextOutlined />,
     },
     {
-      title: '已盖章',
-      value: getMetricValue('sealed'),
-      tone: 'success',
+      title: getMetricTitle('genLitigation', '已生成起诉材料'),
+      value: getMetricValue('genLitigation'),
+      tone: 'info',
+      icon: <FileSearchOutlined />,
+    },
+    {
+      title: getMetricTitle('genAuthorization', '已生成委托授权材料'),
+      value: getMetricValue('genAuthorization'),
+      tone: 'warning',
       icon: <FileProtectOutlined />,
     },
     {
-      title: '处理中',
-      value: getMetricValue('processing'),
-      tone: 'info',
+      title: getMetricTitle('genSubjectStanding', '已生成主体资格材料'),
+      value: getMetricValue('genSubjectStanding'),
+      tone: 'success',
+      icon: <FileDoneOutlined />,
+    },
+    {
+      title: getMetricTitle('sentLetter', '已发送催收函件'),
+      value: getMetricValue('sentLetter'),
+      tone: 'neutral',
+      icon: <SendOutlined />,
+    },
+    {
+      title: getMetricTitle('litigation', '已经入法诉程序被告数'),
+      value: getMetricValue('litigation'),
+      tone: 'warning',
       icon: <SyncOutlined />,
     },
     {
-      title: '失败/阻塞',
-      value: getMetricValue('failed'),
-      tone: 'warning',
-      icon: <FileDoneOutlined />,
+      title: getMetricTitle('stageRepaymentAmount', '本阶段回款'),
+      value: getMetricValue('stageRepaymentAmount'),
+      tone: 'success',
+      icon: <WalletOutlined />,
     },
   ];
 
@@ -1357,14 +1378,14 @@ const InstrumentListPage = () => {
 
   const groupColumns: any[] = [
     {
-      title: '债务人姓名',
+      title: '业主姓名',
       dataIndex: 'debtorName',
       width: 140,
       fixed: 'left',
       render: (value: unknown) => <Text strong>{toText(value)}</Text>,
     },
     {
-      title: '债务编号',
+      title: '资产编号',
       dataIndex: 'debtNumber',
       width: 170,
       ellipsis: true,
@@ -1426,16 +1447,16 @@ const InstrumentListPage = () => {
     {
       title: '所属城市',
       dataIndex: 'city',
-      width: 140,
+      width: RECOV_LIST_COLUMN_WIDTH.city,
       ellipsis: true,
       render: toText,
     },
     {
       title: '所属项目',
       dataIndex: 'organization',
-      width: 180,
-      ellipsis: true,
-      render: toText,
+      width: RECOV_LIST_COLUMN_WIDTH.organization,
+      ellipsis: { showTitle: false },
+      render: renderRecovSingleLineText,
     },
     {
       title: '更新时间',
@@ -1506,14 +1527,14 @@ const InstrumentListPage = () => {
 
   const debtColumns: any[] = [
     {
-      title: '债务人姓名',
+      title: '业主姓名',
       dataIndex: 'debtorName',
       width: 140,
       fixed: 'left',
       render: (value: unknown) => <Text strong>{toText(value)}</Text>,
     },
     {
-      title: '债务编号',
+      title: '资产编号',
       dataIndex: 'debtNumber',
       width: 170,
       ellipsis: true,
@@ -1543,16 +1564,16 @@ const InstrumentListPage = () => {
     {
       title: '所属城市',
       dataIndex: 'city',
-      width: 140,
+      width: RECOV_LIST_COLUMN_WIDTH.city,
       ellipsis: true,
       render: toText,
     },
     {
       title: '所属项目',
       dataIndex: 'organization',
-      width: 180,
-      ellipsis: true,
-      render: toText,
+      width: RECOV_LIST_COLUMN_WIDTH.organization,
+      ellipsis: { showTitle: false },
+      render: renderRecovSingleLineText,
     },
     {
       title: '操作',
@@ -1761,7 +1782,7 @@ const InstrumentListPage = () => {
                 </Space>
                 <div className="instrument-workspace-meta">
                   <span>
-                    债务编号：
+                    资产编号：
                     {toText(
                       groupDetail?.debtNumber ?? currentGroup?.debtNumber,
                     )}
@@ -2096,9 +2117,9 @@ const InstrumentListPage = () => {
       ) : (
         <div className="recov-list-stack">
           <RecovStatsStrip
-            className="grid"
+            className="instrument-stats-strip grid"
             style={{
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))',
               gap: 10,
             }}
           >
@@ -2140,12 +2161,6 @@ const InstrumentListPage = () => {
                 >
                   批量重试
                 </Button>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => void fetchList()}
-                >
-                  刷新
-                </Button>
               </Space>
             }
           >
@@ -2169,11 +2184,21 @@ const InstrumentListPage = () => {
               />
 
               <Form form={queryForm} layout="inline" onFinish={handleQuery}>
+                <Form.Item name="debtNumber">
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder="资产编号"
+                    style={RECOV_FILTER_CONTROL_STYLE}
+                  />
+                </Form.Item>
                 <Form.Item name="city">
                   <Select
                     allowClear
+                    showSearch
+                    optionFilterProp="label"
                     placeholder="所属城市"
-                    style={{ width: 180 }}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                     options={cityOptions.map((item) => ({
                       label: item,
                       value: item,
@@ -2183,20 +2208,18 @@ const InstrumentListPage = () => {
                 <Form.Item name="organization">
                   <Select
                     allowClear
+                    showSearch
+                    optionFilterProp="label"
                     placeholder="所属项目"
-                    style={{ width: 220 }}
                     options={organizationOptions.map((item) => ({
                       label: item,
                       value: item,
                     }))}
-                  />
-                </Form.Item>
-                <Form.Item name="status">
-                  <Select
-                    allowClear
-                    placeholder="状态"
-                    style={{ width: 160 }}
-                    options={statusOptions}
+                    optionRender={(option) =>
+                      renderRecovSelectOptionLabel(option.label)
+                    }
+                    popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Form.Item>
@@ -2208,7 +2231,12 @@ const InstrumentListPage = () => {
                     >
                       查询
                     </Button>
-                    <Button onClick={handleResetQuery}>重置</Button>
+                    <Button
+                      icon={<ReloadOutlined />}
+                      onClick={handleResetQuery}
+                    >
+                      重置
+                    </Button>
                   </Space>
                 </Form.Item>
               </Form>
@@ -2264,14 +2292,10 @@ const InstrumentListPage = () => {
             }}
           >
             <Form.Item name="debtorName">
-              <Input
-                allowClear
-                placeholder="债务人姓名"
-                style={{ width: 180 }}
-              />
+              <Input allowClear placeholder="业主姓名" style={{ width: 180 }} />
             </Form.Item>
             <Form.Item name="debtNumber">
-              <Input allowClear placeholder="债务编号" style={{ width: 200 }} />
+              <Input allowClear placeholder="资产编号" style={{ width: 200 }} />
             </Form.Item>
             <Form.Item>
               <Space size={8}>

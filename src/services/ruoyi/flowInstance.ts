@@ -108,6 +108,10 @@ export type FlowExecutionTrace = {
   instanceId?: number | string;
   tenantId?: string;
   debtRecordId?: number | string;
+  debtNumber?: number | string;
+  debtorName?: string;
+  city?: string;
+  organization?: string;
   personaId?: number | string;
   templateId?: number | string;
   flowStatus?: number | string;

@@ -455,7 +455,10 @@ const RolePage = () => {
         rowKey={(record) => String(record.roleId)}
         columns={columns}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         request={async (params) => {
           const query = toRoleQuery(params);
           latestQueryRef.current = query;

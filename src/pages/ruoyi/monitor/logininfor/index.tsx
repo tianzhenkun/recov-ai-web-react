@@ -291,7 +291,10 @@ const LoginInfoPage = () => {
         actionRef={actionRef}
         rowKey={(record) => String(record.infoId)}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         columns={columns}
         request={async (params, sorter) => {
           const query = toLoginInfoQuery(

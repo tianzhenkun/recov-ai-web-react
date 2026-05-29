@@ -191,7 +191,10 @@ const OnlinePage = () => {
         actionRef={actionRef}
         rowKey={(record) => String(record.tokenId)}
         search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total: number) => `共 ${total} 条`,
+        }}
         columns={columns}
         request={async (params) => {
           const response = await listOnlineUsers(toOnlineQuery(params));

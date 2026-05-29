@@ -579,7 +579,10 @@ const UserPage = () => {
             rowKey={(record) => String(record.userId)}
             columns={columns}
             search={{ labelWidth: 96 }}
-            pagination={{ defaultPageSize: 10 }}
+            pagination={{
+              defaultPageSize: 10,
+              showTotal: (total: number) => `共 ${total} 条`,
+            }}
             params={{ deptId: selectedDeptId }}
             request={async (params) => {
               const query = toUserQuery({ ...params, deptId: selectedDeptId });

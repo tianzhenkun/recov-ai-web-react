@@ -36,6 +36,7 @@ import {
   Drawer,
   Empty,
   Form,
+  Input,
   List,
   Modal,
   message,
@@ -60,12 +61,29 @@ import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
 import {
+  RECOV_FILTER_CONTROL_STYLE,
+  RECOV_LIST_COLUMN_WIDTH,
+  RECOV_ORGANIZATION_POPUP_WIDTH,
+  renderRecovSelectOptionLabel,
+  renderRecovSingleLineText,
+} from '@/pages/recov/components/RecovFilterControls';
+import {
   RecovListPage,
   RecovListStack,
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
 import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
+import {
+  buildCommunicationDetail,
+  type OwnerCommunicationDetail,
+} from '@/pages/recov/intelligentOutbound/_shared';
+import CommunicationLogModal from '@/pages/recov/intelligentOutbound/CommunicationLogModal';
+import {
+  type AiCallDebtTimeline,
+  getAiCallDebtFeedbackPage,
+  getAiCallDebtTimeline,
+} from '@/pages/recov/intelligentOutbound/service';
 import {
   type DebtAttachmentItem,
   type DebtRecordDetail,
@@ -102,6 +120,7 @@ import { getPersona, type PersonaItem } from '@/services/ruoyi/persona';
 const { Paragraph, Text, Title } = Typography;
 
 type QueryFormValues = {
+  debtNumber?: string;
   city?: string;
   organization?: string;
 };
@@ -109,9 +128,12 @@ type QueryFormValues = {
 type DetailTabKey = 'classification' | 'traits' | 'dialogue' | 'keyword';
 
 const DEFAULT_PAGE_SIZE = 20;
-const TASK_POLLING_INTERVAL = 3000;
-const FLOW_START_POLLING_INTERVAL = 3000;
+const TASK_POLLING_INTERVAL = 6000;
+const FLOW_START_POLLING_INTERVAL = 6000;
+const ANALYSIS_LOOKUP_PAGE_SIZE = 1000;
 const FAILURE_PAGE_SIZE = 10;
+const PIPELINE_PROGRESS_MAX_TRANSIENT_ERRORS = 3;
+const PIPELINE_SETTLED_REFRESH_DELAYS = [1200, 4000];
 
 type UploadState = {
   uploading: boolean;
@@ -184,6 +206,14 @@ type AttachmentPreviewState = {
   fileUrl: string;
   fileName: string;
   previewType?: AttachmentPreviewType;
+  errorMessage?: string;
+  loading?: boolean;
+};
+
+type PersonaOriginInfo = {
+  currentPersonaId: string;
+  initialPersonaId: string;
+  initialPersonaName: string;
 };
 
 type DetailGridField = {
@@ -241,6 +271,109 @@ const renderEllipsisText = (value: unknown, options?: { strong?: boolean }) => {
   );
 };
 
+type FailureMessageTone = 'danger' | 'warning';
+
+const FAILURE_MESSAGE_SCROLL_THRESHOLD = 4;
+const FAILURE_MESSAGE_MAX_HEIGHT = 168;
+const failureLinePrefixPattern = /第\s*\d+\s*行[:：]/;
+
+const splitFailureMessageLines = (value: unknown) => {
+  const text = toText(value).trim();
+  if (!text || text === '-') return ['-'];
+
+  const normalizedText = text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[；;，,]\s*(?=第\s*\d+\s*行[:：])/g, '\n')
+    .replace(/\s+(?=第\s*\d+\s*行[:：])/g, '\n')
+    .replace(/(?=第\s*\d+\s*行[:：])/g, '\n')
+    .replace(/\n{2,}/g, '\n');
+
+  const lines = normalizedText
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return lines.length > 0 ? lines : [text];
+};
+
+const getFailureMessageCount = (lines: string[]) => {
+  const lineErrorCount = lines.filter((line) =>
+    failureLinePrefixPattern.test(line),
+  ).length;
+  return lineErrorCount || lines.length;
+};
+
+const renderImportFailureMessage = (
+  value: unknown,
+  options?: {
+    maxHeight?: number;
+    showCount?: boolean;
+    tone?: FailureMessageTone;
+  },
+) => {
+  const lines = splitFailureMessageLines(value);
+  const content = lines.join('\n');
+  const messageCount = getFailureMessageCount(lines);
+  const shouldScroll = messageCount > FAILURE_MESSAGE_SCROLL_THRESHOLD;
+  const tone = options?.tone || 'danger';
+  const copyable =
+    content !== '-'
+      ? { text: content, tooltips: ['复制原因', '已复制'] }
+      : false;
+  const showCount = options?.showCount !== false && messageCount > 1;
+  const showHeaderCopy = shouldScroll && copyable;
+
+  return (
+    <div style={{ minWidth: 0, width: '100%' }}>
+      {(showCount || showHeaderCopy) && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            marginBottom: 4,
+          }}
+        >
+          {showCount ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              共 {messageCount} 条错误
+            </Text>
+          ) : (
+            <span />
+          )}
+          {showHeaderCopy ? (
+            <Text
+              copyable={copyable}
+              type="secondary"
+              style={{ flex: 'none', fontSize: 12, whiteSpace: 'nowrap' }}
+            >
+              复制原因
+            </Text>
+          ) : null}
+        </div>
+      )}
+      <Paragraph
+        copyable={!shouldScroll ? copyable : false}
+        style={{
+          marginBottom: 0,
+          maxHeight: shouldScroll
+            ? (options?.maxHeight ?? FAILURE_MESSAGE_MAX_HEIGHT)
+            : undefined,
+          overflowY: shouldScroll ? 'auto' : undefined,
+          paddingRight: shouldScroll ? 8 : 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          lineHeight: 1.6,
+        }}
+        type={tone}
+      >
+        {content}
+      </Paragraph>
+    </div>
+  );
+};
+
 const normalizePersonaId = (value: unknown) => {
   if (value === null || value === undefined) return undefined;
   const text = String(value).trim();
@@ -253,6 +386,22 @@ const normalizeFlowId = (value: unknown) => {
   return text ? text : undefined;
 };
 
+const normalizeDebtRecordId = (value: unknown) => {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
+};
+
+const normalizeFlowStartBatchId = (value: unknown) => {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
+};
+
+const isFlowStartFailedRecord = (record: DebtRecordItem) =>
+  String(record.flowStartStatus ?? '').trim() === '3' ||
+  String(record.currentStatus ?? '').trim() === '发起失败';
+
 const getNonEmptyText = (...values: unknown[]) => {
   for (const value of values) {
     if (value === null || value === undefined) continue;
@@ -262,12 +411,100 @@ const getNonEmptyText = (...values: unknown[]) => {
   return '';
 };
 
+const getSemanticAnalysisDebtId = (source: Record<string, unknown>) =>
+  getNonEmptyText(source.debtId, source.debtRecordId, source.recordId);
+
+const hasSemanticArrayValue = (value: unknown) =>
+  Array.isArray(value) && value.filter(Boolean).length > 0;
+
+const isTruthySemanticFlag = (value: unknown) => {
+  if (value === true) return true;
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return text === 'true' || text === '1' || text === 'yes';
+};
+
+const hasInlineCommunicationAnalysis = (record: DebtRecordItem) => {
+  const source = record as Record<string, unknown>;
+  if (
+    [
+      source.hasSemanticAnalysis,
+      source.hasAiCallAnalysis,
+      source.hasAiCallFeedback,
+      source.hasFeedback,
+      source.semanticFeedbackAvailable,
+    ].some(isTruthySemanticFlag)
+  ) {
+    return true;
+  }
+
+  if (
+    [
+      source.feedbackRecordCount,
+      source.semanticFeedbackCount,
+      source.aiCallFeedbackCount,
+    ].some((value) => toNumber(value) > 0)
+  ) {
+    return true;
+  }
+
+  const analysisStatus = getNonEmptyText(
+    source.latestAnalysisStatus,
+    source.analysisStatus,
+  );
+  if (analysisStatus === '2' || analysisStatus === '分析成功') return true;
+
+  return Boolean(
+    getNonEmptyText(
+      source.callSummary,
+      source.latestSummary,
+      source.summary,
+      source.latestFeedbackType,
+      source.feedbackType,
+    ) ||
+      [
+        source.latestTags,
+        source.tags,
+        source.latestKeyPoints,
+        source.keyPoints,
+      ].some(hasSemanticArrayValue),
+  );
+};
+
+const hasCommunicationAnalysis = (
+  record: DebtRecordItem,
+  feedbackDebtIds: Set<string>,
+) => {
+  const debtRecordId = normalizeDebtRecordId(record.id);
+  return (
+    hasInlineCommunicationAnalysis(record) ||
+    Boolean(debtRecordId && feedbackDebtIds.has(debtRecordId))
+  );
+};
+
+const getPersonaDisplayName = (
+  persona?: PersonaItem | null,
+  fallbackId?: string,
+) => getNonEmptyText(persona?.personaName) || `画像 ID ${fallbackId || '-'}`;
+
+const ensurePipelineProgressTaskId = (
+  data: ImportPipelineProgressResult,
+  fallbackTaskId?: string | number,
+): ImportPipelineProgressResult => {
+  const taskId = getNonEmptyText(data.taskId, fallbackTaskId);
+  if (!taskId || data.taskId === taskId) return data;
+  return { ...data, taskId };
+};
+
 const toFlowBatchStartFilter = (
   values: QueryFormValues | DebtRecordQuery,
 ): FlowBatchStartFilter => {
   const filter: FlowBatchStartFilter = {};
+  const debtNumber = getNonEmptyText(values.debtNumber);
   const city = getNonEmptyText(values.city);
   const organization = getNonEmptyText(values.organization);
+  if (debtNumber) filter.debtNumber = debtNumber;
   if (city) filter.city = city;
   if (organization) filter.organization = organization;
   return filter;
@@ -280,6 +517,7 @@ const isSameFlowBatchStartFilter = (
   const leftFilter = toFlowBatchStartFilter(left);
   const rightFilter = toFlowBatchStartFilter(right);
   return (
+    leftFilter.debtNumber === rightFilter.debtNumber &&
     leftFilter.city === rightFilter.city &&
     leftFilter.organization === rightFilter.organization
   );
@@ -351,14 +589,69 @@ const getDebtorAgeText = (data?: DebtRecordDetail | null) => {
   return `${ageValue} 岁`;
 };
 
+const currentStatusTagColors: Record<string, string> = {
+  未开始: 'default',
+  发起中: 'processing',
+  已发起: 'processing',
+  待触发: 'warning',
+  执行中: 'processing',
+  已完成: 'success',
+  节点失败: 'error',
+  发起失败: 'error',
+  人工终止: 'warning',
+  已还款终止: 'success',
+  条件不满足终止: 'default',
+  未知状态: 'default',
+};
+
+const currentStatusDisplayLabels: Record<string, string> = {
+  节点失败: '流程异常',
+};
+
+const getCurrentStatusDisplayText = (status: unknown) => {
+  const text = String(status ?? '').trim();
+  if (!text) return '-';
+  return currentStatusDisplayLabels[text] || text;
+};
+
 const currentStatusTagColor = (status: unknown) => {
   const text = String(status ?? '').trim();
   if (!text) return undefined;
+  if (currentStatusTagColors[text]) return currentStatusTagColors[text];
   if (/(完成|成功|已结清|已缴清)/.test(text)) return 'success';
   if (/(失败|异常|逾期|拒绝)/.test(text)) return 'error';
-  if (/(进行|处理中|外呼中|执行中)/.test(text)) return 'processing';
-  if (/(暂停|停止|待处理|未开始)/.test(text)) return 'warning';
+  if (/(进行|处理中|外呼中|执行中|发起中|已发起)/.test(text))
+    return 'processing';
+  if (/(暂停|停止|待处理|未开始|待触发|终止)/.test(text)) return 'warning';
   return 'default';
+};
+
+const renderCurrentStatusTag = (
+  status: unknown,
+  currentStatusReason?: unknown,
+  flowStartErrorMessage?: unknown,
+) => {
+  const tag = (
+    <Tag color={currentStatusTagColor(status)}>
+      {getCurrentStatusDisplayText(status)}
+    </Tag>
+  );
+  const statusText = String(status ?? '').trim();
+  const errorText =
+    getNonEmptyText(currentStatusReason) ||
+    (statusText === '发起失败' ? getNonEmptyText(flowStartErrorMessage) : '');
+
+  if (errorText) {
+    return (
+      <Tooltip
+        title={<span style={{ whiteSpace: 'pre-wrap' }}>{errorText}</span>}
+      >
+        {tag}
+      </Tooltip>
+    );
+  }
+
+  return tag;
 };
 
 const formatElapsed = (startTs: number) => {
@@ -645,8 +938,16 @@ const getAttachmentName = (record: DebtAttachmentItem) => {
   return record.ossId ? `附件_${record.ossId}` : '未命名附件';
 };
 
+const normalizeAttachmentUrl = (url: string) => {
+  if (!url) return '';
+  return url.replace(
+    /^http:\/\/81\.68\.166\.109:9000(?=\/)/,
+    'https://oss.lingchen-ai.com',
+  );
+};
+
 const getAttachmentUrl = (record: DebtAttachmentItem) =>
-  getNonEmptyText(record.url, record.fileUrl);
+  normalizeAttachmentUrl(getNonEmptyText(record.url, record.fileUrl));
 
 const getAttachmentDownloadName = (record: DebtAttachmentItem) => {
   const name = getAttachmentName(record);
@@ -659,20 +960,33 @@ const getAttachmentDownloadName = (record: DebtAttachmentItem) => {
 const renderFailureReason = (
   value: unknown,
   type: 'danger' | 'warning' = 'danger',
-) => (
-  <Paragraph
-    copyable={{ text: toText(value), tooltips: ['复制原因', '已复制'] }}
-    ellipsis={{
-      expandable: 'collapsible',
-      rows: 2,
-      symbol: (expanded) => (expanded ? '收起' : '展开'),
-    }}
-    style={{ marginBottom: 0 }}
-    type={type}
-  >
-    {toText(value)}
-  </Paragraph>
-);
+) => {
+  const lines = splitFailureMessageLines(value);
+  const content = lines.join('\n');
+
+  return (
+    <Paragraph
+      copyable={
+        content !== '-'
+          ? { text: content, tooltips: ['复制原因', '已复制'] }
+          : false
+      }
+      ellipsis={{
+        expandable: 'collapsible',
+        rows: 2,
+        symbol: (expanded) => (expanded ? '收起' : '展开'),
+      }}
+      style={{
+        marginBottom: 0,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      }}
+      type={type}
+    >
+      {content}
+    </Paragraph>
+  );
+};
 
 const DatelligencePage = () => {
   const [form] = Form.useForm<QueryFormValues>();
@@ -708,10 +1022,21 @@ const DatelligencePage = () => {
   const [personaOpen, setPersonaOpen] = useState(false);
   const [personaLoading, setPersonaLoading] = useState(false);
   const [personaData, setPersonaData] = useState<PersonaItem | null>(null);
+  const [personaOriginInfo, setPersonaOriginInfo] =
+    useState<PersonaOriginInfo | null>(null);
   const [personaActiveTab, setPersonaActiveTab] =
     useState<DetailTabKey>('classification');
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceInstanceId, setTraceInstanceId] = useState<string>('');
+  const [flowStartFailureOpen, setFlowStartFailureOpen] = useState(false);
+  const [flowStartFailureRecord, setFlowStartFailureRecord] =
+    useState<DebtRecordItem | null>(null);
+  const [communicationLogOpen, setCommunicationLogOpen] = useState(false);
+  const [communicationLogLoading, setCommunicationLogLoading] = useState(false);
+  const [communicationLogDetail, setCommunicationLogDetail] =
+    useState<OwnerCommunicationDetail | null>(null);
+  const [communicationAnalysisDebtIds, setCommunicationAnalysisDebtIds] =
+    useState<Set<string>>(new Set());
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
@@ -806,9 +1131,11 @@ const DatelligencePage = () => {
   const pipelinePollingTimerRef = useRef<number | null>(null);
   const outboundFlowPollingTimerRef = useRef<number | null>(null);
   const parseElapsedTimerRef = useRef<number | null>(null);
+  const pipelineDelayedRefreshTimersRef = useRef<number[]>([]);
   const pipelineTerminalNotifiedRef = useRef<Record<string, string>>({});
   const pipelineDataRefreshMarkersRef = useRef<Record<string, true>>({});
   const pipelineProgressSeqRef = useRef(0);
+  const pipelineProgressErrorCountRef = useRef(0);
   const outboundFlowProgressSeqRef = useRef(0);
   const retryingPipelineTaskRef = useRef(false);
 
@@ -820,18 +1147,50 @@ const DatelligencePage = () => {
     requestSeqRef.current += 1;
     const seq = requestSeqRef.current;
     setLoading(true);
+    setCommunicationAnalysisDebtIds(new Set());
     try {
       const res = await getDebtRecordPage(params);
       if (seq !== requestSeqRef.current) return;
       const data = res.data ?? {};
       const page = data.page ?? {};
-      setRecordList(page.rows ?? []);
+      const rows = page.rows ?? [];
+      const inlineAnalysisDebtIds = new Set(
+        rows
+          .filter(hasInlineCommunicationAnalysis)
+          .map((record) => normalizeDebtRecordId(record.id))
+          .filter(Boolean) as string[],
+      );
+
+      setRecordList(rows);
       setRecordTotal(Number(page.total) || 0);
       setStats(data.stats ?? {});
+      setCommunicationAnalysisDebtIds(inlineAnalysisDebtIds);
+
+      try {
+        const feedbackRes = await getAiCallDebtFeedbackPage({
+          pageNum: 1,
+          pageSize: ANALYSIS_LOOKUP_PAGE_SIZE,
+          analysisStatus: '2',
+        });
+        if (seq !== requestSeqRef.current) return;
+        const feedbackDebtIds = new Set(inlineAnalysisDebtIds);
+        for (const item of feedbackRes.rows || []) {
+          const debtId = getSemanticAnalysisDebtId(
+            item as Record<string, unknown>,
+          );
+          if (debtId) feedbackDebtIds.add(debtId);
+        }
+        setCommunicationAnalysisDebtIds(feedbackDebtIds);
+      } catch {
+        if (seq === requestSeqRef.current) {
+          setCommunicationAnalysisDebtIds(inlineAnalysisDebtIds);
+        }
+      }
     } catch {
       if (seq === requestSeqRef.current) {
         setRecordList([]);
         setRecordTotal(0);
+        setCommunicationAnalysisDebtIds(new Set());
       }
     } finally {
       if (seq === requestSeqRef.current) {
@@ -877,10 +1236,29 @@ const DatelligencePage = () => {
     }
   }, []);
 
+  const clearPipelineDelayedRefreshTimers = useCallback(() => {
+    for (const timer of pipelineDelayedRefreshTimersRef.current) {
+      window.clearTimeout(timer);
+    }
+    pipelineDelayedRefreshTimersRef.current = [];
+  }, []);
+
   const refreshAll = useCallback(() => {
     void loadFilterOptions().catch(() => undefined);
     void fetchDebtors(queryRef.current);
   }, [fetchDebtors, loadFilterOptions]);
+
+  const schedulePipelineSettledRefresh = useCallback(() => {
+    clearPipelineDelayedRefreshTimers();
+    refreshAll();
+
+    pipelineDelayedRefreshTimersRef.current =
+      PIPELINE_SETTLED_REFRESH_DELAYS.map((delay) =>
+        window.setTimeout(() => {
+          refreshAll();
+        }, delay),
+      );
+  }, [clearPipelineDelayedRefreshTimers, refreshAll]);
 
   const pollOutboundFlowProgress = useCallback(
     async (batchId: string | number, options?: { silent?: boolean }) => {
@@ -938,6 +1316,7 @@ const DatelligencePage = () => {
     (data: ImportPipelineProgressResult) => {
       const taskId = String(data.taskId || '');
       if (!taskId) return;
+      const pipelineTerminal = isPipelineTerminal(data);
 
       const markers: string[] = [];
       for (const taskType of pipelineListRefreshTaskTypes) {
@@ -947,7 +1326,7 @@ const DatelligencePage = () => {
         }
       }
 
-      if (isPipelineTerminal(data)) {
+      if (pipelineTerminal) {
         markers.push(`${taskId}:pipeline:${data.status || 'terminal'}`);
       }
 
@@ -959,9 +1338,13 @@ const DatelligencePage = () => {
       for (const marker of newMarkers) {
         pipelineDataRefreshMarkersRef.current[marker] = true;
       }
+      if (pipelineTerminal) {
+        schedulePipelineSettledRefresh();
+        return;
+      }
       refreshAll();
     },
-    [refreshAll],
+    [refreshAll, schedulePipelineSettledRefresh],
   );
 
   useEffect(() => {
@@ -974,8 +1357,14 @@ const DatelligencePage = () => {
       stopPipelinePolling();
       stopParseElapsedTimer();
       stopOutboundFlowPolling();
+      clearPipelineDelayedRefreshTimers();
     },
-    [stopOutboundFlowPolling, stopParseElapsedTimer, stopPipelinePolling],
+    [
+      clearPipelineDelayedRefreshTimers,
+      stopOutboundFlowPolling,
+      stopParseElapsedTimer,
+      stopPipelinePolling,
+    ],
   );
 
   const statCards = useMemo(
@@ -1118,9 +1507,6 @@ const DatelligencePage = () => {
     if (hasLegacyImportFailure) {
       return '导入链路存在失败，请处理后再开启外呼';
     }
-    if (pipelineStatus !== 'success' && pipelineStatus !== 'partial_success') {
-      return '导入链路状态未确认，请刷新后重试';
-    }
     return '';
   })();
   const canStartOutbound = !outboundDisabledReason;
@@ -1133,6 +1519,11 @@ const DatelligencePage = () => {
 
   const importTaskDescription = useMemo(() => {
     if (pipelineStatus) {
+      if (pipelineStatus === 'failed' || pipelineStatus === 'partial_failed') {
+        return (
+          pipelineErrorMessage || pipelineStatusDescriptionText[pipelineStatus]
+        );
+      }
       return pipelineStatusDescriptionText[pipelineStatus];
     }
 
@@ -1275,6 +1666,7 @@ const DatelligencePage = () => {
     applyQuery({
       ...query,
       pageNum: 1,
+      debtNumber: values.debtNumber?.trim() || undefined,
       city: values.city,
       organization: values.organization,
     });
@@ -1413,6 +1805,7 @@ const DatelligencePage = () => {
 
   const applyPipelineProgress = useCallback(
     (data: ImportPipelineProgressResult) => {
+      pipelineProgressErrorCountRef.current = 0;
       const taskId = String(data.taskId || '');
       const importTask = findPipelineSubTask(data, 'debtImport');
       const parseTask = findPipelineSubTask(data, 'assetParse');
@@ -1573,13 +1966,19 @@ const DatelligencePage = () => {
   );
 
   const pollPipelineProgress = useCallback(
-    async (taskId: string | number, options?: { silent?: boolean }) => {
+    async (
+      taskId: string | number,
+      options?: { silent?: boolean; tolerateTransientError?: boolean },
+    ) => {
       pipelineProgressSeqRef.current += 1;
       const seq = pipelineProgressSeqRef.current;
+      const normalizedTaskId = String(taskId || '');
       try {
         const res = await getAssetPackagePipelineProgress(taskId);
         if (seq !== pipelineProgressSeqRef.current) return;
-        const data = res.data;
+        const data = res.data
+          ? ensurePipelineProgressTaskId(res.data, normalizedTaskId)
+          : undefined;
         if (!data) return;
         applyPipelineProgress(data);
         if (isPipelineTerminal(data)) {
@@ -1590,10 +1989,32 @@ const DatelligencePage = () => {
         }
       } catch {
         if (seq !== pipelineProgressSeqRef.current) return;
+        if (options?.tolerateTransientError) {
+          pipelineProgressErrorCountRef.current += 1;
+          if (
+            pipelineProgressErrorCountRef.current <
+            PIPELINE_PROGRESS_MAX_TRANSIENT_ERRORS
+          ) {
+            setPipelinePhase('正在确认导入任务状态');
+            setImportStageState((prev) => ({
+              ...prev,
+              processing: true,
+              failed: false,
+              phase: '正在确认导入任务状态',
+            }));
+            return;
+          }
+        }
+        pipelineProgressErrorCountRef.current = 0;
         stopPipelinePolling();
         stopParseElapsedTimer();
+        setPipelineTaskId('');
         setPipelineStatus('');
+        setPipelinePhase('');
         setPipelineErrorMessage('查询导入进度失败，请刷新页面重试');
+        setPipelineSubTasks([]);
+        setPipelineTiming({ startedAt: 0, finishedAt: 0 });
+        setAssetParseUnmatchedSummary({ taskId: '', total: 0 });
         setImportStageState((prev) => ({
           ...prev,
           processing: false,
@@ -1604,6 +2025,14 @@ const DatelligencePage = () => {
           ...prev,
           parsing: false,
           failed: false,
+          rootTaskId: '',
+          failedCount: 0,
+        }));
+        setPersonaState((prev) => ({
+          ...prev,
+          processing: false,
+          failed: false,
+          failedCount: 0,
         }));
       }
     },
@@ -1627,6 +2056,8 @@ const DatelligencePage = () => {
       const normalizedTaskId = String(taskId);
       if (!normalizedTaskId) return;
       stopPipelinePolling();
+      clearPipelineDelayedRefreshTimers();
+      pipelineProgressErrorCountRef.current = 0;
       setPipelineTaskId(normalizedTaskId);
       setPipelineStatus(options?.initialStatus || 'importing');
       setPipelinePhase(options?.initialPhase || '等待导入');
@@ -1662,12 +2093,21 @@ const DatelligencePage = () => {
         succeeded: 0,
         failedCount: 0,
       }));
-      void pollPipelineProgress(normalizedTaskId, options);
+      void pollPipelineProgress(normalizedTaskId, {
+        ...options,
+        tolerateTransientError: true,
+      });
       pipelinePollingTimerRef.current = window.setInterval(() => {
-        void pollPipelineProgress(normalizedTaskId);
+        void pollPipelineProgress(normalizedTaskId, {
+          tolerateTransientError: true,
+        });
       }, TASK_POLLING_INTERVAL);
     },
-    [pollPipelineProgress, stopPipelinePolling],
+    [
+      clearPipelineDelayedRefreshTimers,
+      pollPipelineProgress,
+      stopPipelinePolling,
+    ],
   );
 
   const openTaskDetail = useCallback(() => {
@@ -1676,18 +2116,34 @@ const DatelligencePage = () => {
     if (!taskId) return;
 
     setTaskDetailRefreshing(true);
-    void pollPipelineProgress(taskId, { silent: true }).finally(() => {
+    void pollPipelineProgress(taskId, {
+      silent: true,
+      tolerateTransientError: isPipelineBusyStatus || importTaskProcessing,
+    }).finally(() => {
       setTaskDetailRefreshing(false);
     });
-  }, [pipelineTaskId, pollPipelineProgress]);
+  }, [
+    importTaskProcessing,
+    isPipelineBusyStatus,
+    pipelineTaskId,
+    pollPipelineProgress,
+  ]);
 
   const closeTaskDetail = useCallback(() => {
     setTaskDetailOpen(false);
     const taskId = String(pipelineTaskId || '');
     if (!taskId) return;
 
-    void pollPipelineProgress(taskId, { silent: true });
-  }, [pipelineTaskId, pollPipelineProgress]);
+    void pollPipelineProgress(taskId, {
+      silent: true,
+      tolerateTransientError: isPipelineBusyStatus || importTaskProcessing,
+    });
+  }, [
+    importTaskProcessing,
+    isPipelineBusyStatus,
+    pipelineTaskId,
+    pollPipelineProgress,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -1891,15 +2347,128 @@ const DatelligencePage = () => {
     setPersonaLoading(true);
     setPersonaActiveTab('classification');
     setPersonaData(null);
+    setPersonaOriginInfo(null);
+    const initialPersonaId = normalizePersonaId(record.initialPersonaId);
+    const shouldShowInitialPersona =
+      Boolean(initialPersonaId) && initialPersonaId !== personaId;
     try {
-      const res = await getPersona(personaId);
-      setPersonaData(res.data ?? null);
+      const [currentResult, initialResult] = await Promise.allSettled([
+        getPersona(personaId),
+        shouldShowInitialPersona && initialPersonaId
+          ? getPersona(initialPersonaId)
+          : Promise.resolve(null),
+      ] as const);
+
+      if (currentResult.status !== 'fulfilled') {
+        throw currentResult.reason;
+      }
+
+      setPersonaData(currentResult.value.data ?? null);
+      if (shouldShowInitialPersona && initialPersonaId) {
+        const initialPersona =
+          initialResult.status === 'fulfilled'
+            ? initialResult.value?.data
+            : null;
+        setPersonaOriginInfo({
+          currentPersonaId: personaId,
+          initialPersonaId,
+          initialPersonaName: getPersonaDisplayName(
+            initialPersona,
+            initialPersonaId,
+          ),
+        });
+      }
     } catch {
       setPersonaOpen(false);
     } finally {
       setPersonaLoading(false);
     }
   };
+
+  const openCommunicationAnalysis = useCallback(
+    async (record: DebtRecordItem) => {
+      const debtRecordId = normalizeDebtRecordId(record.id);
+      if (!debtRecordId) {
+        messageApi.warning('债务记录 ID 为空，无法查看语义分析');
+        return;
+      }
+
+      const fallbackTimeline: AiCallDebtTimeline = {
+        debtId: debtRecordId,
+        debtorName: getNonEmptyText(record.debtorName, '未知业主'),
+        debtorPhone: getNonEmptyText(record.debtorPhone),
+        organization: getNonEmptyText(record.organization, '未归属项目'),
+        callSummary: '暂无语义分析数据',
+        records: [],
+      };
+
+      setCommunicationLogOpen(true);
+      setCommunicationLogLoading(true);
+      setCommunicationLogDetail(null);
+      try {
+        const res = await getAiCallDebtTimeline(debtRecordId);
+        const data = res.data || {};
+        const timeline: AiCallDebtTimeline = {
+          debtId: debtRecordId,
+          debtorName: getNonEmptyText(
+            data.debtorName,
+            record.debtorName,
+            '未知业主',
+          ),
+          debtorPhone: getNonEmptyText(data.debtorPhone, record.debtorPhone),
+          organization: getNonEmptyText(
+            data.organization,
+            record.organization,
+            '未归属项目',
+          ),
+          callSummary: getNonEmptyText(
+            data.callSummary,
+            fallbackTimeline.callSummary,
+          ),
+          records: Array.isArray(data.records) ? data.records : [],
+        };
+        setCommunicationLogDetail(
+          buildCommunicationDetail(timeline, null, timeline.callSummary),
+        );
+      } catch {
+        messageApi.error('加载语义分析失败');
+        setCommunicationLogDetail(
+          buildCommunicationDetail(
+            fallbackTimeline,
+            null,
+            fallbackTimeline.callSummary,
+          ),
+        );
+      } finally {
+        setCommunicationLogLoading(false);
+      }
+    },
+    [messageApi],
+  );
+
+  const openFlowTrace = useCallback(
+    (record: DebtRecordItem) => {
+      const flowId = normalizeFlowId(record.flowId);
+      if (flowId) {
+        setFlowStartFailureOpen(false);
+        setFlowStartFailureRecord(null);
+        setTraceInstanceId(flowId);
+        setTraceOpen(true);
+        return;
+      }
+
+      if (isFlowStartFailedRecord(record)) {
+        setTraceOpen(false);
+        setTraceInstanceId('');
+        setFlowStartFailureRecord(record);
+        setFlowStartFailureOpen(true);
+        return;
+      }
+
+      messageApi.warning('当前债务暂无流程实例');
+    },
+    [messageApi],
+  );
 
   const loadFailureDetails = useCallback(
     async (
@@ -2036,10 +2605,11 @@ const DatelligencePage = () => {
     }
 
     const filter = toFlowBatchStartFilter(queryRef.current);
-    const hasEmptyFilter = !filter.city && !filter.organization;
+    const hasEmptyFilter =
+      !filter.debtNumber && !filter.city && !filter.organization;
 
     Modal.confirm({
-      title: hasEmptyFilter ? '确认发起全部范围流程' : '确认发起催收流程',
+      title: '确认发起催收流程',
       content: (
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
@@ -2050,14 +2620,9 @@ const DatelligencePage = () => {
           </div>
           <Text type={hasEmptyFilter ? 'danger' : 'secondary'}>
             {hasEmptyFilter
-              ? '当前未设置城市或所属项目筛选，将对当前权限范围内全部债务尝试发起催收流程。请确认这是预期操作。'
+              ? '未设置城市或项目筛选，将按当前权限范围发起催收流程。'
               : '将对当前筛选条件发起催收流程。已发起或正在发起的债务会自动跳过。'}
           </Text>
-          <Alert
-            showIcon
-            type="warning"
-            title="发起成功后会创建催收流程实例，后续进度可在流程管理中查看。"
-          />
         </div>
       ),
       okText: '确认发起',
@@ -2196,21 +2761,22 @@ const DatelligencePage = () => {
       {
         title: '资产编号',
         dataIndex: 'debtNumber',
-        width: 150,
-        render: toText,
+        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '所属城市',
         dataIndex: 'city',
-        width: 120,
+        width: RECOV_LIST_COLUMN_WIDTH.city,
         render: toText,
       },
       {
         title: '所属项目',
         dataIndex: 'organization',
-        width: 180,
-        ellipsis: true,
-        render: (value) => renderEllipsisText(value),
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        ellipsis: { showTitle: false },
+        render: renderRecovSingleLineText,
       },
       {
         title: '业主姓名',
@@ -2238,9 +2804,12 @@ const DatelligencePage = () => {
         dataIndex: 'currentStatus',
         width: 130,
         align: 'center',
-        render: (value) => (
-          <Tag color={currentStatusTagColor(value)}>{toText(value)}</Tag>
-        ),
+        render: (value, record) =>
+          renderCurrentStatusTag(
+            value,
+            record.currentStatusReason,
+            record.flowStartErrorMessage,
+          ),
       },
       {
         title: '逾期天数',
@@ -2262,12 +2831,12 @@ const DatelligencePage = () => {
       {
         title: '操作',
         key: 'action',
-        width: 136,
+        width: 168,
         fixed: 'right',
         align: 'center',
         render: (_, record) => (
           <TableActions
-            maxVisible={3}
+            maxVisible={4}
             actions={[
               ...(normalizePersonaId(record.personaId)
                 ? [
@@ -2281,21 +2850,26 @@ const DatelligencePage = () => {
                     },
                   ]
                 : []),
-              ...(normalizeFlowId(record.flowId)
+              ...(hasCommunicationAnalysis(record, communicationAnalysisDebtIds)
                 ? [
                     {
                       key: 'analysis',
                       label: '分析结果',
                       icon: <BarChartOutlined />,
                       onClick: () => {
-                        const flowId = normalizeFlowId(record.flowId);
-                        if (!flowId) {
-                          messageApi.warning('当前债务暂无流程实例');
-                          return;
-                        }
-                        setTraceInstanceId(flowId);
-                        setTraceOpen(true);
+                        void openCommunicationAnalysis(record);
                       },
+                    },
+                  ]
+                : []),
+              ...(normalizeFlowId(record.flowId) ||
+              isFlowStartFailedRecord(record)
+                ? [
+                    {
+                      key: 'flow-trace',
+                      label: '流程详情',
+                      icon: <ProjectOutlined />,
+                      onClick: () => openFlowTrace(record),
                     },
                   ]
                 : []),
@@ -2312,7 +2886,7 @@ const DatelligencePage = () => {
         ),
       },
     ],
-    [messageApi],
+    [communicationAnalysisDebtIds, openCommunicationAnalysis, openFlowTrace],
   );
 
   const getAttachmentVisual = (kind: AttachmentFileKind) => {
@@ -2388,6 +2962,8 @@ const DatelligencePage = () => {
       fileUrl,
       fileName: getAttachmentName(record),
       previewType: kind === 'image' ? 'image' : 'embed',
+      loading: kind === 'image',
+      errorMessage: undefined,
     });
   };
 
@@ -2559,10 +3135,7 @@ const DatelligencePage = () => {
         : []
       : [
           renderFailureInlineMetaItem('所属项目', toText(record.organization)),
-          renderFailureInlineMetaItem(
-            '资产编号',
-            <Text code>{toText(record.debtNumber)}</Text>,
-          ),
+          renderFailureInlineMetaItem('资产编号', toText(record.debtNumber)),
         ];
     const reasonTitle = isUnmatchedStage ? '未匹配原因' : '失败原因';
     const reasonType = isUnmatchedStage ? 'warning' : 'danger';
@@ -2708,6 +3281,24 @@ const DatelligencePage = () => {
       (status === 'failed' || isIgnoredFailure);
     const canOpenUnmatched =
       task.type === 'assetParse' && hasAssetParseUnmatched;
+    const taskErrorTone =
+      task.errorMessage && isIgnoredFailure
+        ? 'warning'
+        : task.errorMessage && status === 'failed'
+          ? 'danger'
+          : undefined;
+    const taskErrorPanelStyle =
+      taskErrorTone === 'warning'
+        ? {
+            border: `1px solid ${token.colorWarningBorder}`,
+            background: token.colorWarningBg,
+          }
+        : taskErrorTone === 'danger'
+          ? {
+              border: `1px solid ${token.colorErrorBorder}`,
+              background: token.colorErrorBg,
+            }
+          : undefined;
     const title =
       task.name ||
       (task.type ? pipelineTaskFallbackName[task.type] : '') ||
@@ -2829,10 +3420,19 @@ const DatelligencePage = () => {
                 </Text>
               </Space>
             )}
-            {task.errorMessage && isIgnoredFailure ? (
-              <Text type="warning">{task.errorMessage}</Text>
-            ) : task.errorMessage && status === 'failed' ? (
-              <Text type="danger">{task.errorMessage}</Text>
+            {task.errorMessage && taskErrorTone && taskErrorPanelStyle ? (
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: token.borderRadiusLG,
+                  ...taskErrorPanelStyle,
+                }}
+              >
+                {renderImportFailureMessage(task.errorMessage, {
+                  maxHeight: 152,
+                  tone: taskErrorTone,
+                })}
+              </div>
             ) : null}
           </div>
         </div>
@@ -2894,7 +3494,11 @@ const DatelligencePage = () => {
         <RecovTableCard title="债务记录明细">
           <Form
             form={form}
-            initialValues={{ city: undefined, organization: undefined }}
+            initialValues={{
+              debtNumber: undefined,
+              city: undefined,
+              organization: undefined,
+            }}
             className="recov-table-toolbar"
           >
             <div
@@ -2907,6 +3511,14 @@ const DatelligencePage = () => {
               }}
             >
               <Space wrap size={12}>
+                <Form.Item name="debtNumber" noStyle>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder="资产编号"
+                    style={RECOV_FILTER_CONTROL_STYLE}
+                  />
+                </Form.Item>
                 <Form.Item name="city" noStyle>
                   <Select
                     allowClear
@@ -2914,7 +3526,7 @@ const DatelligencePage = () => {
                     loading={filterLoading}
                     optionFilterProp="label"
                     placeholder="选择所属城市"
-                    style={{ width: 180 }}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                     options={cityOptions.map((city) => ({
                       label: city,
                       value: city,
@@ -2928,11 +3540,15 @@ const DatelligencePage = () => {
                     loading={filterLoading}
                     optionFilterProp="label"
                     placeholder="选择所属项目"
-                    style={{ width: 220 }}
                     options={projectOptions.map((project) => ({
                       label: project,
                       value: project,
                     }))}
+                    optionRender={(option) =>
+                      renderRecovSelectOptionLabel(option.label)
+                    }
+                    popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+                    style={RECOV_FILTER_CONTROL_STYLE}
                   />
                 </Form.Item>
                 <Button
@@ -2986,8 +3602,7 @@ const DatelligencePage = () => {
               pageSize: query.pageSize || DEFAULT_PAGE_SIZE,
               total: recordTotal,
               showSizeChanger: true,
-              showTotal: (total, range) =>
-                `第 ${range[0]}-${range[1]} 条/总共 ${total} 条`,
+              showTotal: (total) => `共 ${total} 条`,
               onChange: (pageNum, pageSize) => {
                 applyQuery({
                   ...query,
@@ -3146,7 +3761,10 @@ const DatelligencePage = () => {
               message="导入失败"
               description={
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <Text>{uploadState.errorMsg}</Text>
+                  {renderImportFailureMessage(uploadState.errorMsg, {
+                    maxHeight: 180,
+                    tone: 'danger',
+                  })}
                   <Progress
                     percent={normalizeProgress(uploadState.percent)}
                     status="exception"
@@ -3342,10 +3960,6 @@ const DatelligencePage = () => {
               {renderDetailSection('债务信息', [
                 { label: '资产编号', content: toText(detailData.debtNumber) },
                 {
-                  label: '当前状态',
-                  content: toText(detailData.currentStatus),
-                },
-                {
                   label: '逾期金额',
                   content: formatCurrency(detailData.debtAmount),
                 },
@@ -3435,17 +4049,43 @@ const DatelligencePage = () => {
       >
         {attachmentPreview.fileUrl ? (
           attachmentPreview.previewType === 'image' ? (
-            <img
-              alt={attachmentPreview.fileName}
-              src={attachmentPreview.fileUrl}
-              style={{
-                display: 'block',
-                maxHeight: '70vh',
-                maxWidth: '100%',
-                margin: '0 auto',
-                objectFit: 'contain',
-              }}
-            />
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {attachmentPreview.errorMessage ? (
+                <Alert
+                  showIcon
+                  type="error"
+                  message={attachmentPreview.errorMessage}
+                />
+              ) : null}
+              <Spin spinning={Boolean(attachmentPreview.loading)}>
+                <img
+                  alt={attachmentPreview.fileName}
+                  src={attachmentPreview.fileUrl}
+                  onLoad={() =>
+                    setAttachmentPreview((prev) => ({
+                      ...prev,
+                      loading: false,
+                      errorMessage: undefined,
+                    }))
+                  }
+                  onError={() =>
+                    setAttachmentPreview((prev) => ({
+                      ...prev,
+                      loading: false,
+                      errorMessage:
+                        '图片加载失败，请点击“新窗口打开”查看原始文件，或下载后查看。',
+                    }))
+                  }
+                  style={{
+                    display: 'block',
+                    maxHeight: '70vh',
+                    maxWidth: '100%',
+                    margin: '0 auto',
+                    objectFit: 'contain',
+                  }}
+                />
+              </Spin>
+            </Space>
           ) : (
             <object
               data={attachmentPreview.fileUrl}
@@ -3493,6 +4133,16 @@ const DatelligencePage = () => {
                   {personaData.priority && (
                     <Text type="secondary">优先级：{personaData.priority}</Text>
                   )}
+                  {personaOriginInfo ? (
+                    <div style={{ marginTop: 6 }}>
+                      <Space size={8} wrap>
+                        <Text type="secondary">
+                          初始化画像：{personaOriginInfo.initialPersonaName}
+                        </Text>
+                        <Tag color="gold">当前画像已变更</Tag>
+                      </Space>
+                    </div>
+                  ) : null}
                 </div>
                 {personaTags.length > 0 && (
                   <Space wrap size={4} style={{ justifyContent: 'flex-end' }}>
@@ -3526,6 +4176,97 @@ const DatelligencePage = () => {
         instanceId={traceInstanceId}
         onClose={() => setTraceOpen(false)}
         onChanged={refreshAll}
+      />
+
+      <Drawer
+        title="流程详情"
+        open={flowStartFailureOpen}
+        size="large"
+        destroyOnHidden
+        onClose={() => {
+          setFlowStartFailureOpen(false);
+          setFlowStartFailureRecord(null);
+        }}
+      >
+        {flowStartFailureRecord ? (
+          <div className="flex flex-col gap-4">
+            <Alert
+              showIcon
+              type="error"
+              title="流程发起失败"
+              description={getNonEmptyText(
+                flowStartFailureRecord.flowStartErrorMessage,
+                flowStartFailureRecord.currentStatusReason,
+                '流程发起阶段失败，尚未生成流程实例。',
+              )}
+            />
+            {renderDetailSection('发起信息', [
+              {
+                label: '当前状态',
+                content: renderCurrentStatusTag(
+                  flowStartFailureRecord.currentStatus,
+                  flowStartFailureRecord.currentStatusReason,
+                  flowStartFailureRecord.flowStartErrorMessage,
+                ),
+              },
+              {
+                label: '发起批次',
+                content: toText(
+                  normalizeFlowStartBatchId(
+                    flowStartFailureRecord.flowStartBatchId,
+                  ),
+                ),
+              },
+              {
+                label: '债务记录 ID',
+                content: toText(flowStartFailureRecord.id),
+              },
+              {
+                label: '资产编号',
+                content: toText(flowStartFailureRecord.debtNumber),
+              },
+              {
+                label: '业主姓名',
+                content: toText(flowStartFailureRecord.debtorName),
+              },
+              {
+                label: '所属城市',
+                content: toText(flowStartFailureRecord.city),
+              },
+              {
+                label: '所属项目',
+                content: toText(flowStartFailureRecord.organization),
+              },
+              {
+                label: '发起时间',
+                content: toText(flowStartFailureRecord.flowStartTime),
+              },
+              {
+                label: '失败原因',
+                content: renderFailureReason(
+                  getNonEmptyText(
+                    flowStartFailureRecord.flowStartErrorMessage,
+                    flowStartFailureRecord.currentStatusReason,
+                  ),
+                  'danger',
+                ),
+                span: 2,
+              },
+            ])}
+          </div>
+        ) : (
+          <Empty description="暂无流程详情" />
+        )}
+      </Drawer>
+
+      <CommunicationLogModal
+        open={communicationLogOpen}
+        loading={communicationLogLoading}
+        detail={communicationLogDetail}
+        onClose={() => {
+          setCommunicationLogOpen(false);
+          setCommunicationLogDetail(null);
+        }}
       />
     </RecovListPage>
   );
