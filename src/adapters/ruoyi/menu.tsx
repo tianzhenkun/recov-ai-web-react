@@ -5,6 +5,7 @@ import {
 } from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
+import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
 import type { RuoyiRoute } from '@/services/ruoyi/menu';
 import { getRouters } from '@/services/ruoyi/menu';
 import { toRuoyiMenuIcon } from '@/utils/ruoyiIcons';
@@ -13,6 +14,13 @@ export type RuoyiMenuDataItem = MenuDataItem & {
   ruoyiComponent?: string;
   ruoyiMeta?: RuoyiRoute['meta'];
   ruoyiName?: string;
+};
+
+export type RuoyiMenuWorkspace = {
+  key: string;
+  name: string;
+  path?: string;
+  menuData: RuoyiMenuDataItem[];
 };
 
 const templateMenuPath = '/template';
@@ -121,6 +129,16 @@ const joinPath = (parentPath: string, childPath?: string) => {
 
 const hasVisibleChildren = (children?: RuoyiMenuDataItem[]) =>
   Boolean(children?.some((item) => !item.hideInMenu));
+
+const normalizeWorkspaceKey = (value?: string) =>
+  value ? normalizeComparablePath(value) : '';
+
+const isWorkspaceDirectoryMenu = (item: RuoyiMenuDataItem) =>
+  item.ruoyiComponent === 'Layout' &&
+  hasVisibleChildren((item.children || []) as RuoyiMenuDataItem[]);
+
+const getWorkspaceKey = (item: RuoyiMenuDataItem) =>
+  normalizeWorkspaceKey(item.path) || String(item.key || item.name || '');
 
 const shouldPromoteOnlyChild = (
   route: RuoyiRoute,
@@ -238,6 +256,64 @@ export const clearCachedRuoyiMenuData = () => {
 };
 
 export const getCachedRuoyiMenuData = () => cachedRuoyiMenuData || [];
+
+export const resolveRuoyiMenuWorkspaces = (
+  menuData = getCachedRuoyiMenuData(),
+  configuredWorkspaceNames = getMenuWorkspaceNames(),
+): RuoyiMenuWorkspace[] => {
+  if (configuredWorkspaceNames.length === 0) return [];
+
+  const configuredNameSet = new Set(
+    configuredWorkspaceNames.map((item) => item.trim()).filter(Boolean),
+  );
+
+  return menuData.flatMap((item) => {
+    const name = String(item.name || '').trim();
+    if (!configuredNameSet.has(name) || !isWorkspaceDirectoryMenu(item)) {
+      return [];
+    }
+
+    return [
+      {
+        key: getWorkspaceKey(item),
+        name,
+        path: item.path,
+        menuData: (item.children || []) as RuoyiMenuDataItem[],
+      },
+    ];
+  });
+};
+
+export const omitWorkspaceRootMenus = (
+  menuData = getCachedRuoyiMenuData(),
+  configuredWorkspaceNames = getMenuWorkspaceNames(),
+) => {
+  const workspaceKeySet = new Set(
+    resolveRuoyiMenuWorkspaces(menuData, configuredWorkspaceNames).map(
+      (item) => item.key,
+    ),
+  );
+
+  if (workspaceKeySet.size === 0) return menuData;
+
+  return menuData.filter((item) => !workspaceKeySet.has(getWorkspaceKey(item)));
+};
+
+export const getScopedRuoyiMenuData = (
+  menuData = getCachedRuoyiMenuData(),
+  activeWorkspaceKey?: string,
+  configuredWorkspaceNames = getMenuWorkspaceNames(),
+) => {
+  const normalizedWorkspaceKey = normalizeWorkspaceKey(activeWorkspaceKey);
+  if (!normalizedWorkspaceKey) return menuData;
+
+  const workspace = resolveRuoyiMenuWorkspaces(
+    menuData,
+    configuredWorkspaceNames,
+  ).find((item) => item.key === normalizedWorkspaceKey);
+
+  return workspace?.menuData || menuData;
+};
 
 export const loadRuoyiMenuData = async () => {
   if (cachedRuoyiMenuData) return cachedRuoyiMenuData;

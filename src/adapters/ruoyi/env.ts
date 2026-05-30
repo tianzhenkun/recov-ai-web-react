@@ -5,7 +5,8 @@ type ClientEnvKey =
   | 'UMI_APP_ENCRYPT'
   | 'UMI_APP_RSA_PUBLIC_KEY'
   | 'UMI_APP_RSA_PRIVATE_KEY'
-  | 'UMI_APP_CLIENT_ID';
+  | 'UMI_APP_CLIENT_ID'
+  | 'UMI_APP_MENU_WORKSPACE_NAMES';
 
 const clientEnv: Record<ClientEnvKey, unknown> = {
   UMI_APP_BASE_API: process.env.UMI_APP_BASE_API,
@@ -15,6 +16,7 @@ const clientEnv: Record<ClientEnvKey, unknown> = {
   UMI_APP_RSA_PUBLIC_KEY: process.env.UMI_APP_RSA_PUBLIC_KEY,
   UMI_APP_RSA_PRIVATE_KEY: process.env.UMI_APP_RSA_PRIVATE_KEY,
   UMI_APP_CLIENT_ID: process.env.UMI_APP_CLIENT_ID,
+  UMI_APP_MENU_WORKSPACE_NAMES: process.env.UMI_APP_MENU_WORKSPACE_NAMES,
 };
 
 export const normalizeClientEnv = (value?: unknown) => {
@@ -44,6 +46,12 @@ export const getAdminApi = () =>
 export const getSseApi = () => getClientEnv('UMI_APP_SSE', '/resource/sse');
 
 export const getClientId = () => getClientEnv('UMI_APP_CLIENT_ID');
+
+export const getMenuWorkspaceNames = () =>
+  getClientEnv('UMI_APP_MENU_WORKSPACE_NAMES')
+    .split(/[\n,，|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 export const isClientEncryptEnabled = () =>
   getClientEnv('UMI_APP_ENCRYPT').toLowerCase() === 'true';

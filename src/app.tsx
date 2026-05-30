@@ -17,8 +17,12 @@ dayjs.extend(relativeTime);
 import { getStoredDynamicTenantId } from '@/adapters/ruoyi/dynamicTenant';
 import {
   buildLayoutMenuData,
+  getCachedRuoyiMenuData,
+  getFirstVisibleRuoyiPath,
+  getScopedRuoyiMenuData,
   isRuoyiDirectoryMenuPath,
   loadRuoyiMenuData,
+  omitWorkspaceRootMenus,
 } from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
 import {
@@ -119,6 +123,7 @@ export async function getInitialState(): Promise<{
   settingDrawerOpen?: boolean;
   dynamicTenantId?: string;
   tenantSwitchVersion?: number;
+  activeMenuWorkspaceKey?: string;
 }> {
   const fetchUserInfo = async () => {
     try {
@@ -148,6 +153,7 @@ export async function getInitialState(): Promise<{
       settingDrawerOpen: false,
       dynamicTenantId,
       tenantSwitchVersion: 0,
+      activeMenuWorkspaceKey: undefined,
     };
   }
   return {
@@ -156,6 +162,7 @@ export async function getInitialState(): Promise<{
     settingDrawerOpen: false,
     dynamicTenantId: getStoredDynamicTenantId(),
     tenantSwitchVersion: 0,
+    activeMenuWorkspaceKey: undefined,
   };
 }
 
@@ -191,6 +198,7 @@ export const layout: RunTimeLayoutConfig = ({
         currentUserId: initialState?.currentUser?.userid,
         dynamicTenantId: initialState?.dynamicTenantId,
         tenantSwitchVersion: initialState?.tenantSwitchVersion,
+        activeMenuWorkspaceKey: initialState?.activeMenuWorkspaceKey,
       },
       request: async (_params, defaultMenuData: MenuDataItem[]) => {
         if (!initialState?.currentUser) {
@@ -199,7 +207,17 @@ export const layout: RunTimeLayoutConfig = ({
 
         try {
           const ruoyiMenuData = await loadRuoyiMenuData();
-          return buildLayoutMenuData(ruoyiMenuData, defaultMenuData);
+          const scopedRuoyiMenuData = getScopedRuoyiMenuData(
+            ruoyiMenuData,
+            initialState?.activeMenuWorkspaceKey,
+          );
+          if (initialState?.activeMenuWorkspaceKey) {
+            return scopedRuoyiMenuData;
+          }
+          return buildLayoutMenuData(
+            omitWorkspaceRootMenus(scopedRuoyiMenuData),
+            defaultMenuData,
+          );
         } catch {
           return buildLayoutMenuData([], defaultMenuData);
         }
@@ -222,6 +240,26 @@ export const layout: RunTimeLayoutConfig = ({
       // 历史版本入口暂时隐藏。
       // <VersionDropdown key="version" />,
     ],
+    headerTitleRender: (logo, title) => (
+      <a
+        href="/"
+        onClick={(event) => {
+          event.preventDefault();
+          const nextPath = getFirstVisibleRuoyiPath(
+            getScopedRuoyiMenuData(
+              getCachedRuoyiMenuData(),
+              initialState?.activeMenuWorkspaceKey,
+            ),
+          );
+          history.push(nextPath || '/');
+        }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+      >
+        {logo}
+        {title}
+      </a>
+    ),
+    menuHeaderRender: false,
     avatarProps: {
       src: initialState?.currentUser?.avatar,
       title: initialState?.currentUser?.name || '用户',
@@ -277,7 +315,6 @@ export const layout: RunTimeLayoutConfig = ({
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
     // so chunk load errors show friendly messages instead of "Something went wrong."
     ErrorBoundary,
-    menuHeaderRender: undefined,
     // 自定义 403 页面
     // unAccessible: <div>unAccessible</div>,
     // 增加一个 loading 的状态

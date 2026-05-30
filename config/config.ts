@@ -46,6 +46,7 @@ const clientEnvKeys = [
   'UMI_APP_CLIENT_ID',
   'UMI_APP_WEBSOCKET',
   'UMI_APP_SSE',
+  'UMI_APP_MENU_WORKSPACE_NAMES',
 ] as const;
 
 const normalizeEnvValue = (value?: string) => {

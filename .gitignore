@@ -60,3 +60,4 @@ docs/superpowers
 # cloudflare wrangler
 .wrangler
 requestRecord.mock.js
+.codegraph/

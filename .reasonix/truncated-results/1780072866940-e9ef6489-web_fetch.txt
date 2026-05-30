@@ -1,0 +1,984 @@
+GitHub - firecrawl/firecrawl-mcp-server: 🔥 Official Firecrawl MCP Server - Adds powerful web scraping and search to Cursor, Claude and any other LLM clients. · GitHub
+https://github.com/firecrawl/firecrawl-mcp-server
+
+<!DOCTYPE html>
+
+GitHub - firecrawl/firecrawl-mcp-server: 🔥 Official Firecrawl MCP Server - Adds powerful web scraping and search to Cursor, Claude and any other LLM clients. · GitHub
+
+Skip to content
+
+Navigation Menu
+
+Toggle navigation
+
+Sign in
+
+Appearance settings
+
+Search or jump to...
+
+Search code, repositories, users, issues, pull requests...
+
+Search
+
+Clear
+
+Search syntax tips 
+
+Provide feedback
+
+We read every piece of feedback, and take your input very seriously.
+
+Include my email address so I can be contacted
+
+Cancel
+
+Submit feedback
+
+Saved searches
+
+Use saved searches to filter your results more quickly
+
+Name
+
+Query
+
+To see all available qualifiers, see our documentation.
+
+Cancel
+
+Create saved search
+
+Sign in
+
+Sign up
+
+Appearance settings
+
+Resetting focus
+
+You signed in with another tab or window. Reload to refresh your session.
+You signed out in another tab or window. Reload to refresh your session.
+You switched accounts on another tab or window. Reload to refresh your session.
+
+Dismiss alert
+
+{{ message }}
+
+firecrawl
+
+/
+
+firecrawl-mcp-server
+
+Public
+
+Notifications
+You must be signed in to change notification settings
+
+Fork
+734
+
+Star
+6.4k
+
+firecrawl/firecrawl-mcp-server
+
+ main
+
+BranchesTags
+
+Go to file
+
+Code
+Open more actions menu
+
+Folders and files
+
+NameName
+Last commit message
+
+Last commit date
+
+Latest commit
+
+ 
+
+History
+303 Commits
+
+303 Commits
+
+.github/workflows
+
+.github/workflows
+
+ 
+
+ 
+
+docker
+
+docker
+
+ 
+
+ 
+
+img
+
+img
+
+ 
+
+ 
+
+src
+
+src
+
+ 
+
+ 
+
+.eslintrc.json
+
+.eslintrc.json
+
+ 
+
+ 
+
+.gitignore
+
+.gitignore
+
+ 
+
+ 
+
+.prettierrc
+
+.prettierrc
+
+ 
+
+ 
+
+CHANGELOG.md
+
+CHANGELOG.md
+
+ 
+
+ 
+
+Dockerfile
+
+Dockerfile
+
+ 
+
+ 
+
+Dockerfile.service
+
+Dockerfile.service
+
+ 
+
+ 
+
+LICENSE
+
+LICENSE
+
+ 
+
+ 
+
+README.md
+
+README.md
+
+ 
+
+ 
+
+VERSIONING.md
+
+VERSIONING.md
+
+ 
+
+ 
+
+jest.config.js
+
+jest.config.js
+
+ 
+
+ 
+
+jest.setup.ts
+
+jest.setup.ts
+
+ 
+
+ 
+
+package.json
+
+package.json
+
+ 
+
+ 
+
+pnpm-lock.yaml
+
+pnpm-lock.yaml
+
+ 
+
+ 
+
+server.json
+
+server.json
+
+ 
+
+ 
+
+smithery.yaml
+
+smithery.yaml
+
+ 
+
+ 
+
+tsconfig.json
+
+tsconfig.json
+
+ 
+
+ 
+
+View all files
+
+Repository files navigation
+
+Firecrawl MCP Server
+
+A Model Context Protocol (MCP) server that brings Firecrawl to MCP-compatible AI agents — search, scrape, and interact with the live web for clean, agent-ready context.
+
+Big thanks to @vrknetha, @knacklabs for the initial implementation!
+
+Features
+
+Search the web and get full page content
+
+Scrape any URL into clean, structured data
+
+Interact with pages — click, navigate, and operate
+
+Deep research with autonomous agent
+
+Automatic retries and rate limiting
+
+Cloud and self-hosted support
+
+SSE support
+
+Play around with our MCP Server on MCP.so's playground or on Klavis AI.
+
+Installation
+
+Running with npx
+
+env FIRECRAWL_API_KEY=fc-YOUR_API_KEY npx -y firecrawl-mcp
+
+Manual Installation
+
+npm install -g firecrawl-mcp
+
+Running on Cursor
+
+Configuring Cursor 🖥️
+Note: Requires Cursor version 0.45.6+
+For the most up-to-date configuration instructions, please refer to the official Cursor documentation on configuring MCP servers:
+Cursor MCP Server Configuration Guide
+
+To configure Firecrawl MCP in Cursor v0.48.6
+
+Open Cursor Settings
+
+Go to Features > MCP Servers
+
+Click "+ Add new global MCP server"
+
+Enter the following code:
+
+{
+<span class="pl-ent">"mcpServers"</span>: {
+<span class="pl-ent">"firecrawl-mcp"</span>: {
+<span class="pl-ent">"command"</span>: <span class="pl-s"><span class="pl-pds">"</span>npx<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"args"</span>: [<span class="pl-s"><span class="pl-pds">"</span>-y<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>firecrawl-mcp<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"env"</span>: {
+<span class="pl-ent">"FIRECRAWL_API_KEY"</span>: <span class="pl-s"><span class="pl-pds">"</span>YOUR-API-KEY<span class="pl-pds">"</span></span>
+}
+}
+}
+}
+
+To configure Firecrawl MCP in Cursor v0.45.6
+
+Open Cursor Settings
+
+Go to Features > MCP Servers
+
+Click "+ Add New MCP Server"
+
+Enter the following:
+
+Name: "firecrawl-mcp" (or your preferred name)
+
+Type: "command"
+
+Command: env FIRECRAWL_API_KEY=your-api-key npx -y firecrawl-mcp
+
+If you are using Windows and are running into issues, try cmd /c "set FIRECRAWL_API_KEY=your-api-key && npx -y firecrawl-mcp"
+
+Replace your-api-key with your Firecrawl API key. If you don't have one yet, you can create an account and get it from https://www.firecrawl.dev/app/api-keys
+
+After adding, refresh the MCP server list to see the new tools. The Composer Agent will automatically use Firecrawl MCP when appropriate, but you can explicitly request it by describing your web scraping needs. Access the Composer via Command+L (Mac), select "Agent" next to the submit button, and enter your query.
+
+Running on Windsurf
+
+Add this to your ./codeium/windsurf/model_config.json:
+
+{
+<span class="pl-ent">"mcpServers"</span>: {
+<span class="pl-ent">"mcp-server-firecrawl"</span>: {
+<span class="pl-ent">"command"</span>: <span class="pl-s"><span class="pl-pds">"</span>npx<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"args"</span>: [<span class="pl-s"><span class="pl-pds">"</span>-y<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>firecrawl-mcp<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"env"</span>: {
+<span class="pl-ent">"FIRECRAWL_API_KEY"</span>: <span class="pl-s"><span class="pl-pds">"</span>YOUR_API_KEY<span class="pl-pds">"</span></span>
+}
+}
+}
+}
+
+Running with Streamable HTTP Local Mode
+
+To run the server using Streamable HTTP locally instead of the default stdio transport:
+
+env HTTP_STREAMABLE_SERVER=true FIRECRAWL_API_KEY=fc-YOUR_API_KEY npx -y firecrawl-mcp
+
+Use the url: http://localhost:3000/mcp
+
+Installing via Smithery (Legacy)
+
+To install Firecrawl for Claude Desktop automatically via Smithery:
+
+npx -y @smithery/cli install @mendableai/mcp-server-firecrawl --client claude
+
+Running on VS Code
+
+For one-click installation, click one of the install buttons below...
+
+For manual installation, add the following JSON block to your User Settings (JSON) file in VS Code. You can do this by pressing Ctrl + Shift + P and typing Preferences: Open User Settings (JSON).
+
+{
+<span class="pl-ent">"mcp"</span>: {
+<span class="pl-ent">"inputs"</span>: [
+{
+<span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>promptString<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"id"</span>: <span class="pl-s"><span class="pl-pds">"</span>apiKey<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"description"</span>: <span class="pl-s"><span class="pl-pds">"</span>Firecrawl API Key<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"password"</span>: <span class="pl-c1">true</span>
+}
+],
+<span class="pl-ent">"servers"</span>: {
+<span class="pl-ent">"firecrawl"</span>: {
+<span class="pl-ent">"command"</span>: <span class="pl-s"><span class="pl-pds">"</span>npx<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"args"</span>: [<span class="pl-s"><span class="pl-pds">"</span>-y<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>firecrawl-mcp<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"env"</span>: {
+<span class="pl-ent">"FIRECRAWL_API_KEY"</span>: <span class="pl-s"><span class="pl-pds">"</span>${input:apiKey}<span class="pl-pds">"</span></span>
+}
+}
+}
+}
+}
+
+Optionally, you can add it to a file called .vscode/mcp.json in your workspace. This will allow you to share the configuration with others:
+
+{
+<span class="pl-ent">"inputs"</span>: [
+{
+<span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>promptString<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"id"</span>: <span class="pl-s"><span class="pl-pds">"</span>apiKey<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"description"</span>: <span class="pl-s"><span class="pl-pds">"</span>Firecrawl API Key<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"password"</span>: <span class="pl-c1">true</span>
+}
+],
+<span class="pl-ent">"servers"</span>: {
+<span class="pl-ent">"firecrawl"</span>: {
+<span class="pl-ent">"command"</span>: <span class="pl-s"><span class="pl-pds">"</span>npx<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"args"</span>: [<span class="pl-s"><span class="pl-pds">"</span>-y<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>firecrawl-mcp<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"env"</span>: {
+<span class="pl-ent">"FIRECRAWL_API_KEY"</span>: <span class="pl-s"><span class="pl-pds">"</span>${input:apiKey}<span class="pl-pds">"</span></span>
+}
+}
+}
+}
+
+Configuration
+
+Environment Variables
+
+Required for Cloud API
+
+FIRECRAWL_API_KEY: Your Firecrawl API key
+
+Required when using cloud API (default)
+
+Optional when using self-hosted instance with FIRECRAWL_API_URL
+
+FIRECRAWL_API_URL (Optional): Custom API endpoint for self-hosted instances
+
+Example: https://firecrawl.your-domain.com
+
+If not provided, the cloud API will be used (requires API key)
+
+MCP OAuth (Bearer access tokens)
+
+Hosted Firecrawl can issue OAuth access tokens (fco_…) via the authorization server on firecrawl.dev. This MCP server forwards whichever credential it resolves to the Firecrawl API as Authorization: Bearer ….
+
+HTTP stream transports (CLOUD_SERVICE=true, HTTP_STREAMABLE_SERVER=true, or SSE_LOCAL=true): Clients should send Authorization: Bearer <fco_access_token> on MCP requests. An OAuth bearer token takes precedence over x-firecrawl-api-key / x-api-key when both are present.
+
+stdio: Use FIRECRAWL_OAUTH_TOKEN for a static access token, or keep using FIRECRAWL_API_KEY for an API key.
+
+Use access tokens (fco_…) only. Refresh tokens (fcr_…) must be exchanged at the token endpoint, not passed to the scrape/search API.
+
+Optional Configuration
+
+Retry Configuration
+
+FIRECRAWL_RETRY_MAX_ATTEMPTS: Maximum number of retry attempts (default: 3)
+
+FIRECRAWL_RETRY_INITIAL_DELAY: Initial delay in milliseconds before first retry (default: 1000)
+
+FIRECRAWL_RETRY_MAX_DELAY: Maximum delay in milliseconds between retries (default: 10000)
+
+FIRECRAWL_RETRY_BACKOFF_FACTOR: Exponential backoff multiplier (default: 2)
+
+Credit Usage Monitoring
+
+FIRECRAWL_CREDIT_WARNING_THRESHOLD: Credit usage warning threshold (default: 1000)
+
+FIRECRAWL_CREDIT_CRITICAL_THRESHOLD: Credit usage critical threshold (default: 100)
+
+Configuration Examples
+
+For cloud API usage with custom retry and credit monitoring:
+
+<span class="pl-c"><span class="pl-c">#</span> Required for cloud API</span>
+<span class="pl-k">export</span> FIRECRAWL_API_KEY=your-api-key
+
+<span class="pl-c"><span class="pl-c">#</span> Optional retry configuration</span>
+<span class="pl-k">export</span> FIRECRAWL_RETRY_MAX_ATTEMPTS=5 <span class="pl-c"><span class="pl-c">#</span> Increase max retry attempts</span>
+<span class="pl-k">export</span> FIRECRAWL_RETRY_INITIAL_DELAY=2000 <span class="pl-c"><span class="pl-c">#</span> Start with 2s delay</span>
+<span class="pl-k">export</span> FIRECRAWL_RETRY_MAX_DELAY=30000 <span class="pl-c"><span class="pl-c">#</span> Maximum 30s delay</span>
+<span class="pl-k">export</span> FIRECRAWL_RETRY_BACKOFF_FACTOR=3 <span class="pl-c"><span class="pl-c">#</span> More aggressive backoff</span>
+
+<span class="pl-c"><span class="pl-c">#</span> Optional credit monitoring</span>
+<span class="pl-k">export</span> FIRECRAWL_CREDIT_WARNING_THRESHOLD=2000 <span class="pl-c"><span class="pl-c">#</span> Warning at 2000 credits</span>
+<span class="pl-k">export</span> FIRECRAWL_CREDIT_CRITICAL_THRESHOLD=500 <span class="pl-c"><span class="pl-c">#</span> Critical at 500 credits</span>
+
+For self-hosted instance:
+
+<span class="pl-c"><span class="pl-c">#</span> Required for self-hosted</span>
+<span class="pl-k">export</span> FIRECRAWL_API_URL=https://firecrawl.your-domain.com
+
+<span class="pl-c"><span class="pl-c">#</span> Optional authentication for self-hosted</span>
+<span class="pl-k">export</span> FIRECRAWL_API_KEY=your-api-key <span class="pl-c"><span class="pl-c">#</span> If your instance requires auth</span>
+
+<span class="pl-c"><span class="pl-c">#</span> Custom retry configuration</span>
+<span class="pl-k">export</span> FIRECRAWL_RETRY_MAX_ATTEMPTS=10
+<span class="pl-k">export</span> FIRECRAWL_RETRY_INITIAL_DELAY=500 <span class="pl-c"><span class="pl-c">#</span> Start with faster retries</span>
+
+Usage with Claude Desktop
+
+Add this to your claude_desktop_config.json:
+
+{
+<span class="pl-ent">"mcpServers"</span>: {
+<span class="pl-ent">"mcp-server-firecrawl"</span>: {
+<span class="pl-ent">"command"</span>: <span class="pl-s"><span class="pl-pds">"</span>npx<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"args"</span>: [<span class="pl-s"><span class="pl-pds">"</span>-y<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>firecrawl-mcp<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"env"</span>: {
+<span class="pl-ent">"FIRECRAWL_API_KEY"</span>: <span class="pl-s"><span class="pl-pds">"</span>YOUR_API_KEY_HERE<span class="pl-pds">"</span></span>,
+
+<span class="pl-ent">"FIRECRAWL_RETRY_MAX_ATTEMPTS"</span>: <span class="pl-s"><span class="pl-pds">"</span>5<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"FIRECRAWL_RETRY_INITIAL_DELAY"</span>: <span class="pl-s"><span class="pl-pds">"</span>2000<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"FIRECRAWL_RETRY_MAX_DELAY"</span>: <span class="pl-s"><span class="pl-pds">"</span>30000<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"FIRECRAWL_RETRY_BACKOFF_FACTOR"</span>: <span class="pl-s"><span class="pl-pds">"</span>3<span class="pl-pds">"</span></span>,
+
+<span class="pl-ent">"FIRECRAWL_CREDIT_WARNING_THRESHOLD"</span>: <span class="pl-s"><span class="pl-pds">"</span>2000<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"FIRECRAWL_CREDIT_CRITICAL_THRESHOLD"</span>: <span class="pl-s"><span class="pl-pds">"</span>500<span class="pl-pds">"</span></span>
+}
+}
+}
+}
+
+System Configuration
+
+The server includes several configurable parameters that can be set via environment variables. Here are the default values if not configured:
+
+<span class="pl-k">const</span> <span class="pl-c1">CONFIG</span> <span class="pl-c1">=</span> <span class="pl-kos">{</span>
+<span class="pl-c1">retry</span>: <span class="pl-kos">{</span>
+<span class="pl-c1">maxAttempts</span>: <span class="pl-c1">3</span><span class="pl-kos">,</span> <span class="pl-c">// Number of retry attempts for rate-limited requests</span>
+<span class="pl-c1">initialDelay</span>: <span class="pl-c1">1000</span><span class="pl-kos">,</span> <span class="pl-c">// Initial delay before first retry (in milliseconds)</span>
+<span class="pl-c1">maxDelay</span>: <span class="pl-c1">10000</span><span class="pl-kos">,</span> <span class="pl-c">// Maximum delay between retries (in milliseconds)</span>
+<span class="pl-c1">backoffFactor</span>: <span class="pl-c1">2</span><span class="pl-kos">,</span> <span class="pl-c">// Multiplier for exponential backoff</span>
+<span class="pl-kos">}</span><span class="pl-kos">,</span>
+<span class="pl-c1">credit</span>: <span class="pl-kos">{</span>
+<span class="pl-c1">warningThreshold</span>: <span class="pl-c1">1000</span><span class="pl-kos">,</span> <span class="pl-c">// Warn when credit usage reaches this level</span>
+<span class="pl-c1">criticalThreshold</span>: <span class="pl-c1">100</span><span class="pl-kos">,</span> <span class="pl-c">// Critical alert when credit usage reaches this level</span>
+<span class="pl-kos">}</span><span class="pl-kos">,</span>
+<span class="pl-kos">}</span><span class="pl-kos">;</span>
+
+These configurations control:
+
+Retry Behavior
+
+Automatically retries failed requests due to rate limits
+
+Uses exponential backoff to avoid overwhelming the API
+
+Example: With default settings, retries will be attempted at:
+
+1st retry: 1 second delay
+
+2nd retry: 2 seconds delay
+
+3rd retry: 4 seconds delay (capped at maxDelay)
+
+Credit Usage Monitoring
+
+Tracks API credit consumption for cloud API usage
+
+Provides warnings at specified thresholds
+
+Helps prevent unexpected service interruption
+
+Example: With default settings:
+
+Warning at 1000 credits remaining
+
+Critical alert at 100 credits remaining
+
+Rate Limiting and Batch Processing
+
+The server utilizes Firecrawl's built-in rate limiting and batch processing capabilities:
+
+Automatic rate limit handling with exponential backoff
+
+Efficient parallel processing for batch operations
+
+Smart request queuing and throttling
+
+Automatic retries for transient errors
+
+How to Choose a Tool
+
+Use this guide to select the right tool for your task:
+
+If you know the exact URL(s) you want:
+
+For one: use scrape (with JSON format for structured data)
+
+For many: use batch_scrape
+
+If you need to discover URLs on a site: use map
+
+If you want to search the web for info: use search
+
+If you need complex research across multiple unknown sources: use agent
+
+If you want to analyze a whole site or section: use crawl (with limits!)
+
+If you need interactive browser automation (click, type, navigate): use scrape + interact
+
+Quick Reference Table
+
+Tool
+Best for
+Returns
+
+scrape
+Single page content
+JSON (preferred) or markdown
+
+interact
+Interact with a scraped page
+Execution result
+
+batch_scrape
+Multiple known URLs
+JSON (preferred) or markdown[]
+
+map
+Discovering URLs on a site
+URL[]
+
+crawl
+Multi-page extraction (with limits)
+markdown/html[]
+
+search
+Web search for info
+results[]
+
+agent
+Complex multi-source research
+JSON (structured data)
+
+Format Selection Guide
+
+When using scrape or batch_scrape, choose the right format:
+
+JSON format (recommended for most cases): Use when you need specific data from a page. Define a schema based on what you need to extract. This keeps responses small and avoids context window overflow.
+
+Markdown format (use sparingly): Only when you genuinely need the full page content, such as reading an entire article for summarization or analyzing page structure.
+
+Available Tools
+
+1. Scrape Tool (firecrawl_scrape)
+
+Scrape content from a single URL with advanced options.
+
+Best for:
+
+Single page content extraction, when you know exactly which page contains the information.
+
+Not recommended for:
+
+Extracting content from multiple pages (use batch_scrape for known URLs, or map + batch_scrape to discover URLs first, or crawl for full page content)
+
+When you're unsure which page contains the information (use search)
+
+Common mistakes:
+
+Using scrape for a list of URLs (use batch_scrape instead).
+
+Using markdown format by default (use JSON format to extract only what you need).
+
+Choosing the right format:
+
+JSON format (preferred): For most use cases, use JSON format with a schema to extract only the specific data needed. This keeps responses focused and prevents context window overflow.
+
+Markdown format: Only when the task genuinely requires full page content (e.g., summarizing an entire article, analyzing page structure).
+
+Prompt Example:
+
+"Get the product details from https://example.com/product."
+
+Usage Example (JSON format - preferred):
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_scrape<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"url"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://example.com/product<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"formats"</span>: [
+{
+<span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>json<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"prompt"</span>: <span class="pl-s"><span class="pl-pds">"</span>Extract the product information<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"schema"</span>: {
+<span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>object<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"properties"</span>: {
+<span class="pl-ent">"name"</span>: { <span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>string<span class="pl-pds">"</span></span> },
+<span class="pl-ent">"price"</span>: { <span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>number<span class="pl-pds">"</span></span> },
+<span class="pl-ent">"description"</span>: { <span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>string<span class="pl-pds">"</span></span> }
+},
+<span class="pl-ent">"required"</span>: [<span class="pl-s"><span class="pl-pds">"</span>name<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>price<span class="pl-pds">"</span></span>]
+}
+}
+]
+}
+}
+
+Usage Example (markdown format - when full content needed):
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_scrape<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"url"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://example.com/article<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"formats"</span>: [<span class="pl-s"><span class="pl-pds">"</span>markdown<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"onlyMainContent"</span>: <span class="pl-c1">true</span>
+}
+}
+
+Usage Example (branding format - extract brand identity):
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_scrape<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"url"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://example.com<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"formats"</span>: [<span class="pl-s"><span class="pl-pds">"</span>branding<span class="pl-pds">"</span></span>]
+}
+}
+
+Branding format: Extracts comprehensive brand identity (colors, fonts, typography, spacing, logo, UI components) for design analysis or style replication.
+
+Returns:
+
+JSON structured data, markdown, branding profile, or other formats as specified.
+
+2. Batch Scrape Tool (firecrawl_batch_scrape)
+
+Scrape multiple URLs efficiently with built-in rate limiting and parallel processing.
+
+Best for:
+
+Retrieving content from multiple pages, when you know exactly which pages to scrape.
+
+Not recommended for:
+
+Discovering URLs (use map first if you don't know the URLs)
+
+Scraping a single page (use scrape)
+
+Common mistakes:
+
+Using batch_scrape with too many URLs at once (may hit rate limits or token overflow)
+
+Prompt Example:
+
+"Get the content of these three blog posts: [url1, url2, url3]."
+
+Usage Example:
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_batch_scrape<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"urls"</span>: [<span class="pl-s"><span class="pl-pds">"</span>https://example1.com<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>https://example2.com<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"options"</span>: {
+<span class="pl-ent">"formats"</span>: [<span class="pl-s"><span class="pl-pds">"</span>markdown<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"onlyMainContent"</span>: <span class="pl-c1">true</span>
+}
+}
+}
+
+Returns:
+
+Response includes operation ID for status checking:
+
+{
+<span class="pl-ent">"content"</span>: [
+{
+<span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>text<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"text"</span>: <span class="pl-s"><span class="pl-pds">"</span>Batch operation queued with ID: batch_1. Use firecrawl_check_batch_status to check progress.<span class="pl-pds">"</span></span>
+}
+],
+<span class="pl-ent">"isError"</span>: <span class="pl-c1">false</span>
+}
+
+3. Check Batch Status (firecrawl_check_batch_status)
+
+Check the status of a batch operation.
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_check_batch_status<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"id"</span>: <span class="pl-s"><span class="pl-pds">"</span>batch_1<span class="pl-pds">"</span></span>
+}
+}
+
+4. Map Tool (firecrawl_map)
+
+Map a website to discover all indexed URLs on the site.
+
+Best for:
+
+Discovering URLs on a website before deciding what to scrape
+
+Finding specific sections of a website
+
+Not recommended for:
+
+When you already know which specific URL you need (use scrape or batch_scrape)
+
+When you need the content of the pages (use scrape after mapping)
+
+Common mistakes:
+
+Using crawl to discover URLs instead of map
+
+Prompt Example:
+
+"List all URLs on example.com."
+
+Usage Example:
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_map<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"url"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://example.com<span class="pl-pds">"</span></span>
+}
+}
+
+Returns:
+
+Array of URLs found on the site
+
+5. Search Tool (firecrawl_search)
+
+Search the web and optionally extract content from search results.
+
+Best for:
+
+Finding specific information across multiple websites, when you don't know which website has the information.
+
+When you need the most relevant content for a query
+
+Not recommended for:
+
+When you already know which website to scrape (use scrape)
+
+When you need comprehensive coverage of a single website (use map or crawl)
+
+Common mistakes:
+
+Using crawl or map for open-ended questions (use search instead)
+
+Usage Example:
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_search<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"query"</span>: <span class="pl-s"><span class="pl-pds">"</span>latest AI research papers 2023<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"limit"</span>: <span class="pl-c1">5</span>,
+<span class="pl-ent">"lang"</span>: <span class="pl-s"><span class="pl-pds">"</span>en<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"country"</span>: <span class="pl-s"><span class="pl-pds">"</span>us<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"scrapeOptions"</span>: {
+<span class="pl-ent">"formats"</span>: [<span class="pl-s"><span class="pl-pds">"</span>markdown<span class="pl-pds">"</span></span>],
+<span class="pl-ent">"onlyMainContent"</span>: <span class="pl-c1">true</span>
+}
+}
+}
+
+Returns:
+
+Array of search results (with optional scraped content), plus an id field. Pass that id to firecrawl_search_feedback after you've used the results to refund 1 credit (search costs 2) and improve search quality.
+
+Prompt Example:
+
+"Find the latest research papers on AI published in 2023."
+
+5b. Search Feedback Tool (firecrawl_search_feedback)
+
+Sends structured feedback on a previous firecrawl_search result. The first feedback per search id refunds 1 credit and improves Firecrawl's search quality. Idempotent per search id.
+
+Call this after every search you actually use (or that didn't help). Bad/partial feedback with missingContent is just as valuable as good feedback.
+
+Opt out: set FIRECRAWL_NO_SEARCH_FEEDBACK=1 (or FIRECRAWL_DISABLE_SEARCH_FEEDBACK=1) in the environment when starting the MCP server. The firecrawl_search_feedback tool will not be registered, so agents can't call it. Team admins can also disable feedback server-side; in that case the tool is registered but always returns feedbackErrorCode: "TEAM_OPTED_OUT".
+
+Most important field: missingContent. It's an array of specific pieces of content the agent expected to find but did not. One entry per missing topic — these aggregate across teams and tell us what to index next.
+
+Daily refund cap (per team, per UTC day, default 100 credits). Once a team's creditsRefundedToday reaches dailyRefundCap, further submissions still record feedback but no longer refund credits. The response sets dailyCapReached: true. Agents should stop calling this tool for the rest of the UTC day when they see that flag.
+
+Usage Example:
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_search_feedback<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"searchId"</span>: <span class="pl-s"><span class="pl-pds">"</span>0193f6c5-1234-7890-abcd-1234567890ab<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"rating"</span>: <span class="pl-s"><span class="pl-pds">"</span>good<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"valuableSources"</span>: [
+{
+<span class="pl-ent">"url"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://docs.firecrawl.dev/features/search<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"reason"</span>: <span class="pl-s"><span class="pl-pds">"</span>Most up-to-date description of /search.<span class="pl-pds">"</span></span>
+}
+],
+<span class="pl-ent">"missingContent"</span>: [
+{
+<span class="pl-ent">"topic"</span>: <span class="pl-s"><span class="pl-pds">"</span>Pricing for the search endpoint<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"description"</span>: <span class="pl-s"><span class="pl-pds">"</span>No pricing tier table for /search specifically.<span class="pl-pds">"</span></span>
+},
+{ <span class="pl-ent">"topic"</span>: <span class="pl-s"><span class="pl-pds">"</span>Per-team rate limits<span class="pl-pds">"</span></span> }
+],
+<span class="pl-ent">"querySuggestions"</span>: <span class="pl-s"><span class="pl-pds">"</span>Boost docs.firecrawl.dev for queries that mention 'firecrawl'<span class="pl-pds">"</span></span>
+}
+}
+
+Returns:
+
+{ success, feedbackId, creditsRefunded, alreadySubmitted? } JSON.
+
+6. Crawl Tool (firecrawl_crawl)
+
+Starts an asynchronous crawl job on a website and extract content from all pages.
+
+Best for:
+
+Extracting content from multiple related pages, when you need comprehensive coverage.
+
+Not recommended for:
+
+Extracting content from a single page (use scrape)
+
+When token limits are a concern (use map + batch_scrape)
+
+When you need fast results (crawling can be slow)
+
+Warning: Crawl responses can be very large and may exceed token limits. Limit the crawl depth and number of pages, or use map + batch_scrape for better control.
+
+Common mistakes:
+
+Setting limit or maxDepth too high (causes token overflow)
+
+Using crawl for a single page (use scrape instead)
+
+Prompt Example:
+
+"Get all blog posts from the first two levels of example.com/blog."
+
+Usage Example:
+
+{
+<span class="pl-ent">"name"</span>: <span class="pl-s"><span class="pl-pds">"</span>firecrawl_crawl<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"arguments"</span>: {
+<span class="pl-ent">"url"</span>: <span class="pl-s"><span class="pl-pds">"</span>https://example.com/blog/*<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"maxDepth"</span>: <span class="pl-c1">2</span>,
+<span class="pl-ent">"limit"</span>: <span class="pl-c1">100</span>,
+<span class="pl-ent">"allowExternalLinks"</span>: <span class="pl-c1">false</span>,
+<span class="pl-ent">"deduplicateSimilarURLs"</span>: <span class="pl-c1">true</span>
+}
+}
+
+Returns:
+
+Response includes operation ID for status checking:
+
+{
+<span class="pl-ent">"content"</span>: [
+{
+<span class="pl-ent">"type"</span>: <span class="pl-s"><span class="pl-pds">"</span>text<span class="pl-pds">"</span></span>,
+<span class="pl-ent">"text"</span>: <span class="pl-s"><span class="pl-pds">"</span>Started crawl for: https://example.com/* with job ID: 550e8400-e29b-41d4-a716-446655440000. Use firecrawl_check_crawl_status to check progress.<span class="pl-pds">"</span></span>
+}
+],
+<span class="pl-ent">"isError"</span>: <span class="pl-c1">false</span>
+}
+
+7. Check Crawl Status (firecrawl_check_crawl_status)
+
+
+
+[… truncated 16006 chars …]

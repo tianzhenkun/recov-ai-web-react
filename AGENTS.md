@@ -11,6 +11,14 @@ For full project guidance, see [CLAUDE.md](./CLAUDE.md).
 3. 尊重事实比尊重用户更重要。如果用户判断或前提有误，需要直接指出并说明原因。
 4. 从第一性原理分析问题。若需求不明确，需要先提出问题，确认没有疑问后再行动。
 
+## CodeGraph 规则
+
+1. 本项目已初始化 `codegraph`，涉及代码结构理解、符号查询、调用链分析、影响范围判断时，应优先使用 CodeGraph，而不是先进行大范围盲搜或通读文件。
+2. 优先使用 `codegraph query`、`codegraph callers`、`codegraph callees`、`codegraph impact`、`codegraph context`、`codegraph files`、`codegraph status` 等能力辅助分析，再按需读取具体文件内容。
+3. 在完成任何会影响代码结构或符号关系的修改后，优先执行 `codegraph sync`，保持索引与当前工作区一致。
+4. 在开始依赖 CodeGraph 结果进行分析前，如果怀疑索引过期、分支刚切换、或刚执行过 `pull` / 大批量改动，应先执行 `codegraph sync` 再继续分析。
+5. `.codegraph/` 仅作为本地索引使用，不纳入业务逻辑、构建流程或版本控制。
+
 ## 方案设计偏好
 
 1. 本项目面向商用，方案选择优先考虑稳定性、可维护性、可演进性和业内成熟实践。
