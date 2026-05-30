@@ -23,6 +23,16 @@ export type RuoyiMenuWorkspace = {
   menuData: RuoyiMenuDataItem[];
 };
 
+export type RuoyiMenuWorkspaceMode = 'default' | 'workspace';
+
+export type RuoyiMenuContext = {
+  menuMode: RuoyiMenuWorkspaceMode;
+  activeWorkspaceKey?: string;
+  visibleMenuData: RuoyiMenuDataItem[];
+  homePath?: string;
+  matchedMenuItem?: RuoyiMenuDataItem;
+};
+
 const templateMenuPath = '/template';
 const salesAgentPath = '/sales';
 const salesOverviewPath = '/sales/dashboard';
@@ -297,6 +307,84 @@ export const omitWorkspaceRootMenus = (
   if (workspaceKeySet.size === 0) return menuData;
 
   return menuData.filter((item) => !workspaceKeySet.has(getWorkspaceKey(item)));
+};
+
+export const getVisibleRuoyiMenuData = (
+  menuData = getCachedRuoyiMenuData(),
+  options?: {
+    menuMode?: RuoyiMenuWorkspaceMode;
+    activeWorkspaceKey?: string;
+    configuredWorkspaceNames?: string[];
+  },
+) => {
+  const {
+    menuMode = 'default',
+    activeWorkspaceKey,
+    configuredWorkspaceNames = getMenuWorkspaceNames(),
+  } = options || {};
+
+  if (menuMode === 'workspace' && normalizeWorkspaceKey(activeWorkspaceKey)) {
+    return getScopedRuoyiMenuData(
+      menuData,
+      activeWorkspaceKey,
+      configuredWorkspaceNames,
+    );
+  }
+
+  return omitWorkspaceRootMenus(menuData, configuredWorkspaceNames);
+};
+
+export const resolveRuoyiMenuContext = (
+  pathname: string,
+  menuData = getCachedRuoyiMenuData(),
+  configuredWorkspaceNames = getMenuWorkspaceNames(),
+): RuoyiMenuContext => {
+  const workspaces = resolveRuoyiMenuWorkspaces(
+    menuData,
+    configuredWorkspaceNames,
+  );
+
+  for (const workspace of workspaces) {
+    const matchedWorkspaceMenu =
+      findRuoyiMenuByPath(pathname, workspace.menuData) ||
+      (workspace.path &&
+      normalizeComparablePath(workspace.path) ===
+        normalizeComparablePath(pathname)
+        ? ({
+            path: workspace.path,
+            name: workspace.name,
+          } as RuoyiMenuDataItem)
+        : undefined);
+
+    if (!matchedWorkspaceMenu) continue;
+
+    const visibleMenuData = getVisibleRuoyiMenuData(menuData, {
+      menuMode: 'workspace',
+      activeWorkspaceKey: workspace.key,
+      configuredWorkspaceNames,
+    });
+
+    return {
+      menuMode: 'workspace',
+      activeWorkspaceKey: workspace.key,
+      visibleMenuData,
+      homePath: getFirstVisibleRuoyiPath(visibleMenuData) || workspace.path,
+      matchedMenuItem: matchedWorkspaceMenu,
+    };
+  }
+
+  const visibleMenuData = getVisibleRuoyiMenuData(menuData, {
+    menuMode: 'default',
+    configuredWorkspaceNames,
+  });
+
+  return {
+    menuMode: 'default',
+    activeWorkspaceKey: undefined,
+    visibleMenuData,
+    homePath: getFirstVisibleRuoyiPath(visibleMenuData),
+    matchedMenuItem: findRuoyiMenuByPath(pathname, visibleMenuData),
+  };
 };
 
 export const getScopedRuoyiMenuData = (

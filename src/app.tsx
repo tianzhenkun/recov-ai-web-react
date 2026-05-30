@@ -14,17 +14,22 @@ import React from 'react';
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
 
-import { getStoredDynamicTenantId } from '@/adapters/ruoyi/dynamicTenant';
+import {
+  clearStoredDynamicTenantId,
+  getStoredDynamicTenantId,
+} from '@/adapters/ruoyi/dynamicTenant';
 import {
   buildLayoutMenuData,
   getCachedRuoyiMenuData,
   getFirstVisibleRuoyiPath,
-  getScopedRuoyiMenuData,
+  getVisibleRuoyiMenuData,
   isRuoyiDirectoryMenuPath,
   loadRuoyiMenuData,
-  omitWorkspaceRootMenus,
+  type RuoyiMenuWorkspaceMode,
+  resolveRuoyiMenuContext,
 } from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
+import { RuoyiError } from '@/adapters/ruoyi/response';
 import {
   AvatarDropdown,
   ErrorBoundary,
@@ -34,6 +39,7 @@ import {
   SseBootstrap,
   TenantSwitch,
 } from '@/components';
+import { dynamicTenant } from '@/services/ruoyi/tenant';
 import { getInfo, type UserInfo } from '@/services/ruoyi/user';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
@@ -112,6 +118,21 @@ const toCurrentUser = (info?: UserInfo): RuoyiCurrentUser | undefined => {
   };
 };
 
+const restoreDynamicTenantContext = async () => {
+  const storedTenantId = getStoredDynamicTenantId();
+  if (!storedTenantId) return undefined;
+
+  try {
+    await dynamicTenant(storedTenantId);
+    return storedTenantId;
+  } catch (error) {
+    if (error instanceof RuoyiError) {
+      clearStoredDynamicTenantId();
+    }
+    return undefined;
+  }
+};
+
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  * */
@@ -124,6 +145,8 @@ export async function getInitialState(): Promise<{
   dynamicTenantId?: string;
   tenantSwitchVersion?: number;
   activeMenuWorkspaceKey?: string;
+  menuWorkspaceMode?: RuoyiMenuWorkspaceMode;
+  menuContextPathname?: string;
 }> {
   const fetchUserInfo = async () => {
     try {
@@ -144,8 +167,26 @@ export async function getInitialState(): Promise<{
       location.pathname,
     )
   ) {
+    const dynamicTenantId = await restoreDynamicTenantContext();
     const currentUser = await fetchUserInfo();
-    const dynamicTenantId = getStoredDynamicTenantId();
+    let menuWorkspaceMode: RuoyiMenuWorkspaceMode = 'default';
+    let activeMenuWorkspaceKey: string | undefined;
+
+    if (currentUser) {
+      try {
+        const menuData = await loadRuoyiMenuData();
+        const menuContext = resolveRuoyiMenuContext(
+          location.pathname,
+          menuData,
+        );
+        menuWorkspaceMode = menuContext.menuMode;
+        activeMenuWorkspaceKey = menuContext.activeWorkspaceKey;
+      } catch {
+        menuWorkspaceMode = 'default';
+        activeMenuWorkspaceKey = undefined;
+      }
+    }
+
     return {
       fetchUserInfo,
       currentUser,
@@ -153,7 +194,9 @@ export async function getInitialState(): Promise<{
       settingDrawerOpen: false,
       dynamicTenantId,
       tenantSwitchVersion: 0,
-      activeMenuWorkspaceKey: undefined,
+      activeMenuWorkspaceKey,
+      menuWorkspaceMode,
+      menuContextPathname: location.pathname,
     };
   }
   return {
@@ -163,6 +206,8 @@ export async function getInitialState(): Promise<{
     dynamicTenantId: getStoredDynamicTenantId(),
     tenantSwitchVersion: 0,
     activeMenuWorkspaceKey: undefined,
+    menuWorkspaceMode: 'default',
+    menuContextPathname: location.pathname,
   };
 }
 
@@ -171,6 +216,37 @@ export const layout: RunTimeLayoutConfig = ({
   initialState,
   setInitialState,
 }) => {
+  const syncMenuContextFromPath = async (pathname: string) => {
+    if (!initialState?.currentUser) return;
+
+    try {
+      const cachedMenuData = getCachedRuoyiMenuData();
+      const menuData =
+        cachedMenuData.length > 0 ? cachedMenuData : await loadRuoyiMenuData();
+      const menuContext = resolveRuoyiMenuContext(pathname, menuData);
+
+      setInitialState((state) => {
+        if (!state) return state;
+        if (
+          state.menuContextPathname === pathname &&
+          state.menuWorkspaceMode === menuContext.menuMode &&
+          state.activeMenuWorkspaceKey === menuContext.activeWorkspaceKey
+        ) {
+          return state;
+        }
+
+        return {
+          ...state,
+          activeMenuWorkspaceKey: menuContext.activeWorkspaceKey,
+          menuContextPathname: pathname,
+          menuWorkspaceMode: menuContext.menuMode,
+        };
+      });
+    } catch {
+      // Ignore menu context sync failures and keep the current layout state.
+    }
+  };
+
   return {
     menuItemRender: (item, dom) => {
       if (item.path) {
@@ -198,24 +274,31 @@ export const layout: RunTimeLayoutConfig = ({
         currentUserId: initialState?.currentUser?.userid,
         dynamicTenantId: initialState?.dynamicTenantId,
         tenantSwitchVersion: initialState?.tenantSwitchVersion,
+        menuContextPathname: initialState?.menuContextPathname,
         activeMenuWorkspaceKey: initialState?.activeMenuWorkspaceKey,
+        menuWorkspaceMode: initialState?.menuWorkspaceMode,
       },
-      request: async (_params, defaultMenuData: MenuDataItem[]) => {
+      request: async (params, defaultMenuData: MenuDataItem[]) => {
         if (!initialState?.currentUser) {
           return buildLayoutMenuData([], defaultMenuData);
         }
 
         try {
           const ruoyiMenuData = await loadRuoyiMenuData();
-          const scopedRuoyiMenuData = getScopedRuoyiMenuData(
-            ruoyiMenuData,
-            initialState?.activeMenuWorkspaceKey,
-          );
-          if (initialState?.activeMenuWorkspaceKey) {
-            return scopedRuoyiMenuData;
+          const pathname =
+            typeof params?.menuContextPathname === 'string'
+              ? params.menuContextPathname
+              : history.location.pathname;
+          const menuContext = resolveRuoyiMenuContext(pathname, ruoyiMenuData);
+
+          if (
+            menuContext.menuMode === 'workspace' &&
+            menuContext.activeWorkspaceKey
+          ) {
+            return menuContext.visibleMenuData;
           }
           return buildLayoutMenuData(
-            omitWorkspaceRootMenus(scopedRuoyiMenuData),
+            menuContext.visibleMenuData,
             defaultMenuData,
           );
         } catch {
@@ -246,11 +329,16 @@ export const layout: RunTimeLayoutConfig = ({
         onClick={(event) => {
           event.preventDefault();
           const nextPath = getFirstVisibleRuoyiPath(
-            getScopedRuoyiMenuData(
-              getCachedRuoyiMenuData(),
-              initialState?.activeMenuWorkspaceKey,
-            ),
+            getVisibleRuoyiMenuData(getCachedRuoyiMenuData(), {
+              menuMode: 'default',
+            }),
           );
+          setInitialState((state) => ({
+            ...state,
+            activeMenuWorkspaceKey: undefined,
+            menuContextPathname: nextPath || '/',
+            menuWorkspaceMode: 'default',
+          }));
           history.push(nextPath || '/');
         }}
         style={{ display: 'flex', alignItems: 'center', gap: 8 }}
@@ -279,7 +367,10 @@ export const layout: RunTimeLayoutConfig = ({
         history.replace(
           `${loginPath}?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`,
         );
+        return;
       }
+
+      void syncMenuContextFromPath(location.pathname);
     },
     bgLayoutImgList: [
       {

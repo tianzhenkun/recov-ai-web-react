@@ -5,8 +5,10 @@ import {
   findRuoyiMenuByPath,
   getFirstVisibleRuoyiPath,
   getScopedRuoyiMenuData,
+  getVisibleRuoyiMenuData,
   isRuoyiDirectoryMenuPath,
   omitWorkspaceRootMenus,
+  resolveRuoyiMenuContext,
   resolveRuoyiMenuWorkspaces,
 } from './menu';
 
@@ -313,5 +315,148 @@ describe('RuoYi menu transform', () => {
         (item) => item.path,
       ),
     ).toEqual(['/datelligence']);
+  });
+
+  it('derives visible menu data from explicit menu mode', () => {
+    const menuData = buildRuoyiMenuData([
+      ...ruoyiRoutes,
+      {
+        name: 'System2',
+        path: '/admin-tools',
+        hidden: false,
+        component: 'Layout',
+        meta: {
+          title: '后台管理',
+          icon: 'system',
+        },
+        children: [
+          {
+            name: 'Menu101',
+            path: 'menu',
+            hidden: false,
+            component: 'system/menu/index',
+            meta: {
+              title: '菜单管理',
+              icon: 'tree',
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      getVisibleRuoyiMenuData(menuData, {
+        menuMode: 'default',
+        configuredWorkspaceNames: ['账户管理', '后台管理'],
+      }).map((item) => item.path),
+    ).toEqual(['/datelligence']);
+
+    expect(
+      getVisibleRuoyiMenuData(menuData, {
+        menuMode: 'workspace',
+        activeWorkspaceKey: '/admin-tools',
+        configuredWorkspaceNames: ['账户管理', '后台管理'],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        path: '/admin-tools/menu',
+        name: '菜单管理',
+      }),
+    ]);
+  });
+
+  it('resolves workspace menu context from workspace paths', () => {
+    const menuData = buildRuoyiMenuData([
+      ...ruoyiRoutes,
+      {
+        name: 'System2',
+        path: '/admin-tools',
+        hidden: false,
+        component: 'Layout',
+        meta: {
+          title: '后台管理',
+          icon: 'system',
+        },
+        children: [
+          {
+            name: 'Menu101',
+            path: 'menu',
+            hidden: false,
+            component: 'system/menu/index',
+            meta: {
+              title: '菜单管理',
+              icon: 'tree',
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      resolveRuoyiMenuContext('/admin-tools/menu', menuData, [
+        '账户管理',
+        '后台管理',
+      ]),
+    ).toMatchObject({
+      menuMode: 'workspace',
+      activeWorkspaceKey: '/admin-tools',
+      homePath: '/admin-tools/menu',
+      matchedMenuItem: expect.objectContaining({
+        path: '/admin-tools/menu',
+      }),
+    });
+
+    expect(
+      resolveRuoyiMenuContext('/system', menuData, ['账户管理', '后台管理']),
+    ).toMatchObject({
+      menuMode: 'workspace',
+      activeWorkspaceKey: '/system',
+      homePath: '/system/user',
+      matchedMenuItem: expect.objectContaining({
+        path: '/system',
+      }),
+    });
+  });
+
+  it('falls back to default menu context for non-workspace paths', () => {
+    const menuData = buildRuoyiMenuData([
+      ...ruoyiRoutes,
+      {
+        name: 'System2',
+        path: '/admin-tools',
+        hidden: false,
+        component: 'Layout',
+        meta: {
+          title: '后台管理',
+          icon: 'system',
+        },
+        children: [
+          {
+            name: 'Menu101',
+            path: 'menu',
+            hidden: false,
+            component: 'system/menu/index',
+            meta: {
+              title: '菜单管理',
+              icon: 'tree',
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      resolveRuoyiMenuContext('/datelligence', menuData, [
+        '账户管理',
+        '后台管理',
+      ]),
+    ).toMatchObject({
+      menuMode: 'default',
+      activeWorkspaceKey: undefined,
+      homePath: '/datelligence',
+      matchedMenuItem: expect.objectContaining({
+        path: '/datelligence',
+      }),
+    });
   });
 });

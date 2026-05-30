@@ -57,6 +57,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   const { initialState, setInitialState } = useModel('@@initialState');
   const currentUserId = initialState?.currentUser?.userid;
   const activeWorkspaceKey = initialState?.activeMenuWorkspaceKey;
+  const menuWorkspaceMode = initialState?.menuWorkspaceMode;
 
   useEffect(() => {
     if (!currentUserId) {
@@ -74,12 +75,15 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
         setWorkspaces(nextWorkspaces);
 
         if (
+          menuWorkspaceMode === 'workspace' &&
           activeWorkspaceKey &&
           !nextWorkspaces.some((item) => item.key === activeWorkspaceKey)
         ) {
           setInitialState((state) => ({
             ...state,
             activeMenuWorkspaceKey: undefined,
+            menuContextPathname: history.location.pathname,
+            menuWorkspaceMode: 'default',
           }));
         }
       })
@@ -102,6 +106,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
     currentUserId,
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
+    menuWorkspaceMode,
     setInitialState,
   ]);
 
@@ -134,15 +139,17 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
         (item) => item.key === workspaceKey,
       );
       if (!nextWorkspace) return;
+      const nextPath =
+        getFirstVisibleRuoyiPath(nextWorkspace.menuData) ||
+        nextWorkspace.path ||
+        '/';
       setInitialState((state) => ({
         ...state,
         activeMenuWorkspaceKey: nextWorkspace.key,
+        menuContextPathname: nextPath,
+        menuWorkspaceMode: 'workspace',
       }));
-      history.push(
-        getFirstVisibleRuoyiPath(nextWorkspace.menuData) ||
-          nextWorkspace.path ||
-          '/',
-      );
+      history.push(nextPath);
       return;
     }
     history.push(`/account/${key}`);

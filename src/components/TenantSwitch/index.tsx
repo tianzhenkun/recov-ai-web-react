@@ -7,7 +7,12 @@ import {
   clearStoredDynamicTenantId,
   setStoredDynamicTenantId,
 } from '@/adapters/ruoyi/dynamicTenant';
-import { clearCachedRuoyiMenuData } from '@/adapters/ruoyi/menu';
+import {
+  clearCachedRuoyiMenuData,
+  findRuoyiMenuByPath,
+  loadRuoyiMenuData,
+  resolveRuoyiMenuContext,
+} from '@/adapters/ruoyi/menu';
 import { getTenantList, type TenantInfo } from '@/services/ruoyi/auth';
 import { dynamicClear, dynamicTenant } from '@/services/ruoyi/tenant';
 
@@ -82,12 +87,23 @@ const TenantSwitch = () => {
 
   const refreshAppContext = async (dynamicTenantId?: string) => {
     clearCachedRuoyiMenuData();
+    const currentPath = history.location.pathname;
+    const menuData = await loadRuoyiMenuData();
+    const menuContext = resolveRuoyiMenuContext(currentPath, menuData);
+    const nextPath =
+      findRuoyiMenuByPath(currentPath, menuData)?.path ||
+      menuContext.homePath ||
+      '/';
+
     setInitialState((state) => ({
       ...state,
       dynamicTenantId,
       tenantSwitchVersion: (state?.tenantSwitchVersion || 0) + 1,
+      activeMenuWorkspaceKey: menuContext.activeWorkspaceKey,
+      menuContextPathname: nextPath,
+      menuWorkspaceMode: menuContext.menuMode,
     }));
-    history.push('/');
+    history.push(nextPath);
   };
 
   const handleTenantChange = async (tenantId?: string) => {

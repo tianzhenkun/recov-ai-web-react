@@ -2,8 +2,8 @@ import { PageLoading } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
 import { useEffect } from 'react';
 import {
-  getFirstVisibleRuoyiPath,
   loadRuoyiMenuData,
+  resolveRuoyiMenuContext,
 } from '@/adapters/ruoyi/menu';
 
 const fallbackPath = '/welcome';
@@ -15,7 +15,11 @@ const RuoyiLanding = () => {
     const redirectToFirstMenu = async () => {
       try {
         const menuData = await loadRuoyiMenuData();
-        const firstPath = getFirstVisibleRuoyiPath(menuData);
+        const menuContext = resolveRuoyiMenuContext(
+          history.location.pathname,
+          menuData,
+        );
+        const firstPath = menuContext.homePath;
         if (mounted) {
           history.replace(firstPath || fallbackPath);
         }

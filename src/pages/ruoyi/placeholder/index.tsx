@@ -11,9 +11,11 @@ import {
 import { useEffect, useState } from 'react';
 import {
   findRuoyiMenuByPath,
+  getCachedRuoyiMenuData,
   getFirstVisibleRuoyiPath,
   loadRuoyiMenuData,
   type RuoyiMenuDataItem,
+  resolveRuoyiMenuContext,
 } from '@/adapters/ruoyi/menu';
 import RoleAuthUserPage from '@/pages/ruoyi/system/role-auth-user';
 import AuthRolePage from '@/pages/ruoyi/system/user-auth-role';
@@ -119,8 +121,18 @@ const RuoyiPlaceholder = () => {
             <Space>
               <Button
                 type="primary"
-                onClick={() => {
-                  const firstPath = getFirstVisibleRuoyiPath();
+                onClick={async () => {
+                  const cachedMenuData = getCachedRuoyiMenuData();
+                  const menuData =
+                    cachedMenuData.length > 0
+                      ? cachedMenuData
+                      : await loadRuoyiMenuData();
+                  const menuContext = resolveRuoyiMenuContext(
+                    pathname,
+                    menuData,
+                  );
+                  const firstPath =
+                    menuContext.homePath || getFirstVisibleRuoyiPath(menuData);
                   history.replace(firstPath || '/');
                 }}
               >
