@@ -6,7 +6,13 @@ import type {
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
-import { App as AntdApp, type BreadcrumbProps } from 'antd';
+import {
+  App as AntdApp,
+  type BreadcrumbProps,
+  Radio,
+  Space,
+  Typography,
+} from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
@@ -33,12 +39,25 @@ import { RuoyiError } from '@/adapters/ruoyi/response';
 import {
   AvatarDropdown,
   ErrorBoundary,
+  FloatingProcessPanel,
   Footer,
   NotificationCenter,
   OfflineBanner,
   SseBootstrap,
   TenantSwitch,
 } from '@/components';
+import type {
+  FloatingProcessPanelDefaultMode,
+  FlowProcessChannel,
+  FlowProcessItem,
+  FlowProcessStatus,
+} from '@/components/FloatingProcessPanel';
+import FlowEventCenter from '@/pages/recov/flowEvents/components/FlowEventCenter';
+import type { FlowEventPageItem } from '@/services/ruoyi/flowEvent';
+import {
+  getFlowEventPage,
+  normalizeFlowEventPageResult,
+} from '@/services/ruoyi/flowEvent';
 import { dynamicTenant } from '@/services/ruoyi/tenant';
 import { getInfo, type UserInfo } from '@/services/ruoyi/user';
 import defaultSettings from '../config/defaultSettings';
@@ -51,6 +70,7 @@ const isExternalPath = (path?: string) =>
 const recovListPagePaths = new Set([
   '/datelligence',
   '/delivery',
+  '/flow-events',
   '/flow-manager',
   '/instrument-list',
   '/litigation-process',
@@ -59,8 +79,100 @@ const recovListPagePaths = new Set([
   '/test11',
 ]);
 
+const floatingProcessPanelDefaultModeStorageKey =
+  'recov:floating-process-panel-default-mode';
+const canUseStorage = () =>
+  typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+const isFloatingProcessPanelDefaultMode = (
+  value: string | null,
+): value is FloatingProcessPanelDefaultMode =>
+  value === 'normal' || value === 'docked';
+const getStoredFloatingProcessPanelDefaultMode =
+  (): FloatingProcessPanelDefaultMode => {
+    if (!canUseStorage()) return 'normal';
+    const storedValue = localStorage.getItem(
+      floatingProcessPanelDefaultModeStorageKey,
+    );
+    return isFloatingProcessPanelDefaultMode(storedValue)
+      ? storedValue
+      : 'normal';
+  };
+const setStoredFloatingProcessPanelDefaultMode = (
+  value: FloatingProcessPanelDefaultMode,
+) => {
+  if (!canUseStorage()) return;
+  localStorage.setItem(floatingProcessPanelDefaultModeStorageKey, value);
+};
+
 const isRecovListPagePath = (pathname: string) =>
   recovListPagePaths.has(pathname);
+
+const floatingProcessPanelPageSize = 5;
+const floatingProcessPanelPollingInterval = 30_000;
+
+const resolveFlowProcessStatus = (eventType?: string): FlowProcessStatus => {
+  if (!eventType) return 'running';
+  if (eventType.includes('failed')) return 'warning';
+  if (eventType.includes('completed')) return 'success';
+  if (eventType.includes('terminated') || eventType.includes('skipped')) {
+    return 'waiting';
+  }
+  return 'running';
+};
+
+const resolveFlowProcessChannel = (
+  event: FlowEventPageItem,
+): FlowProcessChannel => {
+  const sourceType = String(event.sourceType || '').toLowerCase();
+  const eventType = String(event.eventType || '').toLowerCase();
+
+  if (
+    sourceType.includes('sms') ||
+    sourceType.includes('message') ||
+    eventType.includes('sms') ||
+    eventType.includes('message')
+  ) {
+    return 'message';
+  }
+
+  if (
+    sourceType.includes('call') ||
+    sourceType.includes('phone') ||
+    eventType.includes('call') ||
+    eventType.includes('phone')
+  ) {
+    return 'phone';
+  }
+
+  return 'system';
+};
+
+const resolveFlowProcessSummary = (event: FlowEventPageItem) => {
+  const description = [event.eventContent, event.reasonText]
+    .map((item) => String(item || '').trim())
+    .find(Boolean);
+
+  const accountPrefix =
+    event.debtNumber !== null && event.debtNumber !== undefined
+      ? `${event.debtNumber}号账户`
+      : '账户';
+
+  return description
+    ? `${accountPrefix} ${description}`
+    : `${accountPrefix} 流程事件已更新，可进入事件中心查看详情。`;
+};
+
+const toFlowProcessItem = (event: FlowEventPageItem): FlowProcessItem => ({
+  id: String(
+    event.id ??
+      `${event.instanceId ?? 'instance'}-${event.createTime ?? 'time'}-${event.eventType ?? 'event'}`,
+  ),
+  title: String(event.eventTitle || event.eventType || '流程事件更新'),
+  summary: resolveFlowProcessSummary(event),
+  time: event.createTime || new Date().toISOString(),
+  status: resolveFlowProcessStatus(event.eventType),
+  channel: resolveFlowProcessChannel(event),
+});
 
 type LayoutBreadcrumbItem = NonNullable<BreadcrumbProps['items']>[number] & {
   linkPath?: string;
@@ -141,6 +253,8 @@ export async function getInitialState(): Promise<{
   currentUser?: RuoyiCurrentUser;
   loading?: boolean;
   fetchUserInfo?: () => Promise<RuoyiCurrentUser | undefined>;
+  floatingProcessPanelDefaultMode?: FloatingProcessPanelDefaultMode;
+  flowEventCenterOpen?: boolean;
   settingDrawerOpen?: boolean;
   dynamicTenantId?: string;
   tenantSwitchVersion?: number;
@@ -162,6 +276,8 @@ export async function getInitialState(): Promise<{
   };
   // 如果不是登录页面，执行
   const { location } = history;
+  const floatingProcessPanelDefaultMode =
+    getStoredFloatingProcessPanelDefaultMode();
   if (
     ![loginPath, '/user/register', '/user/register-result'].includes(
       location.pathname,
@@ -191,6 +307,8 @@ export async function getInitialState(): Promise<{
       fetchUserInfo,
       currentUser,
       settings: defaultSettings as Partial<LayoutSettings>,
+      floatingProcessPanelDefaultMode,
+      flowEventCenterOpen: false,
       settingDrawerOpen: false,
       dynamicTenantId,
       tenantSwitchVersion: 0,
@@ -202,6 +320,8 @@ export async function getInitialState(): Promise<{
   return {
     fetchUserInfo,
     settings: defaultSettings as Partial<LayoutSettings>,
+    floatingProcessPanelDefaultMode,
+    flowEventCenterOpen: false,
     settingDrawerOpen: false,
     dynamicTenantId: getStoredDynamicTenantId(),
     tenantSwitchVersion: 0,
@@ -211,11 +331,191 @@ export async function getInitialState(): Promise<{
   };
 }
 
+type RuntimeInitialState = Awaited<ReturnType<typeof getInitialState>>;
+
+type AppLayoutChildrenProps = {
+  children: React.ReactNode;
+  floatingProcessPanelDefaultMode: FloatingProcessPanelDefaultMode;
+  initialState?: RuntimeInitialState;
+  setInitialState: React.Dispatch<
+    React.SetStateAction<RuntimeInitialState | undefined>
+  >;
+};
+
+const AppLayoutChildren = ({
+  children,
+  floatingProcessPanelDefaultMode,
+  initialState,
+  setInitialState,
+}: AppLayoutChildrenProps) => {
+  const sseConnectionKey = [
+    initialState?.currentUser?.userid || 'anonymous',
+    initialState?.dynamicTenantId || 'default',
+    initialState?.tenantSwitchVersion || 0,
+  ].join(':');
+  const flowEventCenterOpen = Boolean(initialState?.flowEventCenterOpen);
+  const [flowProcessItems, setFlowProcessItems] = React.useState<
+    FlowProcessItem[]
+  >([]);
+  const flowProcessRequestSeqRef = React.useRef(0);
+
+  const loadFlowProcessItems = React.useCallback(async () => {
+    if (!initialState?.currentUser?.userid) {
+      setFlowProcessItems([]);
+      return;
+    }
+
+    flowProcessRequestSeqRef.current += 1;
+    const seq = flowProcessRequestSeqRef.current;
+
+    try {
+      const response = await getFlowEventPage({
+        pageNum: 1,
+        pageSize: floatingProcessPanelPageSize,
+      });
+      if (seq !== flowProcessRequestSeqRef.current) return;
+      const pageResult = normalizeFlowEventPageResult(response);
+      setFlowProcessItems(pageResult.rows.map(toFlowProcessItem));
+    } catch {
+      if (seq !== flowProcessRequestSeqRef.current) return;
+      setFlowProcessItems([]);
+    }
+  }, [
+    initialState?.currentUser?.userid,
+    initialState?.dynamicTenantId,
+    initialState?.tenantSwitchVersion,
+  ]);
+
+  React.useEffect(() => {
+    void loadFlowProcessItems();
+  }, [loadFlowProcessItems]);
+
+  React.useEffect(() => {
+    if (!initialState?.currentUser?.userid) return;
+
+    const timer = window.setInterval(() => {
+      void loadFlowProcessItems();
+    }, floatingProcessPanelPollingInterval);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [
+    initialState?.currentUser?.userid,
+    initialState?.dynamicTenantId,
+    initialState?.tenantSwitchVersion,
+    loadFlowProcessItems,
+  ]);
+
+  return (
+    <>
+      <SseBootstrap
+        connectionKey={sseConnectionKey}
+        enabled={Boolean(initialState?.currentUser)}
+      />
+      <React.Fragment
+        key={`${initialState?.dynamicTenantId || 'default'}-${initialState?.tenantSwitchVersion || 0}`}
+      >
+        {children}
+      </React.Fragment>
+      <FloatingProcessPanel
+        defaultMode={floatingProcessPanelDefaultMode}
+        enabled={Boolean(initialState?.currentUser) && !flowEventCenterOpen}
+        items={flowProcessItems}
+        onViewAllLogs={() => {
+          setInitialState((state) =>
+            state
+              ? {
+                  ...state,
+                  flowEventCenterOpen: true,
+                }
+              : state,
+          );
+        }}
+      />
+      {flowEventCenterOpen ? (
+        <FlowEventCenter
+          mode="overlay"
+          onClose={() => {
+            setInitialState((state) =>
+              state
+                ? {
+                    ...state,
+                    flowEventCenterOpen: false,
+                  }
+                : state,
+            );
+          }}
+        />
+      ) : null}
+      <SettingDrawer
+        disableUrlParams
+        enableDarkTheme
+        collapse={initialState?.settingDrawerOpen}
+        onCollapseChange={(open) => {
+          setInitialState((s) => ({
+            ...s,
+            settingDrawerOpen: open,
+          }));
+        }}
+        settings={initialState?.settings}
+        onSettingChange={(settings) => {
+          setInitialState((s) => ({
+            ...s,
+            settings,
+          }));
+        }}
+        drawerProps={{
+          closable: { placement: 'end' },
+          title: (
+            <Space orientation="vertical" size={8} style={{ width: '100%' }}>
+              <Typography.Text strong>偏好设置</Typography.Text>
+              <Typography.Text type="secondary">智能体默认展示</Typography.Text>
+              <Radio.Group
+                optionType="button"
+                options={[
+                  {
+                    label: '正常展示',
+                    value: 'normal',
+                  },
+                  {
+                    label: '贴边缩起',
+                    value: 'docked',
+                  },
+                ]}
+                value={floatingProcessPanelDefaultMode}
+                onChange={(event) => {
+                  const nextMode = event.target
+                    .value as FloatingProcessPanelDefaultMode;
+                  setStoredFloatingProcessPanelDefaultMode(nextMode);
+                  setInitialState((state) =>
+                    state
+                      ? {
+                          ...state,
+                          floatingProcessPanelDefaultMode: nextMode,
+                        }
+                      : state,
+                  );
+                }}
+              />
+              <Typography.Text type="secondary">
+                控制智能体入口默认以正常胶囊还是贴边缩起方式出现。
+              </Typography.Text>
+            </Space>
+          ),
+        }}
+      />
+    </>
+  );
+};
+
 // ProLayout 支持的api https://procomponents.ant.design/components/layout
 export const layout: RunTimeLayoutConfig = ({
   initialState,
   setInitialState,
 }) => {
+  const floatingProcessPanelDefaultMode =
+    initialState?.floatingProcessPanelDefaultMode ?? 'normal';
   const syncMenuContextFromPath = async (pathname: string) => {
     if (!initialState?.currentUser) return;
 
@@ -411,41 +711,14 @@ export const layout: RunTimeLayoutConfig = ({
     // 增加一个 loading 的状态
     childrenRender: (children) => {
       // if (initialState?.loading) return <PageLoading />;
-      const sseConnectionKey = [
-        initialState?.currentUser?.userid || 'anonymous',
-        initialState?.dynamicTenantId || 'default',
-        initialState?.tenantSwitchVersion || 0,
-      ].join(':');
       return (
-        <>
-          <SseBootstrap
-            connectionKey={sseConnectionKey}
-            enabled={Boolean(initialState?.currentUser)}
-          />
-          <React.Fragment
-            key={`${initialState?.dynamicTenantId || 'default'}-${initialState?.tenantSwitchVersion || 0}`}
-          >
-            {children}
-          </React.Fragment>
-          <SettingDrawer
-            disableUrlParams
-            enableDarkTheme
-            collapse={initialState?.settingDrawerOpen}
-            onCollapseChange={(open) => {
-              setInitialState((s) => ({
-                ...s,
-                settingDrawerOpen: open,
-              }));
-            }}
-            settings={initialState?.settings}
-            onSettingChange={(settings) => {
-              setInitialState((s) => ({
-                ...s,
-                settings,
-              }));
-            }}
-          />
-        </>
+        <AppLayoutChildren
+          floatingProcessPanelDefaultMode={floatingProcessPanelDefaultMode}
+          initialState={initialState}
+          setInitialState={setInitialState}
+        >
+          {children}
+        </AppLayoutChildren>
       );
     },
     ...initialState?.settings,

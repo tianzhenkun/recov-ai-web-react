@@ -129,7 +129,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       loginOut();
       return;
     }
-    if (key === 'theme') {
+    if (key === 'preferences') {
       setInitialState((s) => ({ ...s, settingDrawerOpen: true }));
       return;
     }
@@ -177,9 +177,9 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
           },
         ]),
     {
-      key: 'theme',
+      key: 'preferences',
       icon: <SkinOutlined />,
-      label: '主题设置',
+      label: '偏好设置',
     },
     ...(workspaceItems.length > 0
       ? [

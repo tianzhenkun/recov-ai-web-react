@@ -5,6 +5,8 @@
 /**
  * 布局组件
  */
+
+import FloatingProcessPanel from './FloatingProcessPanel';
 import Footer from './Footer';
 import NotificationCenter from './NotificationCenter';
 import { DocLink, LangDropdown, VersionDropdown } from './RightContent';
@@ -28,6 +30,7 @@ export { default as TagSelect } from './TagSelect';
 export {
   AvatarDropdown,
   DocLink,
+  FloatingProcessPanel,
   Footer,
   LangDropdown,
   NotificationCenter,
