@@ -591,6 +591,7 @@ const InstrumentListPage = () => {
   });
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
+  const [instrumentToolbarOpen, setInstrumentToolbarOpen] = useState(false);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -1458,6 +1459,7 @@ const InstrumentListPage = () => {
   ] satisfies MenuProps['items'];
   const handleInstrumentToolbarMenuClick: MenuProps['onClick'] = ({ key }) => {
     const action = instrumentToolbarActions.find((item) => item.key === key);
+    setInstrumentToolbarOpen(false);
     action?.onClick();
   };
 
@@ -2301,10 +2303,18 @@ const InstrumentListPage = () => {
                         items: instrumentToolbarMenuItems,
                         onClick: handleInstrumentToolbarMenuClick,
                       }}
+                      open={instrumentToolbarOpen}
                       placement="bottomRight"
-                      trigger={['click']}
+                      trigger={[]}
+                      onOpenChange={setInstrumentToolbarOpen}
                     >
-                      <Button icon={<DownOutlined />} iconPlacement="end">
+                      <Button
+                        icon={<DownOutlined />}
+                        iconPlacement="end"
+                        onClick={() => {
+                          setInstrumentToolbarOpen((open) => !open);
+                        }}
+                      >
                         更多操作
                       </Button>
                     </Dropdown>
