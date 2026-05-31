@@ -16,6 +16,8 @@ describe('/instrument-list presentation conventions', () => {
     const toolbarSource = source.slice(toolbarStart, toolbarEnd);
 
     expect(toolbarSource).toContain('<Dropdown');
+    expect(toolbarSource).toContain('open={instrumentToolbarOpen}');
+    expect(toolbarSource).toContain('trigger={[]}');
     expect(toolbarSource).toContain('instrumentToolbarMenuItems');
     expect(toolbarSource).toContain('更多操作');
     expect(toolbarSource).not.toContain(
