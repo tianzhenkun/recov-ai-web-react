@@ -18,7 +18,10 @@ import {
 import { createStyles } from 'antd-style';
 import dayjs from 'dayjs';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { subscribeSseMessage } from '@/adapters/ruoyi/sse';
+import {
+  type RuoyiSseMessage,
+  subscribeSseMessage,
+} from '@/adapters/ruoyi/sse';
 import {
   listMessages,
   type MessageItem,
@@ -35,6 +38,19 @@ type NotificationCenterProps = {
 type FilterKey = 'all' | 'unread';
 
 const pageSize = 10;
+const notificationSseTypes = new Set([
+  'resource.message.changed',
+  'sys.message.changed',
+  'system.notice.changed',
+]);
+
+const isNotificationSseMessage = (message: RuoyiSseMessage) => {
+  if (message.type) {
+    return notificationSseTypes.has(message.type);
+  }
+
+  return typeof message.data === 'string' && message.data.trim().length > 0;
+};
 
 const useStyles = createStyles(({ token, css }) => ({
   triggerWrap: css`
@@ -350,7 +366,9 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   useEffect(() => {
     if (!enabled) return undefined;
 
-    return subscribeSseMessage(() => {
+    return subscribeSseMessage((sseMessage) => {
+      if (!isNotificationSseMessage(sseMessage)) return;
+
       void loadUnreadCount();
       if (openRef.current) {
         void loadMessages({ page: 1, silent: true });

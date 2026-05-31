@@ -1,5 +1,5 @@
 import FlowEventCenter from './components/FlowEventCenter';
 
-const FlowEventsPage = () => <FlowEventCenter mode="page" />;
+const FlowEventsPage = () => <FlowEventCenter />;
 
 export default FlowEventsPage;

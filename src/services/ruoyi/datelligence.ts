@@ -77,6 +77,23 @@ export type DebtRecordDetail = DebtRecordItem & {
   attachments?: DebtAttachmentItem[];
 };
 
+export type DebtRecordUpdatePayload = {
+  id: number | string;
+  debtAmount?: number | string;
+  debtorName?: string;
+  debtorPhone?: string;
+  city?: string;
+  organization?: string;
+  debtorEmail?: string;
+  reminderRemark?: string;
+  address?: string;
+  area?: string;
+  deadlineTime?: string;
+  debtIdCard?: string;
+  overdueDays?: number | string;
+  overdueAmount?: number | string;
+};
+
 export type DebtStats = {
   totalOverdueAmount?: number | string;
   totalDebtorCount?: number | string;
@@ -179,6 +196,12 @@ export const getDebtRecordPage = (params: DebtRecordQuery) =>
 export const getDebtRecordDetail = (id: number | string) =>
   ruoyiRequest<DebtRecordDetail>(`/system/recov/debt/${id}`, {
     method: 'get',
+  });
+
+export const updateDebtRecord = (data: DebtRecordUpdatePayload) =>
+  ruoyiRequest<void>('/system/recov/debt', {
+    method: 'put',
+    data,
   });
 
 export const getDebtCityOptions = () =>

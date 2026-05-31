@@ -403,6 +403,7 @@ const RolePage = () => {
       title: '操作',
       valueType: 'option',
       width: 128,
+      align: 'left',
       render: (_, record) => {
         if (record.roleId === 1 || record.roleId === '1') return null;
 

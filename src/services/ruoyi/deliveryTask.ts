@@ -6,6 +6,7 @@ export type DeliveryTaskItem = {
   taskId: string;
   deliveryId?: string | null;
   debtId?: string | null;
+  flowId?: string | number | null;
   debtNumber?: string | number | null;
   businessId?: string | null;
   debtorName?: string | null;
@@ -24,6 +25,9 @@ export type DeliveryTaskItem = {
   fileOssId?: string | null;
   fileName?: string | null;
   publicUrl?: string | null;
+  resultFileOssId?: string | null;
+  resultFileName?: string | null;
+  resultPublicUrl?: string | null;
   wayCode?: string | null;
   wayName?: string | null;
   sortOrder?: number | null;

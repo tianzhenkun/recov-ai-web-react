@@ -174,6 +174,7 @@ const MatchListSection = ({
         key: 'actions',
         fixed: 'right',
         width: 140,
+        align: 'left',
         render: (_, row) => (
           <TableActions
             actions={[
@@ -253,6 +254,7 @@ const MatchListSection = ({
         key: 'actions',
         fixed: 'right',
         width: 100,
+        align: 'left',
         render: (_, row) => (
           <Popconfirm
             title="确认一键撤诉？"

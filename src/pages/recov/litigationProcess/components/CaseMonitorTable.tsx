@@ -12,6 +12,7 @@ import {
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useEffect, useMemo } from 'react';
 import TableActions from '@/components/TableActions';
+import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import {
   RECOV_FILTER_CONTROL_STYLE,
   RECOV_ORGANIZATION_POPUP_WIDTH,
@@ -57,12 +58,22 @@ type CaseMonitorTableProps = {
   onFilterReset: () => void;
   onPageChange: (pageNum: number, pageSize: number) => void;
   onViewDetail: (row: DisplayRow) => void;
+  onViewFlow: (row: DisplayRow) => void;
 };
 
 type FilterFormValues = {
   debtNumber?: string;
   city?: string;
   organization?: string;
+};
+
+const formatFailureSummary = (value: unknown) => {
+  const text = formatText(value, '');
+  if (!text) return '';
+  if (/账号|用户名|密码|lawyer/i.test(text)) return '立案账号配置异常';
+  if (/印章|seal/i.test(text)) return '印章配置异常';
+  if (/未找到|缺少|不存在|未配置/.test(text)) return '必要配置缺失';
+  return '节点执行失败';
 };
 
 const renderCell = (row: DisplayRow, column: ColumnSchema) => {
@@ -147,6 +158,10 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
       if (!text) return null;
       return <Tag color={getCourtStatusColor(statusCode)}>{text}</Tag>;
     }
+    case 'failure': {
+      const summary = formatFailureSummary(value);
+      return summary ? <Tag color="error">{summary}</Tag> : null;
+    }
     case 'party':
       return (
         <Text strong style={{ fontSize: 12 }}>
@@ -164,6 +179,14 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
   }
 };
 
+const normalizeFlowId = (value: unknown) => {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
+const canShowFlowDetail = (row: DisplayRow) =>
+  Boolean(normalizeFlowId(row.flowId)) && row.status !== '2';
+
 const CaseMonitorTable = ({
   nodeType,
   rows,
@@ -178,6 +201,7 @@ const CaseMonitorTable = ({
   onFilterReset,
   onPageChange,
   onViewDetail,
+  onViewFlow,
 }: CaseMonitorTableProps) => {
   const [form] = Form.useForm<FilterFormValues>();
 
@@ -217,12 +241,12 @@ const CaseMonitorTable = ({
     dataColumns.push({
       key: 'actions',
       title: '操作',
-      width: 120,
+      width: 128,
       fixed: 'right',
-      align: 'center',
+      align: 'left',
       render: (_, record) => (
         <TableActions
-          maxVisible={1}
+          maxVisible={2}
           actions={[
             {
               key: 'detail',
@@ -230,13 +254,23 @@ const CaseMonitorTable = ({
               icon: <EyeOutlined />,
               onClick: () => onViewDetail(record),
             },
+            ...(canShowFlowDetail(record)
+              ? [
+                  {
+                    key: 'flow',
+                    label: record.status === '3' ? '处理异常' : '查看进度',
+                    icon: getFlowActionIcon(record.status === '3'),
+                    onClick: () => onViewFlow(record),
+                  },
+                ]
+              : []),
           ]}
         />
       ),
     });
 
     return dataColumns;
-  }, [nodeType, onViewDetail]);
+  }, [nodeType, onViewDetail, onViewFlow]);
 
   const pagination: TablePaginationConfig = {
     current: pageNum,

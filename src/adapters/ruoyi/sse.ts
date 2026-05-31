@@ -45,6 +45,21 @@ const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
 
 const isAbsoluteUrl = (url: string) => /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
 
+const isAuthFailureCode = (code: unknown) =>
+  code === 401 || code === 403 || code === '401' || code === '403';
+
+const isJsonContentType = (contentType: string) =>
+  contentType.toLowerCase().includes('application/json');
+
+const readRuoyiResponseCode = async (response: Response) => {
+  try {
+    const payload = (await response.clone().json()) as { code?: unknown };
+    return payload?.code;
+  } catch {
+    return undefined;
+  }
+};
+
 const withBaseApi = (url: string, baseApi: string) => {
   if (isAbsoluteUrl(url)) return url;
 
@@ -92,6 +107,9 @@ const parseSseData = (raw: string) => {
     };
   }
 };
+
+const isEmptySseMessage = (event: EventSourceMessage) =>
+  !event.data && !event.event && !event.id;
 
 const toRuoyiSseMessage = (event: EventSourceMessage): RuoyiSseMessage => {
   const parsed = parseSseData(event.data);
@@ -151,6 +169,8 @@ const buildHeaders = () => {
 };
 
 const handleMessage = (event: EventSourceMessage) => {
+  if (isEmptySseMessage(event)) return;
+
   const message = toRuoyiSseMessage(event);
   reconnectAttempt = 0;
   notifyListeners(message);
@@ -194,6 +214,13 @@ export const startSse = () => {
       }
 
       const contentType = response.headers.get('content-type') || '';
+      if (isJsonContentType(contentType)) {
+        const code = await readRuoyiResponseCode(response);
+        if (isAuthFailureCode(code)) {
+          throw new FatalSseError('SSE unauthorized.');
+        }
+      }
+
       if (!contentType.startsWith(EventStreamContentType)) {
         throw new RetriableSseError(
           `Expected SSE content-type, got ${contentType || 'empty'}.`,

@@ -88,11 +88,21 @@ export const getVoiceGenderLabel = (gender: string): string => {
   return '未标注';
 };
 
-export const getVoiceGenderTagColor = (gender: string): string | undefined => {
-  if (gender === '男') return 'processing';
-  if (gender === '女') return 'magenta';
-  return 'default';
+export type VoiceGenderTagThemeToken = {
+  colorPrimary: string;
+  colorPrimaryBg: string;
+  colorPrimaryBorder: string;
 };
+
+export const getVoiceGenderTagStyle = ({
+  colorPrimary,
+  colorPrimaryBg,
+  colorPrimaryBorder,
+}: VoiceGenderTagThemeToken): CSSProperties => ({
+  backgroundColor: colorPrimaryBg,
+  borderColor: colorPrimaryBorder,
+  color: colorPrimary,
+});
 
 export const getVoiceAvatarBg = (gender: string): string => {
   if (gender === '女') return '#f472b6';

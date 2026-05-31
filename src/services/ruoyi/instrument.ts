@@ -5,6 +5,7 @@ export type InstrumentTaskStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type InstrumentTaskGroupItem = {
   groupId?: string;
   debtId?: number | string;
+  flowId?: number | string;
   debtorName?: string;
   debtNumber?: string;
   overdueAmount?: number | string;
@@ -28,6 +29,7 @@ export type InstrumentTaskGroupItem = {
 export type InstrumentTaskItem = {
   id: number | string;
   debtId?: number | string;
+  flowId?: number | string;
   taskSource?: 'BUILTIN' | 'SUPPLEMENTAL' | string;
   debtorName?: string;
   debtNumber?: string;

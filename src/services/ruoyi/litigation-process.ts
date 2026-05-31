@@ -42,6 +42,7 @@ export type FeeManagementResult = {
 
 export type LitigationRowVO = {
   id: string;
+  flowId?: string | number | null;
   debtNumber: number;
   city: string;
   organization: string;
@@ -141,6 +142,7 @@ const normalizeLitigationRow = (
   },
 ): LitigationRowVO => ({
   id: String(row.id ?? ''),
+  flowId: row.flowId ?? null,
   debtNumber: Number(row.debtNumber ?? 0),
   city: String(row.city ?? ''),
   organization: String(row.organization ?? ''),

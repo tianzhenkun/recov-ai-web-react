@@ -10,8 +10,23 @@ const adminApi = process.env.UMI_APP_ADMIN_API || '/admin-api';
 const apiTarget =
   process.env.UMI_APP_API_TARGET || 'http://111.229.146.182:19090';
 const adminTarget = process.env.UMI_APP_ADMIN_TARGET || apiTarget;
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/g, '');
+
+const normalizedBaseApi = trimTrailingSlash(baseApi);
+const sseProxyPath = `${normalizedBaseApi}/resource/sse`;
 
 const createProxy = () => ({
+  [sseProxyPath]: {
+    target: apiTarget,
+    changeOrigin: true,
+    pathRewrite: { [`^${sseProxyPath}`]: '/resource/sse' },
+    proxyTimeout: 0,
+    timeout: 0,
+    headers: {
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  },
   [baseApi]: {
     target: apiTarget,
     changeOrigin: true,

@@ -70,6 +70,7 @@ export type ColumnSchema = {
     | 'status'
     | 'courtStatus'
     | 'warning'
+    | 'failure'
     | 'feeStatus'
     | 'remainDays'
     | 'party'
@@ -130,6 +131,7 @@ export const BASE_COLUMNS: ColumnSchema[] = [
     prop: 'failReason',
     label: '失败原因',
     minWidth: 170,
+    type: 'failure',
     blankWhenEmpty: true,
   },
 ];
@@ -454,8 +456,8 @@ export const formatText = (value: unknown, fallback = '-') => {
 };
 
 export const buildRangeText = (
-  pageNum: number,
-  pageSize: number,
+  _pageNum: number,
+  _pageSize: number,
   total: number,
 ) => {
   return `共 ${total} 条`;

@@ -36,6 +36,8 @@ export type AiCallAnalysis = {
 export type AiCallRecord = {
   callRecordId?: number | string;
   debtId?: number | string;
+  identityName?: string;
+  callerName?: string;
   debtNumber?: number | string;
   debtorName?: string;
   debtorPhone?: string;
@@ -62,6 +64,8 @@ export type AiCallDebtFeedback = {
   organization?: string;
   callSummary?: string;
   latestCallRecordId?: number | string;
+  latestIdentityName?: string;
+  latestCallerName?: string;
   latestStatus?: string;
   latestAnalysisStatus?: string;
   latestAnalysisError?: string | null;
@@ -83,6 +87,8 @@ export type AiCallRecordDetail = AiCallRecord & {
 
 export type AiCallTimelineRecord = {
   callRecordId?: number | string;
+  identityName?: string;
+  callerName?: string;
   status?: string;
   statusLabel?: string;
   analysisStatus?: string;

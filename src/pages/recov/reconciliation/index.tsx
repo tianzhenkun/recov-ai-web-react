@@ -24,7 +24,7 @@ import {
   theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
 import MetricIcon, {
   type MetricTone,
@@ -260,7 +260,7 @@ const StatCard = ({ title, value, tone, icon }: StatCardProps) => {
   );
 };
 
-const ModeIndicator = ({ label }: { label: string }) => {
+export const ModeIndicator = ({ label }: { label: string }) => {
   const { token } = theme.useToken();
 
   return (
@@ -272,7 +272,7 @@ const ModeIndicator = ({ label }: { label: string }) => {
         borderColor: token.colorPrimaryBorder,
       }}
     >
-      <Badge status="processing" />
+      <Badge color={token.colorPrimary} status="processing" />
       <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>
         当前模式：
       </Text>
@@ -663,7 +663,7 @@ const ReconciliationPage = () => {
         key: 'action',
         width: 84,
         fixed: 'right',
-        align: 'center',
+        align: 'left',
         render: (_, record) => {
           if (Number(record.status) === 0 && systemMode === 0) {
             return (

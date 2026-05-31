@@ -1,17 +1,17 @@
 import {
   ClockCircleOutlined,
   FrownOutlined,
-  InboxOutlined,
   MehOutlined,
   SmileOutlined,
 } from '@ant-design/icons';
-import { Skeleton, Space, Tag, Tooltip, Typography, theme } from 'antd';
-import type { ReactNode } from 'react';
+import { Empty, Skeleton, Space, Tag, Tooltip, Typography, theme } from 'antd';
+import React, { type ReactNode } from 'react';
 import type { FeedbackItem, FeedbackSentiment } from './_shared';
 
 const { Text } = Typography;
 
 const MAX_VISIBLE_TAGS = 3;
+const FEEDBACK_CARD_MAX_HEIGHT = 120;
 
 type FeedbackFeedProps = {
   items: FeedbackItem[];
@@ -36,7 +36,6 @@ const FeedbackFeed = ({
   onItemClick,
 }: FeedbackFeedProps) => {
   const { token } = theme.useToken();
-  const shouldFillPage = items.length >= pageSize;
 
   const sentimentMeta: Record<FeedbackSentiment, SentimentMeta> = {
     negative: {
@@ -68,8 +67,15 @@ const FeedbackFeed = ({
   if (loading && items.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-        {[0, 1, 2, 3, 4].map((idx) => (
-          <div key={idx} className="shrink-0 rounded-lg px-4 py-3">
+        {Array.from(
+          { length: pageSize },
+          (_, idx) => `feedback-skeleton-${idx + 1}`,
+        ).map((skeletonKey) => (
+          <div
+            key={skeletonKey}
+            className="shrink-0 overflow-hidden rounded-lg px-4 py-3"
+            style={{ maxHeight: FEEDBACK_CARD_MAX_HEIGHT }}
+          >
             <Skeleton active avatar paragraph={{ rows: 2 }} />
           </div>
         ))}
@@ -79,45 +85,17 @@ const FeedbackFeed = ({
 
   if (items.length === 0) {
     return (
-      <div
-        className="flex min-h-[220px] flex-1 flex-col items-center justify-center rounded-lg border border-dashed px-6 py-10 text-center"
-        style={{
-          borderColor: token.colorBorderSecondary,
-          backgroundColor: token.colorFillQuaternary,
-        }}
-      >
-        <span
-          className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full text-xl"
-          style={{
-            color: token.colorTextTertiary,
-            backgroundColor: token.colorBgContainer,
-          }}
-          aria-hidden
-        >
-          <InboxOutlined />
-        </span>
-        <Text strong style={{ color: token.colorTextSecondary }}>
-          暂无用户反馈
-        </Text>
+      <div className="flex min-h-[220px] flex-1 items-center justify-center px-6 py-10">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="暂无用户反馈"
+        />
       </div>
     );
   }
 
   return (
-    <div
-      className={`min-h-0 flex-1 gap-2 pr-1 ${
-        shouldFillPage
-          ? 'grid overflow-hidden'
-          : 'flex flex-col overflow-y-auto'
-      }`}
-      style={
-        shouldFillPage
-          ? {
-              gridTemplateRows: `repeat(${pageSize}, minmax(0, 1fr))`,
-            }
-          : undefined
-      }
-    >
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
       {items.map((item) => {
         const meta = sentimentMeta[item.sentiment];
         const visibleTags = item.semanticTags.slice(0, MAX_VISIBLE_TAGS);
@@ -128,10 +106,10 @@ const FeedbackFeed = ({
             key={item.id}
             type="button"
             onClick={() => onItemClick(item)}
-            className={`flex w-full cursor-pointer items-start gap-3 rounded-lg border border-solid px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
-              shouldFillPage ? 'h-full min-h-0 overflow-hidden' : 'shrink-0'
-            }`}
+            className="flex w-full shrink-0 cursor-pointer items-start gap-3 overflow-hidden rounded-lg border border-solid px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
             style={{
+              maxHeight: FEEDBACK_CARD_MAX_HEIGHT,
+              overflow: 'hidden',
               borderColor: token.colorBorderSecondary,
               backgroundColor: token.colorBgContainer,
             }}

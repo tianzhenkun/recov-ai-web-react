@@ -344,6 +344,7 @@ const ClientPage = () => {
       valueType: 'option',
       fixed: 'right',
       width: 96,
+      align: 'left',
       render: (_, record) => (
         <TableActions
           actions={[

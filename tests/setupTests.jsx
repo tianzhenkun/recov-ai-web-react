@@ -94,6 +94,15 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
   });
 }
 
+if (typeof window !== 'undefined' && window.getComputedStyle) {
+  const originalGetComputedStyle = window.getComputedStyle.bind(window);
+  Object.defineProperty(window, 'getComputedStyle', {
+    writable: true,
+    configurable: true,
+    value: (element) => originalGetComputedStyle(element),
+  });
+}
+
 const originalError = console.error;
 Object.defineProperty(window.console, 'error', {
   writable: true,

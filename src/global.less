@@ -199,6 +199,43 @@ ol {
   overflow: hidden;
 }
 
+.flow-event-center-tabs.ant-tabs {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.flow-event-center-tabs.ant-tabs > .ant-tabs-nav {
+  flex: 0 0 auto;
+}
+
+.flow-event-center-tabs.ant-tabs > .ant-tabs-content-holder {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flow-event-center-tabs.ant-tabs
+  > .ant-tabs-content-holder
+  > .ant-tabs-content {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.flow-event-center-tabs.ant-tabs
+  > .ant-tabs-content-holder
+  > .ant-tabs-content
+  > .ant-tabs-tabpane {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .recov-stats-strip {
   display: flex !important;
   flex: 0 0 auto;

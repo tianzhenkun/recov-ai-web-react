@@ -400,7 +400,10 @@ export const getScopedRuoyiMenuData = (
     configuredWorkspaceNames,
   ).find((item) => item.key === normalizedWorkspaceKey);
 
-  return workspace?.menuData || menuData;
+  return (
+    workspace?.menuData ||
+    omitWorkspaceRootMenus(menuData, configuredWorkspaceNames)
+  );
 };
 
 export const loadRuoyiMenuData = async () => {

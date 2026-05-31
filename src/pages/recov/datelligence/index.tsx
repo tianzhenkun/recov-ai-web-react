@@ -4,6 +4,7 @@ import {
   ClockCircleOutlined,
   CloseCircleOutlined,
   DownloadOutlined,
+  EditOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
   FieldTimeOutlined,
@@ -33,10 +34,12 @@ import {
   Alert,
   Button,
   Card,
+  DatePicker,
   Drawer,
   Empty,
   Form,
   Input,
+  InputNumber,
   List,
   Modal,
   message,
@@ -55,8 +58,10 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile, UploadProps } from 'antd/es/upload';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import TableActions from '@/components/TableActions';
+import TableActions, { type TableActionItem } from '@/components/TableActions';
+import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
@@ -73,12 +78,23 @@ import {
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
+import {
+  type DebtRecordActionKey,
+  isDebtFlowExceptionRecord,
+  isFlowStartFailedRecord,
+  normalizeFlowId,
+  normalizeFlowStartBatchId,
+  normalizePersonaId,
+  resolveDebtRecordActionKeys,
+} from '@/pages/recov/datelligence/actionRules';
 import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   buildCommunicationDetail,
   type OwnerCommunicationDetail,
+  resolveOutboundStartDisabledReason,
+  resolveOutboundStartNotice,
 } from '@/pages/recov/intelligentOutbound/_shared';
-import CommunicationLogModal from '@/pages/recov/intelligentOutbound/CommunicationLogModal';
+import { CommunicationLogContent } from '@/pages/recov/intelligentOutbound/CommunicationLogModal';
 import {
   type AiCallDebtTimeline,
   getAiCallDebtFeedbackPage,
@@ -89,6 +105,7 @@ import {
   type DebtRecordDetail,
   type DebtRecordItem,
   type DebtRecordQuery,
+  type DebtRecordUpdatePayload,
   type DebtStats,
   downloadDebtImportTemplate,
   getAssetPackagePipelineProgress,
@@ -108,10 +125,12 @@ import {
   ignoreAssetPackagePipelineFailures,
   retryAssetPackagePipelineTask,
   submitAssetPackageImport,
+  updateDebtRecord,
 } from '@/services/ruoyi/datelligence';
 import {
   type FlowBatchStartFilter,
   getFlowBatchProgress,
+  retryFailedDebtFlowStart,
   startFlowBatch,
 } from '@/services/ruoyi/flowBatchStart';
 import { downloadOss, listOssByIds, uploadOssFile } from '@/services/ruoyi/oss';
@@ -124,6 +143,24 @@ type QueryFormValues = {
   city?: string;
   organization?: string;
 };
+
+type DebtEditFormValues = {
+  debtAmount?: number | string | null;
+  debtorName?: string;
+  debtorPhone?: string;
+  city?: string;
+  organization?: string;
+  debtorEmail?: string;
+  reminderRemark?: string;
+  address?: string;
+  area?: string;
+  deadlineTime?: Dayjs | null;
+  debtIdCard?: string;
+  overdueDays?: number | string | null;
+  overdueAmount?: number | string | null;
+};
+
+type OwnerInsightTabKey = 'persona' | 'communication';
 
 type DetailTabKey = 'classification' | 'traits' | 'dialogue' | 'keyword';
 
@@ -374,33 +411,11 @@ const renderImportFailureMessage = (
   );
 };
 
-const normalizePersonaId = (value: unknown) => {
-  if (value === null || value === undefined) return undefined;
-  const text = String(value).trim();
-  return text ? text : undefined;
-};
-
-const normalizeFlowId = (value: unknown) => {
-  if (value === null || value === undefined) return undefined;
-  const text = String(value).trim();
-  return text ? text : undefined;
-};
-
 const normalizeDebtRecordId = (value: unknown) => {
   if (value === null || value === undefined) return undefined;
   const text = String(value).trim();
   return text ? text : undefined;
 };
-
-const normalizeFlowStartBatchId = (value: unknown) => {
-  if (value === null || value === undefined) return undefined;
-  const text = String(value).trim();
-  return text ? text : undefined;
-};
-
-const isFlowStartFailedRecord = (record: DebtRecordItem) =>
-  String(record.flowStartStatus ?? '').trim() === '3' ||
-  String(record.currentStatus ?? '').trim() === '发起失败';
 
 const getNonEmptyText = (...values: unknown[]) => {
   for (const value of values) {
@@ -409,6 +424,72 @@ const getNonEmptyText = (...values: unknown[]) => {
     if (text) return text;
   }
   return '';
+};
+
+const getEditTextValue = (value: unknown) =>
+  value === null || value === undefined ? '' : String(value);
+
+const getEditNumberValue = (value: unknown) => toOptionalNumber(value);
+
+const getEditDateValue = (value: unknown) => {
+  const text = getNonEmptyText(value);
+  if (!text) return null;
+  const date = dayjs(text);
+  return date.isValid() ? date : null;
+};
+
+const toDebtEditFormValues = (record: DebtRecordItem): DebtEditFormValues => ({
+  debtAmount: getEditNumberValue(record.debtAmount),
+  debtorName: getEditTextValue(record.debtorName),
+  debtorPhone: getEditTextValue(record.debtorPhone),
+  city: getEditTextValue(record.city),
+  organization: getEditTextValue(record.organization),
+  debtorEmail: getEditTextValue(record.debtorEmail),
+  reminderRemark: getEditTextValue(record.reminderRemark),
+  address: getEditTextValue(record.address),
+  area: getEditTextValue(record.area),
+  deadlineTime: getEditDateValue(record.deadlineTime),
+  debtIdCard: getEditTextValue(record.debtIdCard),
+  overdueDays: getEditNumberValue(record.overdueDays),
+  overdueAmount: getEditNumberValue(record.overdueAmount),
+});
+
+const normalizeEditText = (value: unknown) =>
+  value === null || value === undefined ? '' : String(value).trim();
+
+const normalizeEditNumber = (
+  value: number | string | null | undefined,
+): number | string | undefined =>
+  value === null || value === undefined || value === '' ? undefined : value;
+
+const toDebtUpdatePayload = (
+  id: number | string,
+  values: DebtEditFormValues,
+): DebtRecordUpdatePayload => {
+  const payload: DebtRecordUpdatePayload = {
+    id,
+    debtorName: getNonEmptyText(values.debtorName),
+    debtorPhone: normalizeEditText(values.debtorPhone),
+    city: normalizeEditText(values.city),
+    organization: normalizeEditText(values.organization),
+    debtorEmail: normalizeEditText(values.debtorEmail),
+    reminderRemark: normalizeEditText(values.reminderRemark),
+    address: normalizeEditText(values.address),
+    area: normalizeEditText(values.area),
+    debtIdCard: normalizeEditText(values.debtIdCard),
+  };
+
+  const debtAmount = normalizeEditNumber(values.debtAmount);
+  if (debtAmount !== undefined) payload.debtAmount = debtAmount;
+  const overdueAmount = normalizeEditNumber(values.overdueAmount);
+  if (overdueAmount !== undefined) payload.overdueAmount = overdueAmount;
+  const overdueDays = normalizeEditNumber(values.overdueDays);
+  if (overdueDays !== undefined) payload.overdueDays = overdueDays;
+  if (values.deadlineTime) {
+    payload.deadlineTime = values.deadlineTime.format('YYYY-MM-DD');
+  }
+
+  return payload;
 };
 
 const getSemanticAnalysisDebtId = (source: Record<string, unknown>) =>
@@ -788,6 +869,12 @@ const pipelineStatusDescriptionText: Record<ImportPipelineStatus, string> = {
   partial_success: '失败记录已忽略，本次导入流程已放行，仍可查看明细。',
 };
 
+const pipelineLegacyFailureDescriptionText = {
+  import: '导入入库失败，请查看详情后修正文件并重新上传。',
+  assetParse: '附件解析存在失败记录，请查看详情后重试或处理。',
+  personaClassify: '画像分类存在失败记录，请查看详情后重试或处理。',
+} as const;
+
 const findPipelineSubTask = (
   data: ImportPipelineProgressResult,
   type: ImportPipelineSubTask['type'],
@@ -990,6 +1077,7 @@ const renderFailureReason = (
 
 const DatelligencePage = () => {
   const [form] = Form.useForm<QueryFormValues>();
+  const [debtEditForm] = Form.useForm<DebtEditFormValues>();
   const [messageApi, messageContextHolder] = message.useMessage();
   const { token } = theme.useToken();
 
@@ -1020,6 +1108,10 @@ const DatelligencePage = () => {
   >(new Set());
 
   const [personaOpen, setPersonaOpen] = useState(false);
+  const [ownerInsightRecord, setOwnerInsightRecord] =
+    useState<DebtRecordItem | null>(null);
+  const [ownerInsightActiveTab, setOwnerInsightActiveTab] =
+    useState<OwnerInsightTabKey>('persona');
   const [personaLoading, setPersonaLoading] = useState(false);
   const [personaData, setPersonaData] = useState<PersonaItem | null>(null);
   const [personaOriginInfo, setPersonaOriginInfo] =
@@ -1031,7 +1123,12 @@ const DatelligencePage = () => {
   const [flowStartFailureOpen, setFlowStartFailureOpen] = useState(false);
   const [flowStartFailureRecord, setFlowStartFailureRecord] =
     useState<DebtRecordItem | null>(null);
-  const [communicationLogOpen, setCommunicationLogOpen] = useState(false);
+  const [debtEditOpen, setDebtEditOpen] = useState(false);
+  const [debtEditRecord, setDebtEditRecord] = useState<DebtRecordItem | null>(
+    null,
+  );
+  const [debtEditSubmitting, setDebtEditSubmitting] = useState(false);
+  const [flowStartRetrying, setFlowStartRetrying] = useState(false);
   const [communicationLogLoading, setCommunicationLogLoading] = useState(false);
   const [communicationLogDetail, setCommunicationLogDetail] =
     useState<OwnerCommunicationDetail | null>(null);
@@ -1451,6 +1548,10 @@ const DatelligencePage = () => {
     pipelineStatus === 'failed' || pipelineStatus === 'partial_failed';
   const hasLegacyImportFailure =
     !pipelineStatus && (importStageState.failed || hasPostProcessFailureFacts);
+  const hasLegacyBlockingImportFailure =
+    !pipelineStatus && hasPostProcessFailureFacts;
+  const hasNonBlockingImportFailure =
+    !pipelineStatus && importStageState.failed && !hasPostProcessFailureFacts;
   const showImportTaskProgress =
     Boolean(pipelineStatus) ||
     importStageState.processing ||
@@ -1491,24 +1592,18 @@ const DatelligencePage = () => {
     return '';
   })();
   const canImportAssetPackage = !importDisabledReason;
-  const outboundDisabledReason = (() => {
-    if (outboundStarting) return '催收流程正在发起，请稍后';
-    if (outboundFlowProcessing) return '催收流程批次处理中，请稍后';
-    if (recordTotal === 0) return '暂无债务记录，无法开启外呼';
-    if (isImportWorkflowProcessing) {
-      return '当前导入任务处理中，请等待完成后再开启外呼';
-    }
-    if (pipelineStatus === 'failed') {
-      return '导入失败，请重新上传完整 ZIP';
-    }
-    if (pipelineStatus === 'partial_failed') {
-      return '后续处理存在失败，请重试或忽略后再开启外呼';
-    }
-    if (hasLegacyImportFailure) {
-      return '导入链路存在失败，请处理后再开启外呼';
-    }
-    return '';
-  })();
+  const outboundDisabledReason = resolveOutboundStartDisabledReason({
+    outboundStarting,
+    outboundFlowProcessing,
+    recordTotal,
+    isImportWorkflowProcessing,
+    pipelineStatus,
+    hasBlockingImportFailure: hasLegacyBlockingImportFailure,
+  });
+  const outboundStartNotice = resolveOutboundStartNotice({
+    pipelineStatus,
+    hasNonBlockingImportFailure,
+  });
   const canStartOutbound = !outboundDisabledReason;
 
   const importTaskTitle = pipelineStatus
@@ -1519,34 +1614,19 @@ const DatelligencePage = () => {
 
   const importTaskDescription = useMemo(() => {
     if (pipelineStatus) {
-      if (pipelineStatus === 'failed' || pipelineStatus === 'partial_failed') {
-        return (
-          pipelineErrorMessage || pipelineStatusDescriptionText[pipelineStatus]
-        );
-      }
       return pipelineStatusDescriptionText[pipelineStatus];
     }
 
     if (importStageState.failed) {
-      return (
-        pipelineErrorMessage ||
-        importStageState.errorMsg ||
-        '导入入库失败，请查看详情'
-      );
+      return pipelineLegacyFailureDescriptionText.import;
     }
 
     if (parseState.failed) {
-      return (
-        pipelineErrorMessage ||
-        parseState.errorMsg ||
-        '资产包解析失败，请查看详情'
-      );
+      return pipelineLegacyFailureDescriptionText.assetParse;
     }
 
     if (personaState.failed) {
-      return (
-        pipelineErrorMessage || personaState.errorMsg || '画像分析存在失败记录'
-      );
+      return pipelineLegacyFailureDescriptionText.personaClassify;
     }
 
     if (pipelinePhase) {
@@ -1578,21 +1658,17 @@ const DatelligencePage = () => {
     return '后续任务准备中';
   }, [
     importStageState.current,
-    importStageState.errorMsg,
     importStageState.failed,
     importStageState.phase,
     importStageState.processing,
     importStageState.total,
     importTaskProcessing,
     pipelineElapsedText,
-    pipelineErrorMessage,
     pipelinePhase,
     pipelineStatus,
-    parseState.errorMsg,
     parseState.failed,
     parseState.parsing,
     parseState.phase,
-    personaState.errorMsg,
     personaState.failed,
     personaState.phase,
     personaState.processing,
@@ -1943,19 +2019,10 @@ const DatelligencePage = () => {
           messageApi.success('导入完成，异常已忽略');
           break;
         case 'partial_failed':
-          messageApi.warning(
-            data.errorMessage || '导入成功，后续处理部分失败，可重试或忽略',
-          );
+          messageApi.warning('导入成功，后续处理部分失败，请查看详情后处理');
           break;
         case 'failed': {
-          const failedTask = data.subTasks?.find(
-            (item) => item.status === 'failed',
-          );
-          messageApi.error(
-            data.errorMessage ||
-              failedTask?.errorMessage ||
-              '导入失败，请修正后重新上传完整 ZIP',
-          );
+          messageApi.error('导入失败，请查看详情或重新上传完整 ZIP');
           break;
         }
         default:
@@ -2336,114 +2403,134 @@ const DatelligencePage = () => {
     }
   };
 
-  const openPersonaDetail = async (record: DebtRecordItem) => {
-    const personaId = normalizePersonaId(record.personaId);
-    if (!personaId) {
-      messageApi.warning('当前债务记录未关联用户画像');
-      return;
-    }
-
-    setPersonaOpen(true);
-    setPersonaLoading(true);
-    setPersonaActiveTab('classification');
-    setPersonaData(null);
-    setPersonaOriginInfo(null);
-    const initialPersonaId = normalizePersonaId(record.initialPersonaId);
-    const shouldShowInitialPersona =
-      Boolean(initialPersonaId) && initialPersonaId !== personaId;
-    try {
-      const [currentResult, initialResult] = await Promise.allSettled([
-        getPersona(personaId),
-        shouldShowInitialPersona && initialPersonaId
-          ? getPersona(initialPersonaId)
-          : Promise.resolve(null),
-      ] as const);
-
-      if (currentResult.status !== 'fulfilled') {
-        throw currentResult.reason;
-      }
-
-      setPersonaData(currentResult.value.data ?? null);
-      if (shouldShowInitialPersona && initialPersonaId) {
-        const initialPersona =
-          initialResult.status === 'fulfilled'
-            ? initialResult.value?.data
-            : null;
-        setPersonaOriginInfo({
-          currentPersonaId: personaId,
-          initialPersonaId,
-          initialPersonaName: getPersonaDisplayName(
-            initialPersona,
-            initialPersonaId,
-          ),
-        });
-      }
-    } catch {
-      setPersonaOpen(false);
-    } finally {
-      setPersonaLoading(false);
-    }
-  };
-
-  const openCommunicationAnalysis = useCallback(
+  const openPersonaDetail = useCallback(
     async (record: DebtRecordItem) => {
+      const personaId = normalizePersonaId(record.personaId);
       const debtRecordId = normalizeDebtRecordId(record.id);
-      if (!debtRecordId) {
-        messageApi.warning('债务记录 ID 为空，无法查看语义分析');
+      const shouldLoadCommunication = hasCommunicationAnalysis(
+        record,
+        communicationAnalysisDebtIds,
+      );
+
+      if (!personaId && !shouldLoadCommunication) {
+        messageApi.warning('当前债务记录暂无用户画像或语义分析');
         return;
       }
 
-      const fallbackTimeline: AiCallDebtTimeline = {
-        debtId: debtRecordId,
-        debtorName: getNonEmptyText(record.debtorName, '未知业主'),
-        debtorPhone: getNonEmptyText(record.debtorPhone),
-        organization: getNonEmptyText(record.organization, '未归属项目'),
-        callSummary: '暂无语义分析数据',
-        records: [],
-      };
-
-      setCommunicationLogOpen(true);
-      setCommunicationLogLoading(true);
+      setPersonaOpen(true);
+      setOwnerInsightRecord(record);
+      setOwnerInsightActiveTab(personaId ? 'persona' : 'communication');
+      setPersonaLoading(Boolean(personaId));
+      setCommunicationLogLoading(
+        Boolean(shouldLoadCommunication && debtRecordId),
+      );
+      setPersonaActiveTab('classification');
+      setPersonaData(null);
+      setPersonaOriginInfo(null);
       setCommunicationLogDetail(null);
-      try {
-        const res = await getAiCallDebtTimeline(debtRecordId);
-        const data = res.data || {};
-        const timeline: AiCallDebtTimeline = {
+
+      const tasks: Promise<void>[] = [];
+
+      if (personaId) {
+        tasks.push(
+          (async () => {
+            const initialPersonaId = normalizePersonaId(
+              record.initialPersonaId,
+            );
+            const shouldShowInitialPersona =
+              Boolean(initialPersonaId) && initialPersonaId !== personaId;
+            try {
+              const [currentResult, initialResult] = await Promise.allSettled([
+                getPersona(personaId),
+                shouldShowInitialPersona && initialPersonaId
+                  ? getPersona(initialPersonaId)
+                  : Promise.resolve(null),
+              ] as const);
+
+              if (currentResult.status !== 'fulfilled') {
+                throw currentResult.reason;
+              }
+
+              setPersonaData(currentResult.value.data ?? null);
+              if (shouldShowInitialPersona && initialPersonaId) {
+                const initialPersona =
+                  initialResult.status === 'fulfilled'
+                    ? initialResult.value?.data
+                    : null;
+                setPersonaOriginInfo({
+                  currentPersonaId: personaId,
+                  initialPersonaId,
+                  initialPersonaName: getPersonaDisplayName(
+                    initialPersona,
+                    initialPersonaId,
+                  ),
+                });
+              }
+            } catch {
+              messageApi.error('加载用户画像失败');
+              setPersonaData(null);
+              setPersonaOriginInfo(null);
+            } finally {
+              setPersonaLoading(false);
+            }
+          })(),
+        );
+      }
+
+      if (shouldLoadCommunication && debtRecordId) {
+        const fallbackTimeline: AiCallDebtTimeline = {
           debtId: debtRecordId,
-          debtorName: getNonEmptyText(
-            data.debtorName,
-            record.debtorName,
-            '未知业主',
-          ),
-          debtorPhone: getNonEmptyText(data.debtorPhone, record.debtorPhone),
-          organization: getNonEmptyText(
-            data.organization,
-            record.organization,
-            '未归属项目',
-          ),
-          callSummary: getNonEmptyText(
-            data.callSummary,
-            fallbackTimeline.callSummary,
-          ),
-          records: Array.isArray(data.records) ? data.records : [],
+          debtorName: getNonEmptyText(record.debtorName, '未知业主'),
+          debtorPhone: getNonEmptyText(record.debtorPhone),
+          organization: getNonEmptyText(record.organization, '未归属项目'),
+          callSummary: '暂无语义分析数据',
+          records: [],
         };
-        setCommunicationLogDetail(
-          buildCommunicationDetail(timeline, null, timeline.callSummary),
+        tasks.push(
+          (async () => {
+            try {
+              const res = await getAiCallDebtTimeline(debtRecordId);
+              const data = res.data || {};
+              const timeline: AiCallDebtTimeline = {
+                debtId: debtRecordId,
+                debtorName: getNonEmptyText(
+                  data.debtorName,
+                  record.debtorName,
+                  '未知业主',
+                ),
+                debtorPhone: getNonEmptyText(
+                  data.debtorPhone,
+                  record.debtorPhone,
+                ),
+                organization: getNonEmptyText(
+                  data.organization,
+                  record.organization,
+                  '未归属项目',
+                ),
+                callSummary: getNonEmptyText(
+                  data.callSummary,
+                  fallbackTimeline.callSummary,
+                ),
+                records: Array.isArray(data.records) ? data.records : [],
+              };
+              setCommunicationLogDetail(
+                buildCommunicationDetail(timeline, null, timeline.callSummary),
+              );
+            } catch {
+              messageApi.error('加载语义分析失败');
+              setCommunicationLogDetail(null);
+            } finally {
+              setCommunicationLogLoading(false);
+            }
+          })(),
         );
-      } catch {
-        messageApi.error('加载语义分析失败');
-        setCommunicationLogDetail(
-          buildCommunicationDetail(
-            fallbackTimeline,
-            null,
-            fallbackTimeline.callSummary,
-          ),
-        );
-      } finally {
+      } else {
         setCommunicationLogLoading(false);
       }
+
+      await Promise.allSettled(tasks);
     },
-    [messageApi],
+    [communicationAnalysisDebtIds, messageApi],
   );
 
   const openFlowTrace = useCallback(
@@ -2469,6 +2556,88 @@ const DatelligencePage = () => {
     },
     [messageApi],
   );
+
+  const closeDebtEdit = useCallback(() => {
+    setDebtEditOpen(false);
+    setDebtEditRecord(null);
+    debtEditForm.resetFields();
+  }, [debtEditForm]);
+
+  const openFlowStartDebtEdit = useCallback(() => {
+    if (!flowStartFailureRecord?.id) {
+      messageApi.warning('债务记录 ID 为空，无法编辑');
+      return;
+    }
+    setDebtEditRecord(flowStartFailureRecord);
+    debtEditForm.setFieldsValue(toDebtEditFormValues(flowStartFailureRecord));
+    setDebtEditOpen(true);
+  }, [debtEditForm, flowStartFailureRecord, messageApi]);
+
+  const submitDebtEdit = useCallback(
+    async (values: DebtEditFormValues) => {
+      if (!debtEditRecord?.id) {
+        messageApi.warning('债务记录 ID 为空，无法保存');
+        return;
+      }
+
+      setDebtEditSubmitting(true);
+      try {
+        await updateDebtRecord(toDebtUpdatePayload(debtEditRecord.id, values));
+        messageApi.success('债务信息已保存');
+        closeDebtEdit();
+        try {
+          const detailRes = await getDebtRecordDetail(debtEditRecord.id);
+          setFlowStartFailureRecord((prev) =>
+            prev && String(prev.id) === String(debtEditRecord.id)
+              ? { ...prev, ...(detailRes.data ?? {}) }
+              : prev,
+          );
+        } catch {
+          // 列表刷新是兜底来源，详情刷新失败时不阻塞本次保存。
+        }
+        refreshAll();
+      } finally {
+        setDebtEditSubmitting(false);
+      }
+    },
+    [closeDebtEdit, debtEditRecord, messageApi, refreshAll],
+  );
+
+  const retryFlowStartFailure = useCallback(async () => {
+    const record = flowStartFailureRecord;
+    const batchId = normalizeFlowStartBatchId(record?.flowStartBatchId);
+    const debtRecordId = normalizeDebtRecordId(record?.id);
+    if (!batchId || !debtRecordId) {
+      messageApi.warning('缺少发起批次或债务记录 ID，无法重新发起');
+      return;
+    }
+
+    setFlowStartRetrying(true);
+    try {
+      const res = await retryFailedDebtFlowStart(batchId, debtRecordId);
+      const result = res.data;
+      if (toNumber(result?.acceptedCount) > 0) {
+        messageApi.success('重新发起已受理');
+        setFlowStartFailureOpen(false);
+        setFlowStartFailureRecord(null);
+        closeDebtEdit();
+        startOutboundFlowPolling(result?.batchId || batchId);
+        refreshAll();
+        return;
+      }
+
+      messageApi.warning('当前记录不满足重新发起条件，请刷新后查看状态');
+      refreshAll();
+    } finally {
+      setFlowStartRetrying(false);
+    }
+  }, [
+    closeDebtEdit,
+    flowStartFailureRecord,
+    messageApi,
+    refreshAll,
+    startOutboundFlowPolling,
+  ]);
 
   const loadFailureDetails = useCallback(
     async (
@@ -2623,6 +2792,9 @@ const DatelligencePage = () => {
               ? '未设置城市或项目筛选，将按当前权限范围发起催收流程。'
               : '将对当前筛选条件发起催收流程。已发起或正在发起的债务会自动跳过。'}
           </Text>
+          {outboundStartNotice ? (
+            <Text type="warning">{outboundStartNotice}</Text>
+          ) : null}
         </div>
       ),
       okText: '确认发起',
@@ -2665,6 +2837,7 @@ const DatelligencePage = () => {
     form,
     messageApi,
     outboundDisabledReason,
+    outboundStartNotice,
     refreshAll,
     startOutboundFlowPolling,
   ]);
@@ -2831,62 +3004,50 @@ const DatelligencePage = () => {
       {
         title: '操作',
         key: 'action',
-        width: 168,
+        width: 120,
         fixed: 'right',
-        align: 'center',
-        render: (_, record) => (
-          <TableActions
-            maxVisible={4}
-            actions={[
-              ...(normalizePersonaId(record.personaId)
-                ? [
-                    {
-                      key: 'persona',
-                      label: '用户画像',
-                      icon: <UserOutlined />,
-                      onClick: () => {
-                        void openPersonaDetail(record);
-                      },
-                    },
-                  ]
-                : []),
-              ...(hasCommunicationAnalysis(record, communicationAnalysisDebtIds)
-                ? [
-                    {
-                      key: 'analysis',
-                      label: '分析结果',
-                      icon: <BarChartOutlined />,
-                      onClick: () => {
-                        void openCommunicationAnalysis(record);
-                      },
-                    },
-                  ]
-                : []),
-              ...(normalizeFlowId(record.flowId) ||
-              isFlowStartFailedRecord(record)
-                ? [
-                    {
-                      key: 'flow-trace',
-                      label: '流程详情',
-                      icon: <ProjectOutlined />,
-                      onClick: () => openFlowTrace(record),
-                    },
-                  ]
-                : []),
-              {
-                key: 'detail',
-                label: '查看详情',
-                icon: <EyeOutlined />,
-                onClick: () => {
-                  void openDebtDetail(record);
-                },
+        align: 'left',
+        render: (_, record) => {
+          const isException = isDebtFlowExceptionRecord(record);
+          const hasCommunicationInsight = hasCommunicationAnalysis(
+            record,
+            communicationAnalysisDebtIds,
+          );
+          const actionKeys = resolveDebtRecordActionKeys(
+            record,
+            hasCommunicationInsight,
+          );
+          const actionMap: Record<DebtRecordActionKey, TableActionItem> = {
+            detail: {
+              key: 'detail',
+              label: '查看详情',
+              icon: <EyeOutlined />,
+              onClick: () => {
+                void openDebtDetail(record);
               },
-            ]}
-          />
-        ),
+            },
+            persona: {
+              key: 'persona',
+              label: '用户画像',
+              icon: <UserOutlined />,
+              onClick: () => {
+                void openPersonaDetail(record);
+              },
+            },
+            'flow-trace': {
+              key: 'flow-trace',
+              label: isException ? '处理异常' : '查看进度',
+              icon: getFlowActionIcon(isException),
+              onClick: () => openFlowTrace(record),
+            },
+          };
+          const actions = actionKeys.map((key) => actionMap[key]);
+
+          return <TableActions maxVisible={3} actions={actions} />;
+        },
       },
     ],
-    [communicationAnalysisDebtIds, openCommunicationAnalysis, openFlowTrace],
+    [communicationAnalysisDebtIds, openFlowTrace, openPersonaDetail],
   );
 
   const getAttachmentVisual = (kind: AttachmentFileKind) => {
@@ -3195,6 +3356,17 @@ const DatelligencePage = () => {
   };
 
   const personaTags = normalizeTags(personaData?.tags);
+  const semanticRecordCount =
+    communicationLogDetail?.logs.filter((log) => log.hasSemanticAnalysis)
+      .length ?? 0;
+  const ownerInsightPersonaName = personaLoading
+    ? '加载中'
+    : getNonEmptyText(personaData?.personaName, '暂无画像');
+  const ownerInsightSemanticText = communicationLogLoading
+    ? '加载中'
+    : semanticRecordCount > 0
+      ? `${semanticRecordCount} 条`
+      : '暂无语义记录';
   const debtImportTask = pipelineSubTasks.find(
     (task) => task.type === 'debtImport',
   );
@@ -3248,6 +3420,7 @@ const DatelligencePage = () => {
   const hasAssetParseUnmatched = assetParseUnmatchedCount > 0;
   const hasTaskDetailFooter =
     canRetryPipelineFailures || canIgnorePipelineFailures;
+  const hasPipelineRootErrorDetail = Boolean(pipelineErrorMessage);
   const renderPipelineTaskCard = (task: ImportPipelineSubTask) => {
     const status = resolvePipelineTaskStatus(task);
     const current = Number(task.current) || 0;
@@ -3853,6 +4026,18 @@ const DatelligencePage = () => {
               </div>
             )}
 
+            {hasPipelineRootErrorDetail && (
+              <Alert
+                showIcon
+                type="error"
+                message="错误明细"
+                description={renderImportFailureMessage(pipelineErrorMessage, {
+                  maxHeight: 180,
+                  tone: 'danger',
+                })}
+              />
+            )}
+
             {!pipelineSubTasks.length &&
               (parseState.failed || personaState.failed) && (
                 <Space wrap>
@@ -4114,62 +4299,137 @@ const DatelligencePage = () => {
         )}
       </Modal>
 
-      <Modal
-        title="用户画像详情"
+      <Drawer
+        title="客户洞察"
         open={personaOpen}
-        width={780}
+        width={860}
         destroyOnHidden
-        footer={<Button onClick={() => setPersonaOpen(false)}>关闭</Button>}
-        onCancel={() => setPersonaOpen(false)}
+        onClose={() => {
+          setPersonaOpen(false);
+          setOwnerInsightRecord(null);
+        }}
       >
-        <Spin spinning={personaLoading}>
-          {personaData ? (
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              <div className="flex items-start justify-between gap-3">
+        <Space direction="vertical" size={18} style={{ width: '100%' }}>
+          <div
+            style={{
+              padding: '12px 16px',
+              border: `1px solid ${token.colorBorderSecondary}`,
+              borderRadius: token.borderRadiusLG,
+              background: token.colorFillAlter,
+            }}
+          >
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: '8px 16px',
+                }}
+              >
                 <div>
-                  <Title level={4} style={{ marginBottom: 4 }}>
-                    {personaData.personaName || '-'}
-                  </Title>
-                  {personaData.priority && (
-                    <Text type="secondary">优先级：{personaData.priority}</Text>
-                  )}
-                  {personaOriginInfo ? (
-                    <div style={{ marginTop: 6 }}>
-                      <Space size={8} wrap>
-                        <Text type="secondary">
-                          初始化画像：{personaOriginInfo.initialPersonaName}
-                        </Text>
-                        <Tag color="gold">当前画像已变更</Tag>
-                      </Space>
-                    </div>
-                  ) : null}
+                  <Text type="secondary">资产编号</Text>
+                  <div>{toText(ownerInsightRecord?.debtNumber)}</div>
                 </div>
-                {personaTags.length > 0 && (
-                  <Space wrap size={4} style={{ justifyContent: 'flex-end' }}>
-                    {personaTags.map((tag) => (
-                      <Tag key={tag}>{tag}</Tag>
-                    ))}
-                  </Space>
-                )}
+                <div>
+                  <Text type="secondary">业主</Text>
+                  <div>
+                    <Text strong>{toText(ownerInsightRecord?.debtorName)}</Text>
+                  </div>
+                </div>
+                <div>
+                  <Text type="secondary">所属项目</Text>
+                  <div>{toText(ownerInsightRecord?.organization)}</div>
+                </div>
+                <div>
+                  <Text type="secondary">当前画像</Text>
+                  <div>{ownerInsightPersonaName}</div>
+                </div>
+                <div>
+                  <Text type="secondary">语义记录</Text>
+                  <div>{ownerInsightSemanticText}</div>
+                </div>
               </div>
-
-              <Tabs
-                activeKey={personaActiveTab}
-                onChange={(key: string) =>
-                  setPersonaActiveTab(key as DetailTabKey)
-                }
-                items={detailTabs.map((tab) => ({
-                  key: tab.key,
-                  label: tab.label,
-                  children: renderPersonaMarkdownContent(personaData[tab.key]),
-                }))}
-              />
             </Space>
-          ) : (
-            <Empty description="暂无画像数据" />
-          )}
-        </Spin>
-      </Modal>
+          </div>
+
+          <Tabs
+            activeKey={ownerInsightActiveTab}
+            onChange={(key: string) =>
+              setOwnerInsightActiveTab(key as OwnerInsightTabKey)
+            }
+            items={[
+              {
+                key: 'persona',
+                label: '用户画像',
+                children: (
+                  <Spin spinning={personaLoading}>
+                    {personaData ? (
+                      <Space
+                        direction="vertical"
+                        size={12}
+                        style={{ width: '100%' }}
+                      >
+                        {personaData.priority ||
+                        personaOriginInfo ||
+                        personaTags.length > 0 ? (
+                          <Space size={[8, 6]} wrap>
+                            {personaData.priority ? (
+                              <Tag>优先级：{personaData.priority}</Tag>
+                            ) : null}
+                            {personaOriginInfo ? (
+                              <>
+                                <Tag color="gold">当前画像已变更</Tag>
+                                <Text type="secondary">
+                                  初始化画像：
+                                  {personaOriginInfo.initialPersonaName}
+                                </Text>
+                              </>
+                            ) : null}
+                            {personaTags.map((tag) => (
+                              <Tag key={tag}>{tag}</Tag>
+                            ))}
+                          </Space>
+                        ) : null}
+
+                        <Tabs
+                          activeKey={personaActiveTab}
+                          onChange={(key: string) =>
+                            setPersonaActiveTab(key as DetailTabKey)
+                          }
+                          items={detailTabs.map((tab) => ({
+                            key: tab.key,
+                            label: tab.label,
+                            children: renderPersonaMarkdownContent(
+                              personaData[tab.key],
+                            ),
+                          }))}
+                        />
+                      </Space>
+                    ) : (
+                      <Empty description="暂无画像数据" />
+                    )}
+                  </Spin>
+                ),
+              },
+              {
+                key: 'communication',
+                label: '语义分析',
+                children: (
+                  <CommunicationLogContent
+                    loading={communicationLogLoading}
+                    detail={communicationLogDetail}
+                    emptyDescription="暂无语义分析数据"
+                    showSummaryCard={Boolean(
+                      communicationLogDetail?.logs.length,
+                    )}
+                    skeletonRows={4}
+                  />
+                ),
+              },
+            ]}
+          />
+        </Space>
+      </Drawer>
 
       <FlowTraceDrawer
         open={traceOpen}
@@ -4183,9 +4443,29 @@ const DatelligencePage = () => {
         open={flowStartFailureOpen}
         size="large"
         destroyOnHidden
+        footer={
+          flowStartFailureRecord ? (
+            <div className="flex justify-end gap-2">
+              <Button icon={<EditOutlined />} onClick={openFlowStartDebtEdit}>
+                编辑债务信息
+              </Button>
+              <Button
+                icon={<ReloadOutlined aria-hidden={true} />}
+                loading={flowStartRetrying}
+                type="primary"
+                onClick={() => {
+                  void retryFlowStartFailure();
+                }}
+              >
+                重新发起
+              </Button>
+            </div>
+          ) : null
+        }
         onClose={() => {
           setFlowStartFailureOpen(false);
           setFlowStartFailureRecord(null);
+          closeDebtEdit();
         }}
       >
         {flowStartFailureRecord ? (
@@ -4202,26 +4482,6 @@ const DatelligencePage = () => {
             />
             {renderDetailSection('发起信息', [
               {
-                label: '当前状态',
-                content: renderCurrentStatusTag(
-                  flowStartFailureRecord.currentStatus,
-                  flowStartFailureRecord.currentStatusReason,
-                  flowStartFailureRecord.flowStartErrorMessage,
-                ),
-              },
-              {
-                label: '发起批次',
-                content: toText(
-                  normalizeFlowStartBatchId(
-                    flowStartFailureRecord.flowStartBatchId,
-                  ),
-                ),
-              },
-              {
-                label: '债务记录 ID',
-                content: toText(flowStartFailureRecord.id),
-              },
-              {
                 label: '资产编号',
                 content: toText(flowStartFailureRecord.debtNumber),
               },
@@ -4236,6 +4496,14 @@ const DatelligencePage = () => {
               {
                 label: '所属项目',
                 content: toText(flowStartFailureRecord.organization),
+              },
+              {
+                label: '当前状态',
+                content: renderCurrentStatusTag(
+                  flowStartFailureRecord.currentStatus,
+                  flowStartFailureRecord.currentStatusReason,
+                  flowStartFailureRecord.flowStartErrorMessage,
+                ),
               },
               {
                 label: '发起时间',
@@ -4259,15 +4527,98 @@ const DatelligencePage = () => {
         )}
       </Drawer>
 
-      <CommunicationLogModal
-        open={communicationLogOpen}
-        loading={communicationLogLoading}
-        detail={communicationLogDetail}
-        onClose={() => {
-          setCommunicationLogOpen(false);
-          setCommunicationLogDetail(null);
-        }}
-      />
+      <Modal
+        title={
+          debtEditRecord?.debtNumber
+            ? `编辑债务信息 · ${debtEditRecord.debtNumber}`
+            : '编辑债务信息'
+        }
+        open={debtEditOpen}
+        width={760}
+        destroyOnHidden
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={debtEditSubmitting}
+        onOk={() => debtEditForm.submit()}
+        onCancel={closeDebtEdit}
+      >
+        <Form form={debtEditForm} layout="vertical" onFinish={submitDebtEdit}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              columnGap: 16,
+            }}
+          >
+            <Form.Item
+              name="debtorName"
+              label="业主姓名"
+              rules={[{ required: true, message: '请输入业主姓名' }]}
+            >
+              <Input placeholder="请输入业主姓名" />
+            </Form.Item>
+            <Form.Item name="debtorPhone" label="电话号码">
+              <Input placeholder="请输入电话号码" />
+            </Form.Item>
+            <Form.Item name="city" label="所属城市">
+              <Input placeholder="请输入所属城市" />
+            </Form.Item>
+            <Form.Item name="organization" label="所属项目">
+              <Input placeholder="请输入所属项目" />
+            </Form.Item>
+            <Form.Item name="debtAmount" label="逾期金额">
+              <InputNumber
+                min={0}
+                precision={2}
+                style={{ width: '100%' }}
+                placeholder="请输入逾期金额"
+              />
+            </Form.Item>
+            <Form.Item name="overdueAmount" label="违约（滞纳）金">
+              <InputNumber
+                min={0}
+                precision={2}
+                style={{ width: '100%' }}
+                placeholder="请输入违约（滞纳）金"
+              />
+            </Form.Item>
+            <Form.Item name="overdueDays" label="逾期天数">
+              <InputNumber
+                min={0}
+                precision={0}
+                style={{ width: '100%' }}
+                placeholder="请输入逾期天数"
+              />
+            </Form.Item>
+            <Form.Item name="deadlineTime" label="缴费截止日期">
+              <DatePicker style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="debtorEmail" label="业主邮箱">
+              <Input placeholder="请输入业主邮箱" />
+            </Form.Item>
+            <Form.Item name="debtIdCard" label="身份证号码">
+              <Input placeholder="请输入身份证号码" />
+            </Form.Item>
+            <Form.Item name="area" label="房屋面积">
+              <Input placeholder="请输入房屋面积" />
+            </Form.Item>
+            <Form.Item
+              name="address"
+              label="房屋地址"
+              style={{ gridColumn: '1 / -1' }}
+            >
+              <Input.TextArea rows={2} placeholder="请输入房屋地址" />
+            </Form.Item>
+            <Form.Item
+              name="reminderRemark"
+              label="历史催缴说明"
+              style={{ gridColumn: '1 / -1' }}
+            >
+              <Input.TextArea rows={3} placeholder="请输入历史催缴说明" />
+            </Form.Item>
+          </div>
+        </Form>
+      </Modal>
     </RecovListPage>
   );
 };

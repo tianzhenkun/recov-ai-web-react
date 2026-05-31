@@ -4,6 +4,7 @@ import {
   CloseCircleOutlined,
   DownloadOutlined,
   EyeOutlined,
+  FileExcelOutlined,
   FileImageOutlined,
   FilePdfOutlined,
   FileTextOutlined,
@@ -19,7 +20,6 @@ import {
 import { ProCard } from '@ant-design/pro-components';
 import { useSearchParams } from '@umijs/max';
 import {
-  Alert,
   Button,
   Descriptions,
   Drawer,
@@ -34,10 +34,13 @@ import {
   Tag,
   Tooltip,
   Typography,
+  theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import TableActions from '@/components/TableActions';
+import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
@@ -54,6 +57,7 @@ import {
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
+import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   type DeliveryOverview,
   type DeliveryTaskItem,
@@ -63,7 +67,6 @@ import {
   listDeliveryCities,
   listDeliveryOrganizations,
   listDeliveryTasks,
-  retryDeliveryTask,
 } from '@/services/ruoyi/deliveryTask';
 import { downloadOss } from '@/services/ruoyi/oss';
 
@@ -82,7 +85,7 @@ type StatCardProps = {
   tone: MetricTone;
 };
 
-type DeliveryFileKind = 'image' | 'pdf' | 'text' | 'unknown';
+type DeliveryFileKind = 'image' | 'pdf' | 'spreadsheet' | 'text' | 'unknown';
 
 type DeliveryFilePreviewState = {
   open: boolean;
@@ -97,6 +100,7 @@ const LIST_REFRESH_INTERVAL_MS = 5000;
 const deliveryFileSuffixGroups = {
   image: new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']),
   pdf: new Set(['pdf']),
+  spreadsheet: new Set(['xls', 'xlsx']),
   text: new Set(['txt', 'log', 'json', 'xml', 'csv', 'md']),
 };
 
@@ -119,6 +123,11 @@ const DELIVERY_FILE_VISUAL: Record<
     icon: <FilePdfOutlined />,
     color: '#cf1322',
     background: '#fff1f0',
+  },
+  spreadsheet: {
+    icon: <FileExcelOutlined />,
+    color: '#389e0d',
+    background: '#f6ffed',
   },
   text: {
     icon: <FileTextOutlined />,
@@ -201,11 +210,36 @@ const normalizeStatus = (value: unknown): DeliveryTaskStatus | undefined => {
   return n === 0 || n === 1 || n === 2 || n === 3 ? n : undefined;
 };
 
+const normalizeFlowId = (value: unknown) => {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text || undefined;
+};
+
+const canShowDeliveryFlowDetail = (record?: DeliveryTaskItem | null) => {
+  if (!record) return false;
+  const status = normalizeStatus(record.taskStatus);
+  return status !== 2 && Boolean(normalizeFlowId(record.flowId));
+};
+
 const formatCurrency = (value: unknown) =>
   currencyFormatter.format(toNumber(value));
 
 const getAssetNumber = (record: DeliveryTaskItem) =>
   toText(record.debtNumber ?? record.debtId);
+
+const isExpressDelivery = (record?: DeliveryTaskItem | null) => {
+  const wayCode = getNonEmptyText(record?.wayCode).toLowerCase();
+  const wayName = getNonEmptyText(record?.wayName);
+  return wayCode === 'express' || wayName.includes('快递');
+};
+
+const getResultFileRecord = (record: DeliveryTaskItem): DeliveryTaskItem => ({
+  ...record,
+  fileOssId: record.resultFileOssId,
+  fileName: record.resultFileName,
+  publicUrl: record.resultPublicUrl,
+});
 
 const getDeliveryFileSuffix = (record?: DeliveryTaskItem | null) => {
   const candidates = [record?.fileName, record?.publicUrl];
@@ -235,6 +269,7 @@ const getDeliveryFileKind = (
   const suffix = getDeliveryFileSuffix(record);
   if (deliveryFileSuffixGroups.image.has(suffix)) return 'image';
   if (deliveryFileSuffixGroups.pdf.has(suffix)) return 'pdf';
+  if (deliveryFileSuffixGroups.spreadsheet.has(suffix)) return 'spreadsheet';
   if (deliveryFileSuffixGroups.text.has(suffix)) return 'text';
   return 'unknown';
 };
@@ -266,6 +301,38 @@ const getStatusText = (record: DeliveryTaskItem) => {
   return status !== undefined
     ? STATUS_META[status].text
     : record.taskStatusLabel || '-';
+};
+
+type DeliveryStatusTagProps = {
+  record: DeliveryTaskItem;
+  style?: CSSProperties;
+};
+
+export const DeliveryStatusTag = ({
+  record,
+  style,
+}: DeliveryStatusTagProps) => {
+  const { token } = theme.useToken();
+  const status = normalizeStatus(record.taskStatus);
+  const meta = status !== undefined ? STATUS_META[status] : undefined;
+  const isDelivered = status === 2;
+  const deliveredStyle: CSSProperties = isDelivered
+    ? {
+        color: token.colorPrimaryText,
+        background: token.colorPrimaryBg,
+      }
+    : {};
+
+  return (
+    <Tag
+      color={isDelivered ? undefined : (meta?.color ?? 'default')}
+      icon={meta?.icon}
+      style={{ ...deliveredStyle, ...style }}
+      variant="filled"
+    >
+      {getStatusText(record)}
+    </Tag>
+  );
 };
 
 const StatCard = ({ title, value, icon, tone }: StatCardProps) => (
@@ -379,7 +446,6 @@ const DeliveryPage = () => {
   const [form] = Form.useForm<QueryFormValues>();
   const [searchParams] = useSearchParams();
   const [messageApi, messageContextHolder] = message.useMessage();
-  const [modalApi, modalContextHolder] = Modal.useModal();
   const initialDebtNumber = normalizeQueryParam(searchParams.get('debtNumber'));
   const initialCity = normalizeQueryParam(searchParams.get('city'));
   const initialOrganization = normalizeQueryParam(
@@ -411,7 +477,8 @@ const DeliveryPage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [currentRow, setCurrentRow] = useState<DeliveryTaskItem | null>(null);
-  const [retryingTaskId, setRetryingTaskId] = useState('');
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
   const [filePreview, setFilePreview] = useState<DeliveryFilePreviewState>({
     open: false,
     fileUrl: '',
@@ -596,28 +663,22 @@ const DeliveryPage = () => {
     }
   };
 
-  const handleRetry = (record: DeliveryTaskItem) => {
-    if (normalizeStatus(record.taskStatus) !== 3) return;
-    modalApi.confirm({
-      title: '确认重试当前渠道？',
-      content: `将重试 ${toText(record.debtorName)} 的 ${toText(record.wayName)} 送达任务。`,
-      okText: '确认重试',
-      cancelText: '取消',
-      onOk: async () => {
-        setRetryingTaskId(record.taskId);
-        try {
-          const detail = await retryDeliveryTask(record.taskId);
-          if (detail) setCurrentRow(detail);
-          await loadList(queryRef.current);
-          messageApi.success('重试已提交，后端将异步发送');
-        } catch {
-          messageApi.error('重试失败，请稍后重试');
-        } finally {
-          setRetryingTaskId('');
-        }
-      },
-    });
+  const openFlowDetail = (record: DeliveryTaskItem) => {
+    const flowId = normalizeFlowId(record.flowId);
+    if (!flowId) {
+      messageApi.warning('当前送达任务暂无关联流程实例');
+      return;
+    }
+    setTraceInstanceId(flowId);
+    setTraceOpen(true);
   };
+
+  const renderDeliveryStatusTag = useCallback(
+    (record: DeliveryTaskItem, style?: CSSProperties) => (
+      <DeliveryStatusTag record={record} style={style} />
+    ),
+    [],
+  );
 
   const canPreviewDeliveryFile = (record: DeliveryTaskItem) =>
     Boolean(
@@ -692,13 +753,16 @@ const DeliveryPage = () => {
     }
   };
 
-  const renderDeliveryFile = (record: DeliveryTaskItem) => {
+  const renderDeliveryFile = (
+    record: DeliveryTaskItem,
+    emptyText = '暂无送达文件',
+  ) => {
     const hasFile = getNonEmptyText(
       record.fileName,
       record.fileOssId,
       record.publicUrl,
     );
-    if (!hasFile) return <Text type="secondary">暂无送达文件</Text>;
+    if (!hasFile) return <Text type="secondary">{emptyText}</Text>;
 
     const kind = getDeliveryFileKind(record);
     const suffix = getDeliveryFileSuffix(record);
@@ -776,7 +840,7 @@ const DeliveryPage = () => {
       {
         title: '资产编号',
         dataIndex: 'debtNumber',
-        width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+        width: 128,
         ellipsis: { showTitle: false },
         render: (_, record) =>
           renderRecovSingleLineText(getAssetNumber(record)),
@@ -790,7 +854,7 @@ const DeliveryPage = () => {
       {
         title: '所属项目',
         dataIndex: 'projectName',
-        width: RECOV_LIST_COLUMN_WIDTH.organization,
+        width: 260,
         ellipsis: { showTitle: false },
         render: renderRecovSingleLineText,
       },
@@ -826,15 +890,7 @@ const DeliveryPage = () => {
         dataIndex: 'taskStatus',
         width: 110,
         align: 'center',
-        render: (_, record) => {
-          const status = normalizeStatus(record.taskStatus);
-          const meta = status !== undefined ? STATUS_META[status] : undefined;
-          return (
-            <Tag color={meta?.color ?? 'default'} icon={meta?.icon}>
-              {getStatusText(record)}
-            </Tag>
-          );
-        },
+        render: (_, record) => renderDeliveryStatusTag(record),
       },
       {
         title: '送达方式',
@@ -856,45 +912,48 @@ const DeliveryPage = () => {
       {
         title: '操作',
         key: 'action',
-        width: 120,
+        width: 128,
         fixed: 'right',
-        align: 'center',
-        render: (_, record) => (
-          <Space size={4}>
-            <Tooltip title="查看详情">
-              <Button
-                type="text"
-                aria-label="查看详情"
-                icon={<EyeOutlined />}
-                onClick={() => {
-                  void openDetail(record);
-                }}
-              />
-            </Tooltip>
-            {normalizeStatus(record.taskStatus) === 3 ? (
-              <Tooltip title="重试当前渠道">
-                <Button
-                  type="text"
-                  aria-label="重试当前渠道"
-                  icon={<ReloadOutlined />}
-                  loading={retryingTaskId === record.taskId}
-                  onClick={() => handleRetry(record)}
-                />
-              </Tooltip>
-            ) : null}
-          </Space>
-        ),
+        align: 'left',
+        render: (_, record) => {
+          const status = normalizeStatus(record.taskStatus);
+          return (
+            <TableActions
+              maxVisible={2}
+              actions={[
+                {
+                  key: 'detail',
+                  label: '查看详情',
+                  icon: <EyeOutlined />,
+                  onClick: () => {
+                    void openDetail(record);
+                  },
+                },
+                ...(canShowDeliveryFlowDetail(record)
+                  ? [
+                      {
+                        key: 'flow',
+                        label: status === 3 ? '处理异常' : '查看进度',
+                        icon: getFlowActionIcon(status === 3),
+                        onClick: () => openFlowDetail(record),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          );
+        },
       },
     ],
-    [retryingTaskId],
+    [renderDeliveryStatusTag],
   );
 
   const currentStatus = normalizeStatus(currentRow?.taskStatus);
+  const currentIsExpressDelivery = isExpressDelivery(currentRow);
 
   return (
     <RecovListPage title="全域智能送达管理">
       {messageContextHolder}
-      {modalContextHolder}
 
       <RecovListStack>
         <RecovStatsStrip className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
@@ -973,7 +1032,7 @@ const DeliveryPage = () => {
             dataSource={rows}
             loading={loading}
             rowKey="taskId"
-            scroll={{ x: 1240 }}
+            scroll={{ x: 1420 }}
             locale={{
               emptyText: <Empty description="暂无送达记录" />,
             }}
@@ -1002,19 +1061,6 @@ const DeliveryPage = () => {
         destroyOnHidden
         loading={detailLoading}
         onClose={() => setDetailOpen(false)}
-        extra={
-          currentRow && currentStatus === 3 ? (
-            <Button
-              size="small"
-              type="primary"
-              icon={<ReloadOutlined />}
-              loading={retryingTaskId === currentRow.taskId}
-              onClick={() => handleRetry(currentRow)}
-            >
-              重试当前渠道
-            </Button>
-          ) : null
-        }
       >
         {currentRow ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -1045,41 +1091,44 @@ const DeliveryPage = () => {
                   {toText(currentRow.wayName)}
                 </Descriptions.Item>
                 <Descriptions.Item label="送达状态">
-                  {currentStatus !== undefined ? (
-                    <Tag
-                      color={STATUS_META[currentStatus].color}
-                      icon={STATUS_META[currentStatus].icon}
-                      style={{ marginInlineEnd: 0 }}
-                    >
-                      {getStatusText(currentRow)}
-                    </Tag>
-                  ) : (
-                    '-'
-                  )}
+                  {currentStatus !== undefined
+                    ? renderDeliveryStatusTag(currentRow, {
+                        marginInlineEnd: 0,
+                      })
+                    : '-'}
                 </Descriptions.Item>
               </Descriptions>
             </DetailPanel>
 
-            {currentStatus === 3 && currentRow.errorMessage ? (
-              <Alert
-                showIcon
-                type="error"
-                message="送达失败原因"
-                description={currentRow.errorMessage}
-              />
-            ) : null}
-
-            <DetailPanel title="送达内容">
+            <DetailPanel
+              title={currentIsExpressDelivery ? '送达文件' : '送达内容'}
+            >
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {renderDeliveryFile(currentRow)}
-                <ContentBlock
-                  title="实际发送主题"
-                  content={currentRow.subjectContent}
-                />
-                <ContentBlock
-                  title="实际发送内容"
-                  content={currentRow.sendContent}
-                />
+                {currentIsExpressDelivery ? (
+                  <>
+                    <DetailSubsection title="送达原始材料">
+                      {renderDeliveryFile(currentRow, '暂无送达原始材料')}
+                    </DetailSubsection>
+                    <DetailSubsection title="快递导出文件">
+                      {renderDeliveryFile(
+                        getResultFileRecord(currentRow),
+                        '暂无快递导出文件',
+                      )}
+                    </DetailSubsection>
+                  </>
+                ) : (
+                  <>
+                    {renderDeliveryFile(currentRow)}
+                    <ContentBlock
+                      title="实际发送主题"
+                      content={currentRow.subjectContent}
+                    />
+                    <ContentBlock
+                      title="实际发送内容"
+                      content={currentRow.sendContent}
+                    />
+                  </>
+                )}
               </Space>
             </DetailPanel>
           </Space>
@@ -1162,6 +1211,18 @@ const DeliveryPage = () => {
           <Empty description="暂无可预览文件" />
         )}
       </Modal>
+
+      <FlowTraceDrawer
+        open={traceOpen}
+        instanceId={traceInstanceId}
+        onClose={() => setTraceOpen(false)}
+        onChanged={() => {
+          void loadList(queryRef.current, true);
+          if (currentRow?.taskId) {
+            void openDetail(currentRow);
+          }
+        }}
+      />
     </RecovListPage>
   );
 };

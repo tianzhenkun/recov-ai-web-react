@@ -204,7 +204,7 @@ const FeeConfigPage = () => {
         key: 'action',
         width: 88,
         fixed: 'right',
-        align: 'center',
+        align: 'left',
         render: (_: unknown, row: FeeTableRow) => (
           <TableActions
             maxVisible={1}

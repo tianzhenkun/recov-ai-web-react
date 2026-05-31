@@ -35,7 +35,8 @@ import {
   resolveRuoyiMenuContext,
 } from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
-import { RuoyiError } from '@/adapters/ruoyi/response';
+import { RuoYiCode, RuoyiError } from '@/adapters/ruoyi/response';
+import { subscribeSseMessage } from '@/adapters/ruoyi/sse';
 import {
   AvatarDropdown,
   ErrorBoundary,
@@ -49,14 +50,18 @@ import {
 import type {
   FloatingProcessPanelDefaultMode,
   FlowProcessChannel,
+  FlowProcessIconKind,
   FlowProcessItem,
   FlowProcessStatus,
 } from '@/components/FloatingProcessPanel';
-import FlowEventCenter from '@/pages/recov/flowEvents/components/FlowEventCenter';
 import type { FlowEventPageItem } from '@/services/ruoyi/flowEvent';
 import {
+  buildFlowEventDisplaySummary,
   getFlowEventPage,
+  getFlowEventUnreadCount,
+  markAllFlowEventsRead,
   normalizeFlowEventPageResult,
+  normalizeFlowEventUnreadCount,
 } from '@/services/ruoyi/flowEvent';
 import { dynamicTenant } from '@/services/ruoyi/tenant';
 import { getInfo, type UserInfo } from '@/services/ruoyi/user';
@@ -107,8 +112,8 @@ const setStoredFloatingProcessPanelDefaultMode = (
 const isRecovListPagePath = (pathname: string) =>
   recovListPagePaths.has(pathname);
 
-const floatingProcessPanelPageSize = 5;
-const floatingProcessPanelPollingInterval = 30_000;
+const floatingProcessPanelPageSize = 10;
+const flowEventSseType = 'recov.flow_event.changed';
 
 const resolveFlowProcessStatus = (eventType?: string): FlowProcessStatus => {
   if (!eventType) return 'running';
@@ -147,19 +152,98 @@ const resolveFlowProcessChannel = (
   return 'system';
 };
 
-const resolveFlowProcessSummary = (event: FlowEventPageItem) => {
-  const description = [event.eventContent, event.reasonText]
-    .map((item) => String(item || '').trim())
-    .find(Boolean);
+const resolveFlowProcessIconKind = (
+  event: FlowEventPageItem,
+): FlowProcessIconKind => {
+  const nodeCode = String(event.nodeCode || '').toLowerCase();
+  const sourceType = String(event.sourceType || '').toLowerCase();
+  const searchText = [
+    event.nodeCode,
+    event.nodeName,
+    event.eventType,
+    event.eventTitle,
+    event.eventContent,
+    event.reasonText,
+    event.sourceType,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 
-  const accountPrefix =
-    event.debtNumber !== null && event.debtNumber !== undefined
-      ? `${event.debtNumber}号账户`
-      : '账户';
+  if (nodeCode === 'ai_call') return 'phone';
+  if (nodeCode === 'corp_letter') return 'corp-letter';
+  if (nodeCode === 'law_letter') return 'law-letter';
+  if (
+    nodeCode === 'filing_material_submit' ||
+    nodeCode === 'litigation_screenshot'
+  ) {
+    return 'litigation';
+  }
+  if (nodeCode === 'litigation_result') return 'litigation-result';
+  if (nodeCode === 'lawyer_court') return 'workflow';
+  if (nodeCode === 'enforcement_screenshot') return 'litigation';
+  if (nodeCode === 'enforcement_result') return 'litigation-result';
+  if (nodeCode === 'restrict_consumption') return 'warning';
+  if (nodeCode === 'credit_blacklist') return 'blacklist';
 
-  return description
-    ? `${accountPrefix} ${description}`
-    : `${accountPrefix} 流程事件已更新，可进入事件中心查看详情。`;
+  if (searchText.includes('律师函') || searchText.includes('law_letter')) {
+    return 'law-letter';
+  }
+  if (
+    searchText.includes('企业催收函') ||
+    searchText.includes('催收函') ||
+    searchText.includes('corp_letter')
+  ) {
+    return 'corp-letter';
+  }
+  if (
+    searchText.includes('申请诉讼') ||
+    searchText.includes('诉讼') ||
+    searchText.includes('立案') ||
+    searchText.includes('filing') ||
+    searchText.includes('litigation')
+  ) {
+    return 'litigation';
+  }
+  if (
+    searchText.includes('快递') ||
+    searchText.includes('express') ||
+    searchText.includes('delivery')
+  ) {
+    return 'express';
+  }
+  if (
+    sourceType.includes('email') ||
+    sourceType.includes('mail') ||
+    sourceType.includes('sms') ||
+    sourceType.includes('message') ||
+    searchText.includes('邮件') ||
+    searchText.includes('email') ||
+    searchText.includes('mail') ||
+    searchText.includes('sms') ||
+    searchText.includes('message')
+  ) {
+    return 'email';
+  }
+  if (
+    searchText.includes('盖章') ||
+    searchText.includes('seal') ||
+    searchText.includes('签章')
+  ) {
+    return 'seal';
+  }
+  if (
+    sourceType.includes('call') ||
+    sourceType.includes('phone') ||
+    searchText.includes('外呼') ||
+    searchText.includes('电话') ||
+    searchText.includes('call') ||
+    searchText.includes('phone')
+  ) {
+    return 'phone';
+  }
+
+  return 'system';
 };
 
 const toFlowProcessItem = (event: FlowEventPageItem): FlowProcessItem => ({
@@ -168,11 +252,27 @@ const toFlowProcessItem = (event: FlowEventPageItem): FlowProcessItem => ({
       `${event.instanceId ?? 'instance'}-${event.createTime ?? 'time'}-${event.eventType ?? 'event'}`,
   ),
   title: String(event.eventTitle || event.eventType || '流程事件更新'),
-  summary: resolveFlowProcessSummary(event),
+  summary: buildFlowEventDisplaySummary(event),
   time: event.createTime || new Date().toISOString(),
   status: resolveFlowProcessStatus(event.eventType),
   channel: resolveFlowProcessChannel(event),
+  iconKind: resolveFlowProcessIconKind(event),
+  detail: {
+    createTime: event.createTime,
+    debtNumber: event.debtNumber,
+    eventContent: event.eventContent,
+    eventTitle: event.eventTitle,
+    eventType: event.eventType,
+    instanceId: event.instanceId,
+    nodeName: event.nodeName,
+    reasonText: event.reasonText,
+    taskId: event.taskId,
+  },
+  read: event.read,
 });
+
+const isFlowEventSseMessage = (message: { event?: string; type?: string }) =>
+  message.type === flowEventSseType || message.event === flowEventSseType;
 
 type LayoutBreadcrumbItem = NonNullable<BreadcrumbProps['items']>[number] & {
   linkPath?: string;
@@ -230,15 +330,31 @@ const toCurrentUser = (info?: UserInfo): RuoyiCurrentUser | undefined => {
   };
 };
 
-const restoreDynamicTenantContext = async () => {
+const getCurrentUserId = (currentUser?: RuoyiCurrentUser) =>
+  currentUser?.rawUser?.userId || currentUser?.userid;
+
+const isSuperAdminCurrentUser = (currentUser?: RuoyiCurrentUser) =>
+  Number(getCurrentUserId(currentUser)) === 1;
+
+const shouldClearStoredDynamicTenantAfterRestoreError = (error: unknown) =>
+  error instanceof RuoyiError &&
+  [RuoYiCode.UNAUTHORIZED, 403].includes(Number(error.code));
+
+const restoreDynamicTenantContext = async (currentUser?: RuoyiCurrentUser) => {
   const storedTenantId = getStoredDynamicTenantId();
   if (!storedTenantId) return undefined;
+  if (!currentUser) return undefined;
+
+  if (!isSuperAdminCurrentUser(currentUser)) {
+    clearStoredDynamicTenantId();
+    return undefined;
+  }
 
   try {
     await dynamicTenant(storedTenantId);
     return storedTenantId;
   } catch (error) {
-    if (error instanceof RuoyiError) {
+    if (shouldClearStoredDynamicTenantAfterRestoreError(error)) {
       clearStoredDynamicTenantId();
     }
     return undefined;
@@ -254,7 +370,6 @@ export async function getInitialState(): Promise<{
   loading?: boolean;
   fetchUserInfo?: () => Promise<RuoyiCurrentUser | undefined>;
   floatingProcessPanelDefaultMode?: FloatingProcessPanelDefaultMode;
-  flowEventCenterOpen?: boolean;
   settingDrawerOpen?: boolean;
   dynamicTenantId?: string;
   tenantSwitchVersion?: number;
@@ -283,8 +398,8 @@ export async function getInitialState(): Promise<{
       location.pathname,
     )
   ) {
-    const dynamicTenantId = await restoreDynamicTenantContext();
     const currentUser = await fetchUserInfo();
+    const dynamicTenantId = await restoreDynamicTenantContext(currentUser);
     let menuWorkspaceMode: RuoyiMenuWorkspaceMode = 'default';
     let activeMenuWorkspaceKey: string | undefined;
 
@@ -308,7 +423,6 @@ export async function getInitialState(): Promise<{
       currentUser,
       settings: defaultSettings as Partial<LayoutSettings>,
       floatingProcessPanelDefaultMode,
-      flowEventCenterOpen: false,
       settingDrawerOpen: false,
       dynamicTenantId,
       tenantSwitchVersion: 0,
@@ -321,7 +435,6 @@ export async function getInitialState(): Promise<{
     fetchUserInfo,
     settings: defaultSettings as Partial<LayoutSettings>,
     floatingProcessPanelDefaultMode,
-    flowEventCenterOpen: false,
     settingDrawerOpen: false,
     dynamicTenantId: getStoredDynamicTenantId(),
     tenantSwitchVersion: 0,
@@ -353,32 +466,72 @@ const AppLayoutChildren = ({
     initialState?.dynamicTenantId || 'default',
     initialState?.tenantSwitchVersion || 0,
   ].join(':');
-  const flowEventCenterOpen = Boolean(initialState?.flowEventCenterOpen);
   const [flowProcessItems, setFlowProcessItems] = React.useState<
     FlowProcessItem[]
   >([]);
+  const [flowProcessItemsLoading, setFlowProcessItemsLoading] =
+    React.useState(false);
+  const [flowEventUnreadCount, setFlowEventUnreadCount] = React.useState(0);
   const flowProcessRequestSeqRef = React.useRef(0);
+  const flowEventUnreadRequestSeqRef = React.useRef(0);
+  const flowProcessPanelExpandedRef = React.useRef(false);
 
-  const loadFlowProcessItems = React.useCallback(async () => {
+  const loadFlowProcessItems = React.useCallback(
+    async (silent = false) => {
+      if (!initialState?.currentUser?.userid) {
+        setFlowProcessItems([]);
+        setFlowProcessItemsLoading(false);
+        return false;
+      }
+
+      flowProcessRequestSeqRef.current += 1;
+      const seq = flowProcessRequestSeqRef.current;
+      if (!silent) {
+        setFlowProcessItemsLoading(true);
+      }
+
+      try {
+        const response = await getFlowEventPage({
+          pageNum: 1,
+          pageSize: floatingProcessPanelPageSize,
+        });
+        if (seq !== flowProcessRequestSeqRef.current) return false;
+        const pageResult = normalizeFlowEventPageResult(response);
+        setFlowProcessItems(pageResult.rows.map(toFlowProcessItem));
+        return true;
+      } catch {
+        if (seq !== flowProcessRequestSeqRef.current) return false;
+        setFlowProcessItems([]);
+        return false;
+      } finally {
+        if (seq === flowProcessRequestSeqRef.current && !silent) {
+          setFlowProcessItemsLoading(false);
+        }
+      }
+    },
+    [
+      initialState?.currentUser?.userid,
+      initialState?.dynamicTenantId,
+      initialState?.tenantSwitchVersion,
+    ],
+  );
+
+  const loadFlowEventUnreadCount = React.useCallback(async () => {
     if (!initialState?.currentUser?.userid) {
-      setFlowProcessItems([]);
+      setFlowEventUnreadCount(0);
       return;
     }
 
-    flowProcessRequestSeqRef.current += 1;
-    const seq = flowProcessRequestSeqRef.current;
+    flowEventUnreadRequestSeqRef.current += 1;
+    const seq = flowEventUnreadRequestSeqRef.current;
 
     try {
-      const response = await getFlowEventPage({
-        pageNum: 1,
-        pageSize: floatingProcessPanelPageSize,
-      });
-      if (seq !== flowProcessRequestSeqRef.current) return;
-      const pageResult = normalizeFlowEventPageResult(response);
-      setFlowProcessItems(pageResult.rows.map(toFlowProcessItem));
+      const response = await getFlowEventUnreadCount();
+      if (seq !== flowEventUnreadRequestSeqRef.current) return;
+      setFlowEventUnreadCount(normalizeFlowEventUnreadCount(response));
     } catch {
-      if (seq !== flowProcessRequestSeqRef.current) return;
-      setFlowProcessItems([]);
+      if (seq !== flowEventUnreadRequestSeqRef.current) return;
+      setFlowEventUnreadCount(0);
     }
   }, [
     initialState?.currentUser?.userid,
@@ -386,26 +539,74 @@ const AppLayoutChildren = ({
     initialState?.tenantSwitchVersion,
   ]);
 
+  const markFlowProcessItemsRead = React.useCallback(async () => {
+    if (!initialState?.currentUser?.userid) return;
+
+    try {
+      await markAllFlowEventsRead();
+      setFlowProcessItems((currentItems) =>
+        currentItems.map((item) =>
+          item.read === false ? { ...item, read: true } : item,
+        ),
+      );
+      setFlowEventUnreadCount(0);
+      void loadFlowEventUnreadCount();
+    } catch {
+      void loadFlowEventUnreadCount();
+    }
+  }, [
+    initialState?.currentUser?.userid,
+    initialState?.dynamicTenantId,
+    initialState?.tenantSwitchVersion,
+    loadFlowEventUnreadCount,
+  ]);
+
+  const loadFlowProcessItemsAndMarkRead = React.useCallback(
+    async (silent = false) => {
+      const loaded = await loadFlowProcessItems(silent);
+      if (loaded) {
+        await markFlowProcessItemsRead();
+        return;
+      }
+      void loadFlowEventUnreadCount();
+    },
+    [loadFlowEventUnreadCount, loadFlowProcessItems, markFlowProcessItemsRead],
+  );
+
   React.useEffect(() => {
-    void loadFlowProcessItems();
-  }, [loadFlowProcessItems]);
+    flowProcessPanelExpandedRef.current = false;
+    setFlowProcessItems([]);
+    void loadFlowEventUnreadCount();
+  }, [loadFlowEventUnreadCount]);
 
   React.useEffect(() => {
     if (!initialState?.currentUser?.userid) return;
 
-    const timer = window.setInterval(() => {
-      void loadFlowProcessItems();
-    }, floatingProcessPanelPollingInterval);
-
-    return () => {
-      window.clearInterval(timer);
-    };
+    return subscribeSseMessage((message) => {
+      if (!isFlowEventSseMessage(message)) return;
+      if (flowProcessPanelExpandedRef.current) {
+        void loadFlowProcessItemsAndMarkRead(true);
+        return;
+      }
+      void loadFlowEventUnreadCount();
+    });
   }, [
     initialState?.currentUser?.userid,
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
-    loadFlowProcessItems,
+    loadFlowEventUnreadCount,
+    loadFlowProcessItemsAndMarkRead,
   ]);
+
+  const handleFlowProcessPanelExpandedChange = React.useCallback(
+    (nextExpanded: boolean) => {
+      flowProcessPanelExpandedRef.current = nextExpanded;
+      if (nextExpanded) {
+        void loadFlowProcessItemsAndMarkRead();
+      }
+    },
+    [loadFlowProcessItemsAndMarkRead],
+  );
 
   return (
     <>
@@ -420,34 +621,16 @@ const AppLayoutChildren = ({
       </React.Fragment>
       <FloatingProcessPanel
         defaultMode={floatingProcessPanelDefaultMode}
-        enabled={Boolean(initialState?.currentUser) && !flowEventCenterOpen}
+        enabled={Boolean(initialState?.currentUser)}
+        hasUnread={flowEventUnreadCount > 0}
         items={flowProcessItems}
+        loading={flowProcessItemsLoading}
+        onExpandedChange={handleFlowProcessPanelExpandedChange}
         onViewAllLogs={() => {
-          setInitialState((state) =>
-            state
-              ? {
-                  ...state,
-                  flowEventCenterOpen: true,
-                }
-              : state,
-          );
+          void markFlowProcessItemsRead();
+          history.push('/flow-events');
         }}
       />
-      {flowEventCenterOpen ? (
-        <FlowEventCenter
-          mode="overlay"
-          onClose={() => {
-            setInitialState((state) =>
-              state
-                ? {
-                    ...state,
-                    flowEventCenterOpen: false,
-                  }
-                : state,
-            );
-          }}
-        />
-      ) : null}
       <SettingDrawer
         disableUrlParams
         enableDarkTheme

@@ -306,6 +306,7 @@ const DeptPage = () => {
       title: '操作',
       valueType: 'option',
       width: 128,
+      align: 'left',
       render: (_, record) => (
         <TableActions
           actions={[

@@ -2,6 +2,7 @@ import {
   ArrowLeftOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  DownOutlined,
   EditOutlined,
   EyeOutlined,
   FileDoneOutlined,
@@ -24,10 +25,12 @@ import {
   Alert,
   Button,
   Descriptions,
+  Dropdown,
   Empty,
   Form,
   Grid,
   Input,
+  type MenuProps,
   Modal,
   message,
   Select,
@@ -48,6 +51,7 @@ import TemplateEditor from '@/components/TemplateEditor';
 import type { TemplateEditorFeatures } from '@/components/TemplateEditor/types';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import { useTemplateVariables } from '@/hooks/useTemplateVariables';
+import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
@@ -62,6 +66,7 @@ import {
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
+import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   addSupplementalInstrumentTask,
   deleteInstrumentTask,
@@ -261,7 +266,17 @@ const getDocumentRowKey = (record: InstrumentTaskItem) => String(record.id);
 const isProcessingStatus = (status?: number) =>
   Number(status) === 1 || Number(status) === 4;
 
-const isFailedStatus = (status?: number) => [3, 6, 8].includes(Number(status));
+const normalizeFlowId = (value: unknown) => {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text || undefined;
+};
+
+const canShowInstrumentGroupFlowDetail = (
+  record?: InstrumentTaskGroupItem | null,
+) =>
+  Boolean(record && normalizeFlowId(record.flowId)) &&
+  (toNumber(record?.processingCount) > 0 || toNumber(record?.failedCount) > 0);
 
 const isDeliveryGroup = (code?: string) =>
   Boolean(code && DELIVERY_GROUP_CODES.has(code));
@@ -574,6 +589,8 @@ const InstrumentListPage = () => {
     fileName: '',
     fileUrl: '',
   });
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -1226,6 +1243,18 @@ const InstrumentListPage = () => {
     });
   };
 
+  const openFlowDetail = (
+    record: InstrumentTaskGroupItem | InstrumentTaskItem,
+  ) => {
+    const flowId = normalizeFlowId(record.flowId);
+    if (!flowId) {
+      messageApi.warning('当前文书暂无关联流程实例');
+      return;
+    }
+    setTraceInstanceId(flowId);
+    setTraceOpen(true);
+  };
+
   const handleDebtSelected = async (record: InstrumentTaskItem) => {
     const debtId = record.debtId ?? record.id;
     if (debtSelectorMode === 'generate') {
@@ -1375,6 +1404,62 @@ const InstrumentListPage = () => {
   };
 
   const selectedSource = selectedGroups.length > 0 ? 'selected' : 'all';
+  const currentCategoryGroupConfig = getCategoryGroupConfig(activeCategory);
+  const instrumentToolbarActions = [
+    ...(currentCategoryGroupConfig
+      ? [
+          {
+            key: 'generate-debt',
+            label: '选择债务生成',
+            icon: <FileDoneOutlined />,
+            onClick: () => openDebtSelector('generate'),
+          },
+          {
+            key: 'add-supplemental',
+            label: '新增补充材料',
+            icon: <PlusOutlined />,
+            onClick: () => openAddSupplemental(null),
+          },
+        ]
+      : []),
+    {
+      key: 'batch-run',
+      label: '批量生成盖章',
+      icon: <SyncOutlined />,
+      onClick: () => void submitAction('run', selectedSource),
+    },
+    {
+      key: 'batch-retry',
+      label: '批量重试',
+      icon: <RetweetOutlined />,
+      onClick: () => void submitAction('retry', selectedSource),
+    },
+  ];
+  const instrumentToolbarMenuItems = [
+    ...(currentCategoryGroupConfig
+      ? [
+          ...instrumentToolbarActions.slice(0, 2).map((item) => ({
+            key: item.key,
+            label: item.label,
+            icon: item.icon,
+          })),
+          {
+            type: 'divider' as const,
+          },
+        ]
+      : []),
+    ...instrumentToolbarActions
+      .slice(currentCategoryGroupConfig ? 2 : 0)
+      .map((item) => ({
+        key: item.key,
+        label: item.label,
+        icon: item.icon,
+      })),
+  ] satisfies MenuProps['items'];
+  const handleInstrumentToolbarMenuClick: MenuProps['onClick'] = ({ key }) => {
+    const action = instrumentToolbarActions.find((item) => item.key === key);
+    action?.onClick();
+  };
 
   const groupColumns: any[] = [
     {
@@ -1468,6 +1553,7 @@ const InstrumentListPage = () => {
       title: '操作',
       width: 152,
       fixed: 'right',
+      align: 'left',
       render: (_: unknown, record: InstrumentTaskGroupItem) => (
         <TableActions
           maxVisible={3}
@@ -1510,15 +1596,19 @@ const InstrumentListPage = () => {
               disabled: toNumber(record.processingCount) > 0,
               onClick: () => void submitAction('run', 'group', record),
             },
-            {
-              key: 'retry',
-              label: '重试异常',
-              icon: <RetweetOutlined />,
-              disabled:
-                toNumber(record.processingCount) > 0 ||
-                toNumber(record.failedCount) === 0,
-              onClick: () => void submitAction('retry', 'group', record),
-            },
+            ...(canShowInstrumentGroupFlowDetail(record)
+              ? [
+                  {
+                    key: 'flow',
+                    label:
+                      toNumber(record.failedCount) > 0
+                        ? '处理异常'
+                        : '查看进度',
+                    icon: getFlowActionIcon(toNumber(record.failedCount) > 0),
+                    onClick: () => openFlowDetail(record),
+                  },
+                ]
+              : []),
           ]}
         />
       ),
@@ -1579,6 +1669,7 @@ const InstrumentListPage = () => {
       title: '操作',
       width: 96,
       fixed: 'right',
+      align: 'left',
       render: (_: unknown, record: InstrumentTaskItem) => (
         <Button
           size="small"
@@ -1678,18 +1769,6 @@ const InstrumentListPage = () => {
           >
             生成盖章
           </Button>
-        </Tooltip>
-        <Tooltip title="重试异常">
-          <Button
-            icon={<RetweetOutlined />}
-            disabled={
-              !selectedDocument || !isFailedStatus(selectedDocument.status)
-            }
-            onClick={() =>
-              selectedDocument &&
-              submitDocumentAction('retry', selectedDocument)
-            }
-          />
         </Tooltip>
         <Tooltip title="删除文书">
           <Button
@@ -2016,29 +2095,32 @@ const InstrumentListPage = () => {
                                 disabled={editMode === 'edit'}
                               />
                             </Form.Item>
-                            <Form.Item
-                              name="debtorName"
-                              label="关联债务"
-                              rules={[
-                                { required: true, message: '请选择关联债务' },
-                              ]}
-                            >
-                              <Input
-                                readOnly
-                                placeholder="请选择关联债务"
-                                disabled={editorDebtLocked}
-                                addonAfter={
-                                  editMode === 'add' &&
-                                  !groupContext?.debtId ? (
-                                    <Button
-                                      type="link"
-                                      onClick={() => openDebtSelector('attach')}
-                                    >
-                                      选择
-                                    </Button>
-                                  ) : null
-                                }
-                              />
+                            <Form.Item label="关联债务" required>
+                              <Space.Compact block>
+                                <Form.Item
+                                  name="debtorName"
+                                  noStyle
+                                  rules={[
+                                    {
+                                      required: true,
+                                      message: '请选择关联债务',
+                                    },
+                                  ]}
+                                >
+                                  <Input
+                                    readOnly
+                                    placeholder="请选择关联债务"
+                                    disabled={editorDebtLocked}
+                                  />
+                                </Form.Item>
+                                {editMode === 'add' && !groupContext?.debtId ? (
+                                  <Button
+                                    onClick={() => openDebtSelector('attach')}
+                                  >
+                                    选择
+                                  </Button>
+                                ) : null}
+                              </Space.Compact>
                             </Form.Item>
                           </div>
                         </Form>
@@ -2048,7 +2130,7 @@ const InstrumentListPage = () => {
                             className="mb-3"
                             type="warning"
                             showIcon
-                            message="当前内容未检测到盖章位"
+                            title="当前内容未检测到盖章位"
                             action={
                               <Button
                                 size="small"
@@ -2128,42 +2210,7 @@ const InstrumentListPage = () => {
             ))}
           </RecovStatsStrip>
 
-          <RecovTableCard
-            title="文书任务列表"
-            extra={
-              <Space size={8} wrap>
-                {getCategoryGroupConfig(activeCategory) ? (
-                  <Button
-                    icon={<FileDoneOutlined />}
-                    onClick={() => openDebtSelector('generate')}
-                  >
-                    选择债务生成
-                  </Button>
-                ) : null}
-                {getCategoryGroupConfig(activeCategory) ? (
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => openAddSupplemental(null)}
-                  >
-                    新增补充材料
-                  </Button>
-                ) : null}
-                <Button
-                  icon={<SyncOutlined />}
-                  onClick={() => void submitAction('run', selectedSource)}
-                >
-                  批量生成盖章
-                </Button>
-                <Button
-                  icon={<RetweetOutlined />}
-                  onClick={() => void submitAction('retry', selectedSource)}
-                >
-                  批量重试
-                </Button>
-              </Space>
-            }
-          >
+          <RecovTableCard title="文书任务列表">
             <div className="recov-table-card-content">
               <Tabs
                 activeKey={activeCategory}
@@ -2183,47 +2230,57 @@ const InstrumentListPage = () => {
                 }}
               />
 
-              <Form form={queryForm} layout="inline" onFinish={handleQuery}>
-                <Form.Item name="debtNumber">
-                  <Input
-                    allowClear
-                    prefix={<SearchOutlined />}
-                    placeholder="资产编号"
-                    style={RECOV_FILTER_CONTROL_STYLE}
-                  />
-                </Form.Item>
-                <Form.Item name="city">
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="所属城市"
-                    style={RECOV_FILTER_CONTROL_STYLE}
-                    options={cityOptions.map((item) => ({
-                      label: item,
-                      value: item,
-                    }))}
-                  />
-                </Form.Item>
-                <Form.Item name="organization">
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="所属项目"
-                    options={organizationOptions.map((item) => ({
-                      label: item,
-                      value: item,
-                    }))}
-                    optionRender={(option) =>
-                      renderRecovSelectOptionLabel(option.label)
-                    }
-                    popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
-                    style={RECOV_FILTER_CONTROL_STYLE}
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Space size={8}>
+              <Form
+                form={queryForm}
+                className="recov-table-toolbar"
+                onFinish={handleQuery}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                  }}
+                >
+                  <Space size={12} wrap>
+                    <Form.Item name="debtNumber" noStyle>
+                      <Input
+                        allowClear
+                        prefix={<SearchOutlined />}
+                        placeholder="资产编号"
+                        style={RECOV_FILTER_CONTROL_STYLE}
+                      />
+                    </Form.Item>
+                    <Form.Item name="city" noStyle>
+                      <Select
+                        allowClear
+                        showSearch={{ optionFilterProp: 'label' }}
+                        placeholder="所属城市"
+                        style={RECOV_FILTER_CONTROL_STYLE}
+                        options={cityOptions.map((item) => ({
+                          label: item,
+                          value: item,
+                        }))}
+                      />
+                    </Form.Item>
+                    <Form.Item name="organization" noStyle>
+                      <Select
+                        allowClear
+                        showSearch={{ optionFilterProp: 'label' }}
+                        placeholder="所属项目"
+                        options={organizationOptions.map((item) => ({
+                          label: item,
+                          value: item,
+                        }))}
+                        optionRender={(option) =>
+                          renderRecovSelectOptionLabel(option.label)
+                        }
+                        popupMatchSelectWidth={RECOV_ORGANIZATION_POPUP_WIDTH}
+                        style={RECOV_FILTER_CONTROL_STYLE}
+                      />
+                    </Form.Item>
                     <Button
                       type="primary"
                       icon={<SearchOutlined />}
@@ -2238,10 +2295,25 @@ const InstrumentListPage = () => {
                       重置
                     </Button>
                   </Space>
-                </Form.Item>
+                  <Space size={8} wrap>
+                    <Dropdown
+                      menu={{
+                        items: instrumentToolbarMenuItems,
+                        onClick: handleInstrumentToolbarMenuClick,
+                      }}
+                      placement="bottomRight"
+                      trigger={['click']}
+                    >
+                      <Button icon={<DownOutlined />} iconPlacement="end">
+                        更多操作
+                      </Button>
+                    </Dropdown>
+                  </Space>
+                </div>
               </Form>
 
               <Table
+                bordered
                 className="recov-stable-pagination-table"
                 rowKey={getGroupRowKey}
                 loading={loading}
@@ -2279,7 +2351,7 @@ const InstrumentListPage = () => {
         }
         open={debtVisible}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         onCancel={() => setDebtVisible(false)}
       >
         <div className="flex flex-col gap-4">
@@ -2344,7 +2416,7 @@ const InstrumentListPage = () => {
         width="90%"
         title="查看文书"
         open={preview.visible}
-        destroyOnClose
+        destroyOnHidden
         onCancel={() => setPreview((prev) => ({ ...prev, visible: false }))}
         footer={
           <Space>
@@ -2401,6 +2473,16 @@ const InstrumentListPage = () => {
           )}
         </Spin>
       </Modal>
+
+      <FlowTraceDrawer
+        open={traceOpen}
+        instanceId={traceInstanceId}
+        onClose={() => setTraceOpen(false)}
+        onChanged={() => {
+          void fetchList();
+          if (groupVisible) void refreshGroupDetail();
+        }}
+      />
     </PageContainer>
   );
 };

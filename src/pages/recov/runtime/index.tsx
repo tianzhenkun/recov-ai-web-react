@@ -8,11 +8,12 @@ import {
   Spin,
   Switch,
   TimePicker,
+  theme,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getTimeConfig,
   type SaveTimeConfigDTO,
@@ -54,14 +55,17 @@ const runtimeStatusBadgeMap: Record<
   非运营时间: { badgeStatus: 'warning', text: 'text-amber-600' },
 };
 
-const RuntimeStatusIndicator = ({ status }: { status: string }) => {
+export const RuntimeStatusIndicator = ({ status }: { status: string }) => {
+  const { token } = theme.useToken();
   const config = runtimeStatusBadgeMap[status] ?? {
     badgeStatus: 'default',
     text: 'text-zinc-700',
   };
+  const badgeColor = status === '正常运行' ? token.colorPrimary : undefined;
 
   return (
     <Badge
+      color={badgeColor}
       status={config.badgeStatus}
       text={
         <span className={`text-base font-semibold ${config.text}`}>

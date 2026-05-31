@@ -9,12 +9,12 @@ import {
 } from '@/adapters/ruoyi/dynamicTenant';
 import {
   clearCachedRuoyiMenuData,
-  findRuoyiMenuByPath,
   loadRuoyiMenuData,
   resolveRuoyiMenuContext,
 } from '@/adapters/ruoyi/menu';
 import { getTenantList, type TenantInfo } from '@/services/ruoyi/auth';
 import { dynamicClear, dynamicTenant } from '@/services/ruoyi/tenant';
+import { resolveTenantSwitchNextPath } from './navigation';
 
 type TenantOption = TenantInfo['voList'][number];
 
@@ -90,10 +90,11 @@ const TenantSwitch = () => {
     const currentPath = history.location.pathname;
     const menuData = await loadRuoyiMenuData();
     const menuContext = resolveRuoyiMenuContext(currentPath, menuData);
-    const nextPath =
-      findRuoyiMenuByPath(currentPath, menuData)?.path ||
-      menuContext.homePath ||
-      '/';
+    const nextPath = resolveTenantSwitchNextPath(
+      currentPath,
+      menuData,
+      menuContext,
+    );
 
     setInitialState((state) => ({
       ...state,

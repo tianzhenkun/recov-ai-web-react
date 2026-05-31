@@ -279,8 +279,11 @@ describe('RuoYi menu transform', () => {
     ]);
 
     expect(
-      getScopedRuoyiMenuData(menuData, '/missing', ['账户管理', '后台管理']),
-    ).toBe(menuData);
+      getScopedRuoyiMenuData(menuData, '/missing', [
+        '账户管理',
+        '后台管理',
+      ]).map((item) => item.path),
+    ).toEqual(['/datelligence']);
   });
 
   it('hides workspace root menus from the default left sidebar', () => {

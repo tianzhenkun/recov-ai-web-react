@@ -178,6 +178,7 @@ const RoleAuthUserPage = ({ roleId: propRoleId }: RoleAuthUserPageProps) => {
       title: '操作',
       valueType: 'option',
       width: 64,
+      align: 'left',
       render: (_, record) => (
         <TableActions
           actions={[

@@ -305,6 +305,7 @@ const OssPage = () => {
       title: '操作',
       valueType: 'option',
       width: 96,
+      align: 'left',
       render: (_, record) => {
         const isDownloading = downloadingKeys.has(getOssRowKey(record));
 

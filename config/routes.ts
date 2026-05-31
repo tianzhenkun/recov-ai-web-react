@@ -427,6 +427,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/flow-events',
+    component: './recov/flowEvents',
+    hideInMenu: true,
+  },
+  {
     path: '/flow-manager',
     component: './recov/flow',
     hideInMenu: true,

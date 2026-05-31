@@ -3,6 +3,7 @@ import {
   RecovListPage,
   RecovListStack,
 } from '@/pages/recov/components/RecovListLayout';
+import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import type {
   LitigationNodeStatVO,
   LitigationNodeType,
@@ -54,6 +55,8 @@ const LitigationProcessPage = () => {
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<DisplayRow | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
 
   const buildListQuery = useCallback(
     (overrides: Partial<LitigationListQuery> = {}): LitigationListQuery => ({
@@ -183,6 +186,16 @@ const LitigationProcessPage = () => {
     setDetailOpen(true);
   };
 
+  const handleViewFlow = (row: DisplayRow) => {
+    const flowId =
+      row.flowId === null || row.flowId === undefined
+        ? ''
+        : String(row.flowId).trim();
+    if (!flowId) return;
+    setTraceInstanceId(flowId);
+    setTraceOpen(true);
+  };
+
   const handleCloseDetail = () => {
     setDetailOpen(false);
     setDetailRow(null);
@@ -216,6 +229,7 @@ const LitigationProcessPage = () => {
           onFilterReset={handleFilterReset}
           onPageChange={handlePageChange}
           onViewDetail={handleViewDetail}
+          onViewFlow={handleViewFlow}
         />
       </RecovListStack>
 
@@ -223,6 +237,19 @@ const LitigationProcessPage = () => {
         open={detailOpen}
         row={detailRow}
         onClose={handleCloseDetail}
+      />
+
+      <FlowTraceDrawer
+        open={traceOpen}
+        instanceId={traceInstanceId}
+        onClose={() => setTraceOpen(false)}
+        onChanged={() => {
+          void Promise.all([
+            fetchNodes(),
+            fetchOverview(nodeType),
+            fetchList(buildListQuery()),
+          ]);
+        }}
       />
     </RecovListPage>
   );

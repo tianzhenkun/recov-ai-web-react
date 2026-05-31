@@ -240,7 +240,7 @@ const FeedbackAllDrawer = ({
         key: 'actions',
         title: '操作',
         fixed: 'right',
-        align: 'center',
+        align: 'left',
         width: 80,
         render: (_, record) => (
           <Tooltip title="查看详情">

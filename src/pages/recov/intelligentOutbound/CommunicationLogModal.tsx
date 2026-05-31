@@ -22,6 +22,14 @@ type CommunicationLogModalProps = {
   onClose: () => void;
 };
 
+type CommunicationLogContentProps = {
+  loading?: boolean;
+  detail: OwnerCommunicationDetail | null;
+  emptyDescription?: string;
+  showSummaryCard?: boolean;
+  skeletonRows?: number;
+};
+
 const statusMeta: Record<
   string,
   {
@@ -88,12 +96,13 @@ const getTranscriptTurns = (transcript?: Record<string, unknown>) => {
   }>;
 };
 
-const CommunicationLogModal = ({
-  open,
+export const CommunicationLogContent = ({
   loading,
   detail,
-  onClose,
-}: CommunicationLogModalProps) => {
+  emptyDescription = '暂无沟通记录',
+  showSummaryCard = true,
+  skeletonRows = 6,
+}: CommunicationLogContentProps) => {
   const { token } = theme.useToken();
   const sentimentColor: Record<CommunicationLog['sentiment'], string> = {
     负向: token.colorError,
@@ -221,6 +230,57 @@ const CommunicationLogModal = ({
   });
 
   return (
+    <>
+      {loading || !detail ? (
+        loading ? (
+          <Skeleton active paragraph={{ rows: skeletonRows }} />
+        ) : (
+          <Empty description={emptyDescription} />
+        )
+      ) : (
+        <div className="flex flex-col gap-5">
+          {showSummaryCard ? (
+            <div
+              className="rounded-lg p-4"
+              style={{
+                backgroundColor: `${token.colorPrimary}0F`,
+                border: `1px solid ${token.colorPrimary}22`,
+              }}
+            >
+              <Space size={6} align="center" wrap style={{ marginBottom: 6 }}>
+                <MessageOutlined style={{ color: token.colorPrimary }} />
+                <Text strong>通话语义概要</Text>
+              </Space>
+              <Paragraph
+                style={{
+                  marginBottom: 0,
+                  color: token.colorTextSecondary,
+                  fontSize: 13,
+                  lineHeight: 1.8,
+                }}
+              >
+                {detail.semanticSummary}
+              </Paragraph>
+            </div>
+          ) : null}
+          {timelineItems.length > 0 ? (
+            <Timeline items={timelineItems} />
+          ) : (
+            <Empty description={emptyDescription} />
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
+const CommunicationLogModal = ({
+  open,
+  loading,
+  detail,
+  onClose,
+}: CommunicationLogModalProps) => {
+  return (
     <Modal
       open={open}
       title={
@@ -235,39 +295,7 @@ const CommunicationLogModal = ({
         </Button>
       }
     >
-      {loading || !detail ? (
-        <Skeleton active paragraph={{ rows: 6 }} />
-      ) : (
-        <div className="flex flex-col gap-5">
-          <div
-            className="rounded-lg p-4"
-            style={{
-              backgroundColor: `${token.colorPrimary}0F`,
-              border: `1px solid ${token.colorPrimary}22`,
-            }}
-          >
-            <Space size={6} align="center" wrap style={{ marginBottom: 6 }}>
-              <MessageOutlined style={{ color: token.colorPrimary }} />
-              <Text strong>通话语义概要</Text>
-            </Space>
-            <Paragraph
-              style={{
-                marginBottom: 0,
-                color: token.colorTextSecondary,
-                fontSize: 13,
-                lineHeight: 1.8,
-              }}
-            >
-              {detail.semanticSummary}
-            </Paragraph>
-          </div>
-          {timelineItems.length > 0 ? (
-            <Timeline items={timelineItems} />
-          ) : (
-            <Empty description="暂无沟通记录" />
-          )}
-        </div>
-      )}
+      <CommunicationLogContent loading={loading} detail={detail} />
     </Modal>
   );
 };

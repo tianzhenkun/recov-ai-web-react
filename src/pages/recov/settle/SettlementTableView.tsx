@@ -105,7 +105,7 @@ const SettlementTableView = ({
       key: 'action',
       width: 112,
       fixed: 'right',
-      align: 'center',
+      align: 'left',
       render: (_: unknown, row) => (
         <TableActions
           actions={[

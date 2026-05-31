@@ -1,4 +1,5 @@
 import { formatAmount, toNumber } from '@/pages/recov/settle/_shared';
+import type { ImportPipelineStatus } from '@/services/ruoyi/datelligence';
 import type {
   AiCallDashboard,
   AiCallDebtFeedback,
@@ -11,6 +12,53 @@ import type {
 export const PAGE_TITLE = '数字员工智能外呼';
 
 export const DEFAULT_FEEDBACK_PAGE_SIZE = 5;
+
+export type OutboundStartAvailabilityInput = {
+  outboundStarting?: boolean;
+  outboundFlowProcessing?: boolean;
+  recordTotal?: number;
+  isImportWorkflowProcessing?: boolean;
+  pipelineStatus?: ImportPipelineStatus | '' | null;
+  hasBlockingImportFailure?: boolean;
+};
+
+export const resolveOutboundStartDisabledReason = ({
+  outboundStarting = false,
+  outboundFlowProcessing = false,
+  recordTotal = 0,
+  isImportWorkflowProcessing = false,
+  pipelineStatus = '',
+  hasBlockingImportFailure = false,
+}: OutboundStartAvailabilityInput) => {
+  if (outboundStarting) return '催收流程正在发起，请稍后';
+  if (outboundFlowProcessing) return '催收流程批次处理中，请稍后';
+  if (recordTotal === 0) return '暂无债务记录，无法开启外呼';
+  if (isImportWorkflowProcessing) {
+    return '当前导入任务处理中，请等待完成后再开启外呼';
+  }
+  if (pipelineStatus === 'partial_failed') {
+    return '后续处理存在失败，请重试或忽略后再开启外呼';
+  }
+  if (hasBlockingImportFailure) {
+    return '导入链路存在失败，请处理后再开启外呼';
+  }
+  return '';
+};
+
+export type OutboundStartNoticeInput = {
+  pipelineStatus?: ImportPipelineStatus | '' | null;
+  hasNonBlockingImportFailure?: boolean;
+};
+
+export const resolveOutboundStartNotice = ({
+  pipelineStatus = '',
+  hasNonBlockingImportFailure = false,
+}: OutboundStartNoticeInput) => {
+  if (pipelineStatus === 'failed' || hasNonBlockingImportFailure) {
+    return '最近一次导入失败，本次仅处理已入库且未开始的债务。';
+  }
+  return '';
+};
 
 export type MetricFormat = 'currency' | 'count' | 'duration';
 

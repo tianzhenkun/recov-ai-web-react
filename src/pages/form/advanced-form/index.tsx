@@ -159,6 +159,7 @@ const AdvancedForm: FC<Record<string, any>> = () => {
       title: '操作',
       key: 'action',
       valueType: 'option',
+      align: 'left',
       render: (_, record: TableFormDateType, _index, action) => {
         return [
           <a

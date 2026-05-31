@@ -327,6 +327,7 @@ const TenantPage = () => {
       valueType: 'option',
       fixed: 'right',
       width: 176,
+      align: 'left',
       render: (_, record) => (
         <TableActions
           maxVisible={5}

@@ -12,6 +12,7 @@ import {
   Spin,
   Tabs,
   Tag,
+  theme,
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRuoyiDict } from '@/hooks/useRuoyiDict';
@@ -30,7 +31,7 @@ import {
   defaultConcurrencyForm,
   getVoiceAvatarBg,
   getVoiceGenderLabel,
-  getVoiceGenderTagColor,
+  getVoiceGenderTagStyle,
   isConcurrencySnapshotEqual,
   RETRY_INTERVAL_FALLBACK_OPTIONS,
   VOICE_TAB_OPTIONS,
@@ -41,6 +42,7 @@ import IdentityConfigCard from './IdentityConfigCard';
 const VOICE_PAGE_SIZE = 18;
 
 const VoiceEngineConfigPage = () => {
+  const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
 
@@ -84,6 +86,15 @@ const VoiceEngineConfigPage = () => {
   const [voiceTotal, setVoiceTotal] = useState(0);
   const [loadingVoice, setLoadingVoice] = useState(false);
   const voiceRequestSeqRef = useRef(0);
+  const voiceGenderTagStyle = useMemo(
+    () =>
+      getVoiceGenderTagStyle({
+        colorPrimary: token.colorPrimary,
+        colorPrimaryBg: token.colorPrimaryBg,
+        colorPrimaryBorder: token.colorPrimaryBorder,
+      }),
+    [token.colorPrimary, token.colorPrimaryBg, token.colorPrimaryBorder],
+  );
   const voiceTabItems = useMemo(
     () =>
       VOICE_TAB_OPTIONS.map((item) => ({
@@ -217,10 +228,7 @@ const VoiceEngineConfigPage = () => {
               {voice.baseVoiceId || '未配置基础音色'}
             </div>
           </div>
-          <Tag
-            color={getVoiceGenderTagColor(voice.gender)}
-            className="shrink-0"
-          >
+          <Tag className="shrink-0" styles={{ root: voiceGenderTagStyle }}>
             {getVoiceGenderLabel(voice.gender)}
           </Tag>
         </div>
@@ -263,8 +271,8 @@ const VoiceEngineConfigPage = () => {
                 {voice.voiceName}
               </div>
               <Tag
-                color={getVoiceGenderTagColor(voice.gender)}
                 className="!mt-1 !text-[10px]"
+                styles={{ root: voiceGenderTagStyle }}
               >
                 {getVoiceGenderLabel(voice.gender)}
               </Tag>

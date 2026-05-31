@@ -164,6 +164,7 @@ const OnlinePage = () => {
       title: '操作',
       valueType: 'option',
       width: 72,
+      align: 'left',
       render: (_, record) => (
         <TableActions
           maxVisible={1}

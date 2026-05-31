@@ -6,6 +6,7 @@ import {
 } from '@ant-design/pro-components';
 import clsx from 'clsx';
 import type { HTMLAttributes } from 'react';
+import React from 'react';
 
 export const RecovListPage = ({ className, ...props }: PageContainerProps) => (
   <PageContainer className={clsx('recov-list-page', className)} {...props} />

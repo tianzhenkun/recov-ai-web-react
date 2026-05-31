@@ -1,50 +1,56 @@
+import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
-  CloseOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
-import {
-  Alert,
+  Badge,
   Button,
+  Descriptions,
+  Drawer,
   Empty,
   Form,
   Input,
   message,
+  Segmented,
   Space,
   Table,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   RecovListPage,
   RecovListStack,
-  RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
+import FlowWorkbench from '@/pages/recov/flow/components/FlowWorkbench';
 import {
+  buildFlowEventDisplaySummary,
   type FlowEventPageItem,
   type FlowEventPageQuery,
   getFlowEventPage,
+  markAllFlowEventsRead,
   normalizeFlowEventPageResult,
 } from '@/services/ruoyi/flowEvent';
 
 dayjs.extend(relativeTime);
 
-const { Text, Title } = Typography;
-
-export type FlowEventCenterMode = 'page' | 'overlay';
+const { Text } = Typography;
 
 type FlowEventCenterProps = {
-  mode?: FlowEventCenterMode;
-  onClose?: () => void;
+  onEventsRead?: () => void;
 };
 
 type EventQueryState = {
   debtRecordId?: string;
+  unreadOnly?: boolean;
   pageNum: number;
   pageSize: number;
 };
@@ -82,17 +88,29 @@ const formatEventTime = (value?: string) => {
   return `${dateValue.format('YYYY-MM-DD HH:mm:ss')} · ${dateValue.fromNow()}`;
 };
 
-const summarizeExtra = (event: FlowEventPageItem) => {
-  const description = [event.eventContent, event.reasonText]
-    .map((item) => toTrimmedValue(String(item ?? '')))
-    .find(Boolean);
+const formatStructuredText = (value: unknown) => {
+  const normalizedValue = String(value ?? '').trim();
+  if (!normalizedValue) return '-';
 
-  const accountPrefix =
-    event.debtNumber !== null && event.debtNumber !== undefined
-      ? `${event.debtNumber}号账户`
-      : '账户';
+  try {
+    return JSON.stringify(JSON.parse(normalizedValue), null, 2);
+  } catch {
+    return normalizedValue;
+  }
+};
 
-  return description ? `${accountPrefix} ${description}` : `${accountPrefix} -`;
+const renderDetailText = (value: unknown) => {
+  const text = formatStructuredText(value);
+  if (text === '-') return text;
+
+  return (
+    <Typography.Paragraph
+      copyable={{ text }}
+      style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
+    >
+      {text}
+    </Typography.Paragraph>
+  );
 };
 
 const getEventRowKey = (item: FlowEventPageItem) =>
@@ -101,10 +119,7 @@ const getEventRowKey = (item: FlowEventPageItem) =>
       `${item.instanceId ?? 'instance'}-${item.createTime ?? 'time'}-${item.eventType ?? 'event'}`,
   );
 
-const FlowEventCenter = ({
-  mode = 'overlay',
-  onClose,
-}: FlowEventCenterProps) => {
+const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
   const [form] = Form.useForm<{ debtRecordId?: string }>();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [query, setQuery] = useState<EventQueryState>({
@@ -116,7 +131,32 @@ const FlowEventCenter = ({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<FlowEventPageItem | null>(
+    null,
+  );
   const requestSeqRef = useRef(0);
+  const autoMarkedReadRef = useRef(false);
+  const onEventsReadRef = useRef(onEventsRead);
+
+  useEffect(() => {
+    onEventsReadRef.current = onEventsRead;
+  }, [onEventsRead]);
+
+  const markAllReadOnce = useCallback(async () => {
+    if (autoMarkedReadRef.current) return;
+    autoMarkedReadRef.current = true;
+    try {
+      await markAllFlowEventsRead();
+      setRows((currentRows) =>
+        currentRows.map((item) =>
+          item.read === false ? { ...item, read: true } : item,
+        ),
+      );
+      onEventsReadRef.current?.();
+    } catch {
+      autoMarkedReadRef.current = false;
+    }
+  }, []);
 
   const loadEvents = useCallback(
     async (nextQuery: EventQueryState, silent = false) => {
@@ -136,12 +176,16 @@ const FlowEventCenter = ({
         if (nextQuery.debtRecordId) {
           params.debtRecordId = nextQuery.debtRecordId;
         }
+        if (nextQuery.unreadOnly) {
+          params.unreadOnly = true;
+        }
 
         const response = await getFlowEventPage(params);
         if (seq !== requestSeqRef.current) return;
         const pageResult = normalizeFlowEventPageResult(response);
         setRows(pageResult.rows);
         setTotal(pageResult.total);
+        void markAllReadOnce();
       } catch {
         if (seq === requestSeqRef.current) {
           setRows([]);
@@ -155,60 +199,12 @@ const FlowEventCenter = ({
         }
       }
     },
-    [],
+    [markAllReadOnce],
   );
 
   useEffect(() => {
     void loadEvents(query);
   }, [loadEvents, query]);
-
-  useEffect(() => {
-    if (mode !== 'overlay' || typeof document === 'undefined') return;
-
-    const { body } = document;
-    const previousOverflow = body.style.overflow;
-    body.style.overflow = 'hidden';
-
-    return () => {
-      body.style.overflow = previousOverflow;
-    };
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode !== 'overlay' || !onClose) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [mode, onClose]);
-
-  const scopeStats = useMemo(() => {
-    return rows.reduce(
-      (result, item) => {
-        const key = item.eventScope || 'unknown';
-        result[key] = (result[key] || 0) + 1;
-        return result;
-      },
-      {} as Record<string, number>,
-    );
-  }, [rows]);
-
-  const statCards = useMemo(
-    () => [
-      { key: 'total', label: '事件总数', value: total },
-      { key: 'current', label: '当前页条数', value: rows.length },
-      { key: 'flow', label: '流程事件', value: scopeStats.flow || 0 },
-      { key: 'node', label: '节点事件', value: scopeStats.node || 0 },
-    ],
-    [rows.length, scopeStats.flow, scopeStats.node, total],
-  );
 
   const columns = useMemo<ColumnsType<FlowEventPageItem>>(
     () => [
@@ -223,7 +219,12 @@ const FlowEventCenter = ({
         dataIndex: 'eventTitle',
         width: 220,
         ellipsis: true,
-        render: (value) => <Text strong>{toText(value)}</Text>,
+        render: (value, record) => (
+          <Space size={6}>
+            {record.read === false ? <Badge status="error" /> : null}
+            <Text strong={record.read === false}>{toText(value)}</Text>
+          </Space>
+        ),
       },
       {
         title: '事件范围',
@@ -257,7 +258,8 @@ const FlowEventCenter = ({
         title: '描述',
         key: 'summary',
         ellipsis: true,
-        render: (_value, record) => toText(summarizeExtra(record)),
+        render: (_value, record) =>
+          toText(buildFlowEventDisplaySummary(record)),
       },
       {
         title: '流程实例 ID',
@@ -274,6 +276,24 @@ const FlowEventCenter = ({
           <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
             {formatEventTime(String(value || ''))}
           </Text>
+        ),
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 90,
+        fixed: 'right',
+        align: 'left',
+        render: (_value, record) => (
+          <Button
+            size="small"
+            type="link"
+            onClick={() => {
+              setDetailRecord(record);
+            }}
+          >
+            详情
+          </Button>
         ),
       },
     ],
@@ -294,137 +314,170 @@ const FlowEventCenter = ({
     form.resetFields();
     setQuery({
       debtRecordId: undefined,
+      unreadOnly: false,
       pageNum: DEFAULT_PAGE_NUM,
       pageSize: DEFAULT_PAGE_SIZE,
     });
   };
 
+  const handleReadModeChange = (value: string | number) => {
+    setQuery((current) => ({
+      ...current,
+      unreadOnly: value === 'unread',
+      pageNum: DEFAULT_PAGE_NUM,
+    }));
+  };
+
+  const eventListContent = (
+    <RecovListStack className="min-h-0">
+      <RecovTableCard title="流程事件列表">
+        <Form form={form} className="recov-table-toolbar">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Space wrap size={12}>
+              <Segmented
+                options={[
+                  { label: '全部', value: 'all' },
+                  { label: '未读', value: 'unread' },
+                ]}
+                value={query.unreadOnly ? 'unread' : 'all'}
+                onChange={handleReadModeChange}
+              />
+              <Input
+                allowClear
+                placeholder="债务记录 ID"
+                prefix={<SearchOutlined />}
+                style={{ width: 220 }}
+                value={draftDebtRecordId}
+                onChange={(event) => {
+                  setDraftDebtRecordId(event.target.value);
+                }}
+                onPressEnter={handleSearch}
+              />
+              <Button
+                icon={<SearchOutlined />}
+                type="primary"
+                onClick={handleSearch}
+              >
+                查询
+              </Button>
+              <Button onClick={handleReset}>重置</Button>
+            </Space>
+            <Space wrap size={12}>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={refreshing}
+                onClick={() => {
+                  void loadEvents(query, true);
+                }}
+              >
+                刷新
+              </Button>
+            </Space>
+          </div>
+        </Form>
+
+        <Table<FlowEventPageItem>
+          bordered
+          className="recov-stable-pagination-table"
+          columns={columns}
+          dataSource={rows}
+          loading={loading}
+          locale={{
+            emptyText: <Empty description="暂无流程事件" />,
+          }}
+          pagination={{
+            current: query.pageNum,
+            pageSize: query.pageSize,
+            total,
+            showSizeChanger: true,
+            showTotal: (value) => `共 ${value} 条`,
+            onChange: (pageNum, pageSize) => {
+              setQuery((current) => ({
+                ...current,
+                pageNum,
+                pageSize,
+              }));
+            },
+          }}
+          rowKey={getEventRowKey}
+          scroll={{ x: 1600 }}
+        />
+      </RecovTableCard>
+    </RecovListStack>
+  );
+
   const content = (
     <div className="flex h-full min-h-0 flex-col">
       {messageContextHolder}
-      <RecovListStack className="min-h-0 flex-1">
-        <RecovStatsStrip className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {statCards.map((card) => (
-            <div
-              className="rounded-xl border border-solid border-[rgba(5,5,5,0.06)] bg-white px-4 py-3 shadow-sm"
-              key={card.key}
-            >
-              <Text type="secondary">{card.label}</Text>
-              <div className="mt-2">
-                <Title level={4} style={{ margin: 0 }}>
-                  {card.value}
-                </Title>
-              </div>
-            </div>
-          ))}
-        </RecovStatsStrip>
-
-        <RecovTableCard
-          extra={
-            <Button
-              icon={<ReloadOutlined />}
-              loading={refreshing}
-              onClick={() => {
-                void loadEvents(query, true);
-              }}
-            >
-              刷新
-            </Button>
-          }
-          title="流程事件列表"
-        >
-          <Form form={form} className="recov-table-toolbar">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Space wrap size={12}>
-                <Input
-                  allowClear
-                  placeholder="债务记录 ID"
-                  prefix={<SearchOutlined />}
-                  style={{ width: 220 }}
-                  value={draftDebtRecordId}
-                  onChange={(event) => {
-                    setDraftDebtRecordId(event.target.value);
-                  }}
-                  onPressEnter={handleSearch}
-                />
-                <Button
-                  icon={<SearchOutlined />}
-                  type="primary"
-                  onClick={handleSearch}
-                >
-                  查询
-                </Button>
-                <Button onClick={handleReset}>重置</Button>
-              </Space>
-            </div>
-          </Form>
-
-          <Alert
-            className="mb-3"
-            description={
-              query.debtRecordId
-                ? `当前仅展示债务记录 ${query.debtRecordId} 的流程事件。`
-                : '当前展示全局流程事件分页结果。'
-            }
-            showIcon
-            type="info"
-          />
-
-          <Table<FlowEventPageItem>
-            bordered
-            className="recov-stable-pagination-table"
-            columns={columns}
-            dataSource={rows}
-            loading={loading}
-            locale={{
-              emptyText: <Empty description="暂无流程事件" />,
-            }}
-            pagination={{
-              current: query.pageNum,
-              pageSize: query.pageSize,
-              total,
-              showSizeChanger: true,
-              showTotal: (value) => `共 ${value} 条`,
-              onChange: (pageNum, pageSize) => {
-                setQuery((current) => ({
-                  ...current,
-                  pageNum,
-                  pageSize,
-                }));
-              },
-            }}
-            rowKey={getEventRowKey}
-            scroll={{ x: 1500 }}
-          />
-        </RecovTableCard>
-      </RecovListStack>
+      <Tabs
+        className="flow-event-center-tabs flex min-h-0 flex-1 flex-col"
+        defaultActiveKey="events"
+        items={[
+          {
+            key: 'events',
+            label: '流程事件列表',
+            children: eventListContent,
+          },
+          {
+            key: 'flow-manager',
+            label: '流程管理',
+            children: <FlowWorkbench mode="embedded" />,
+          },
+        ]}
+      />
+      <Drawer
+        destroyOnHidden
+        open={Boolean(detailRecord)}
+        title="事件详情"
+        size="min(680px, calc(100vw - 24px))"
+        zIndex={1100}
+        onClose={() => {
+          setDetailRecord(null);
+        }}
+      >
+        {detailRecord ? (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="事件标题">
+              {toText(detailRecord.eventTitle)}
+            </Descriptions.Item>
+            <Descriptions.Item label="前端描述">
+              {buildFlowEventDisplaySummary(detailRecord)}
+            </Descriptions.Item>
+            <Descriptions.Item label="原始说明">
+              {renderDetailText(detailRecord.eventContent)}
+            </Descriptions.Item>
+            <Descriptions.Item label="失败原因">
+              {renderDetailText(detailRecord.reasonText)}
+            </Descriptions.Item>
+            <Descriptions.Item label="事件类型">
+              {toText(detailRecord.eventType)}
+            </Descriptions.Item>
+            <Descriptions.Item label="节点名称">
+              {toText(detailRecord.nodeName)}
+            </Descriptions.Item>
+            <Descriptions.Item label="流程实例 ID">
+              {toText(detailRecord.instanceId)}
+            </Descriptions.Item>
+            <Descriptions.Item label="任务 ID">
+              {toText(detailRecord.taskId)}
+            </Descriptions.Item>
+            <Descriptions.Item label="资产编号">
+              {toText(detailRecord.debtNumber)}
+            </Descriptions.Item>
+            <Descriptions.Item label="创建时间">
+              {formatEventTime(detailRecord.createTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="变更前数据">
+              {renderDetailText(detailRecord.beforeData)}
+            </Descriptions.Item>
+            <Descriptions.Item label="变更后数据">
+              {renderDetailText(detailRecord.afterData)}
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
+      </Drawer>
     </div>
   );
-
-  if (mode === 'overlay') {
-    return (
-      <div className="fixed inset-0 z-[1000] bg-[#f5f7fb]">
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex shrink-0 items-center justify-between border-0 border-b border-solid border-[rgba(5,5,5,0.06)] bg-[rgba(255,255,255,0.92)] px-6 py-4 backdrop-blur">
-            <div className="min-w-0">
-              <Title level={4} style={{ margin: 0 }}>
-                流程事件中心
-              </Title>
-              <Text type="secondary">
-                基于全局流程事件分页接口查看最新事件时间线，支持按债务记录筛选。
-              </Text>
-            </div>
-            <Button icon={<CloseOutlined />} onClick={onClose} type="text">
-              关闭
-            </Button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden px-6 py-6">
-            {content}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return <RecovListPage title="流程事件中心">{content}</RecovListPage>;
 };
