@@ -1,16 +1,28 @@
-import { Form, Input, Modal, Typography } from 'antd';
+import { Form, Input, Modal, Select, Typography } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { useEffect, useState } from 'react';
-import { addLawyerAccount, updateLawyerAccount } from '@/services/ruoyi/seal';
+import {
+  addFilingAccount,
+  type SealCode,
+  updateFilingAccount,
+} from '@/services/ruoyi/seal';
 
 const { Text } = Typography;
+
+const accountIdentityOptions = [
+  { label: '个人用户', value: '个人用户' },
+  { label: '律师用户', value: '律师用户' },
+  { label: '法人用户', value: '法人用户' },
+];
 
 export type LawyerAccountModalProps = {
   open: boolean;
   mode: 'add' | 'edit';
   sealId: number | string;
+  sealCode?: SealCode;
   sealName: string;
   initialUsername?: string;
+  initialIdentity?: string;
   onClose: () => void;
   onSaved: () => void;
   messageApi: MessageInstance;
@@ -19,14 +31,17 @@ export type LawyerAccountModalProps = {
 type FormValues = {
   lawyerUsername: string;
   lawyerPassword: string;
+  accountIdentity: string;
 };
 
 const LawyerAccountModal = ({
   open,
   mode,
   sealId,
+  sealCode,
   sealName,
   initialUsername,
+  initialIdentity,
   onClose,
   onSaved,
   messageApi,
@@ -36,27 +51,35 @@ const LawyerAccountModal = ({
 
   useEffect(() => {
     if (!open) return;
+    const defaultIdentity =
+      sealCode === 'lawyer_seal' ? '律师用户' : '法人用户';
     form.setFieldsValue({
       lawyerUsername: mode === 'edit' ? (initialUsername ?? '') : '',
       lawyerPassword: '',
+      accountIdentity:
+        mode === 'edit'
+          ? (initialIdentity ?? defaultIdentity)
+          : defaultIdentity,
     });
-  }, [open, mode, initialUsername, form]);
+  }, [open, mode, sealCode, initialUsername, initialIdentity, form]);
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
       const username = (values.lawyerUsername ?? '').trim();
       const password = values.lawyerPassword ?? '';
+      const identity = values.accountIdentity;
 
       setSubmitting(true);
       if (mode === 'edit') {
-        await updateLawyerAccount(
+        await updateFilingAccount(
           sealId,
           username || undefined,
           password ? password : undefined,
+          identity,
         );
       } else {
-        await addLawyerAccount(sealId, username, password);
+        await addFilingAccount(sealId, username, password, identity);
       }
       messageApi.success('操作成功');
       onSaved();
@@ -81,7 +104,7 @@ const LawyerAccountModal = ({
       open={open}
       title={
         <span className="text-base font-semibold text-zinc-900">
-          {isEdit ? '修改律师账号' : '新增律师账号'}
+          {isEdit ? '修改立案账号' : '新增立案账号'}
         </span>
       }
       width={440}
@@ -111,24 +134,34 @@ const LawyerAccountModal = ({
           <Text>{sealName}</Text>
         </Form.Item>
         <Form.Item
-          label="律师用户名"
-          name="lawyerUsername"
-          rules={[
-            { required: true, message: '律师用户名不能为空' },
-            { whitespace: true, message: '律师用户名不能为空' },
-          ]}
+          label="账号身份"
+          name="accountIdentity"
+          rules={[{ required: true, message: '账号身份不能为空' }]}
         >
-          <Input placeholder="请输入律师用户名" autoComplete="off" />
+          <Select
+            options={accountIdentityOptions}
+            placeholder="请选择账号身份"
+          />
         </Form.Item>
         <Form.Item
-          label={isEdit ? '新密码' : '律师密码'}
+          label="立案账号"
+          name="lawyerUsername"
+          rules={[
+            { required: true, message: '立案账号不能为空' },
+            { whitespace: true, message: '立案账号不能为空' },
+          ]}
+        >
+          <Input placeholder="请输入立案账号" autoComplete="off" />
+        </Form.Item>
+        <Form.Item
+          label={isEdit ? '新密码' : '立案账号密码'}
           name="lawyerPassword"
           rules={
-            isEdit ? [] : [{ required: true, message: '律师密码不能为空' }]
+            isEdit ? [] : [{ required: true, message: '立案账号密码不能为空' }]
           }
         >
           <Input.Password
-            placeholder={isEdit ? '留空则不修改密码' : '请输入律师密码'}
+            placeholder={isEdit ? '留空则不修改密码' : '请输入立案账号密码'}
             autoComplete="new-password"
           />
         </Form.Item>

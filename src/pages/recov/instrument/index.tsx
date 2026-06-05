@@ -1,9 +1,6 @@
 import {
   ArrowLeftOutlined,
-  DeleteOutlined,
   DownloadOutlined,
-  DownOutlined,
-  EditOutlined,
   EyeOutlined,
   FileDoneOutlined,
   FilePdfOutlined,
@@ -12,7 +9,6 @@ import {
   FileTextOutlined,
   PlusOutlined,
   ReloadOutlined,
-  RetweetOutlined,
   SaveOutlined,
   SearchOutlined,
   SendOutlined,
@@ -25,12 +21,12 @@ import {
   Alert,
   Button,
   Descriptions,
-  Dropdown,
+  Drawer,
   Empty,
+  Flex,
   Form,
   Grid,
   Input,
-  type MenuProps,
   Modal,
   message,
   Select,
@@ -46,10 +42,10 @@ import {
 import dayjs from 'dayjs';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import PdfPreview from '@/components/PdfPreview';
 import TableActions from '@/components/TableActions';
 import TemplateEditor from '@/components/TemplateEditor';
 import type { TemplateEditorFeatures } from '@/components/TemplateEditor/types';
-import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import { useTemplateVariables } from '@/hooks/useTemplateVariables';
 import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import MetricIcon, {
@@ -68,8 +64,12 @@ import {
 } from '@/pages/recov/components/RecovListLayout';
 import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
+  type DeliveryTaskItem,
+  getDeliveryTaskByBusiness,
+  retryDeliveryTask,
+} from '@/services/ruoyi/deliveryTask';
+import {
   addSupplementalInstrumentTask,
-  deleteInstrumentTask,
   getInstrumentTaskDetail,
   getInstrumentTaskGroupDetail,
   type InstrumentMetricItem,
@@ -88,11 +88,13 @@ import {
   updateInstrumentTaskContent,
 } from '@/services/ruoyi/instrument';
 import { downloadOss, listOssByIds } from '@/services/ruoyi/oss';
+import { listSeal, type SealCode, type SealVO } from '@/services/ruoyi/seal';
 import {
   matchStanding,
   type StandingMatchItem,
   type StandingMatchVO,
 } from '@/services/ruoyi/standing';
+import { normalizeInstrumentMetricTitle } from './_shared';
 import './index.css';
 
 const { Text } = Typography;
@@ -111,6 +113,7 @@ type QueryValues = {
   debtNumber?: string;
   city?: string;
   organization?: string;
+  displayGroupCode?: string;
 };
 
 type DebtSearchValues = {
@@ -121,6 +124,7 @@ type DebtSearchValues = {
 type EditFormValues = {
   instrumentName: string;
   debtorName?: string;
+  sealIds?: string[];
 };
 
 type GroupContext = {
@@ -143,6 +147,12 @@ type DocumentPreview = {
   fileUrl: string;
 };
 
+type WorkspaceFilePreview = {
+  ossId?: number | string;
+  fileUrl: string;
+  loading: boolean;
+};
+
 const DEFAULT_PAGE_SIZE = 10;
 const LITIGATION_GROUP_CODE = 'LITIGATION_MATERIALS';
 const LITIGATION_GROUP_NAME = '诉讼材料';
@@ -151,12 +161,24 @@ const AUTHORIZATION_GROUP_NAME = '委托授权材料';
 const SUBJECT_STANDING_GROUP_CODE = 'SUBJECT_STANDING';
 const SUBJECT_STANDING_GROUP_NAME = '主体资格证明';
 const DELIVERY_GROUP_CODES = new Set(['UR_CO', 'UR_LAW']);
+const SEAL_STATUS_TAG_COLOR = 'purple';
+const LETTER_TYPE_FILTER_OPTIONS = [
+  { label: '律师催收函', value: 'UR_LAW' },
+  { label: '企业催收函', value: 'UR_CO' },
+];
 const FILING_GROUP_CODES = new Set([
   LITIGATION_GROUP_CODE,
   AUTHORIZATION_GROUP_CODE,
   SUBJECT_STANDING_GROUP_CODE,
 ]);
 const CURRENCY_METRIC_KEYS = new Set(['recovered', 'stageRepaymentAmount']);
+const SUPPLEMENTAL_SEAL_CODES: SealCode[] = [
+  'company_seal',
+  'lawyer_seal',
+  'law_firm_seal',
+];
+const SEAL_PLACEHOLDER_BLOCK_REGEXP =
+  /<div\b[^>]*\bdata-seal-placeholder-block=(["'])selected\1[^>]*>[\s\S]*?<\/div>/i;
 
 const categoryGroupMap: Record<
   Exclude<InstrumentCategory, '催收函件'>,
@@ -182,10 +204,17 @@ const statusMap: Record<number, { label: string; color: string }> = {
   2: { label: '已生成', color: 'blue' },
   3: { label: '生成失败', color: 'error' },
   4: { label: '盖章中', color: 'processing' },
-  5: { label: '已盖章', color: 'success' },
+  5: { label: '已盖章', color: SEAL_STATUS_TAG_COLOR },
   6: { label: '盖章失败', color: 'error' },
   7: { label: '送达中', color: 'warning' },
   8: { label: '盖章阻塞', color: 'orange' },
+};
+
+const deliveryStatusMap: Record<number, { label: string; color: string }> = {
+  0: { label: '待送达', color: 'default' },
+  1: { label: '送达中', color: 'processing' },
+  2: { label: '已送达', color: 'success' },
+  3: { label: '送达失败', color: 'error' },
 };
 
 const instrumentEditorFeatures: TemplateEditorFeatures = {
@@ -255,6 +284,56 @@ const formatDateTime = (value?: string) => {
 const getStatusInfo = (status?: number) =>
   statusMap[Number(status)] || { label: '未知', color: 'default' };
 
+const getDeliveryStatusInfo = (status?: number | null) =>
+  deliveryStatusMap[Number(status)] || { label: '未知', color: 'default' };
+
+const getGroupStatusInfo = (record?: InstrumentTaskGroupItem | null) => {
+  const explicitStatus = record?.status;
+  if (
+    explicitStatus !== null &&
+    explicitStatus !== undefined &&
+    String(explicitStatus).trim() !== ''
+  ) {
+    return getStatusInfo(Number(explicitStatus));
+  }
+
+  const totalCount = toNumber(record?.totalCount);
+  const sealedCount = toNumber(record?.sealedCount);
+  const generatedCount = toNumber(record?.generatedCount);
+
+  if (toNumber(record?.failedCount) > 0) {
+    return { label: '处理异常', color: 'error' };
+  }
+  if (toNumber(record?.processingCount) > 0) {
+    return { label: '处理中', color: 'processing' };
+  }
+  if (totalCount > 0 && sealedCount >= totalCount) {
+    return getStatusInfo(5);
+  }
+  if (sealedCount > 0) {
+    return { label: '部分盖章', color: SEAL_STATUS_TAG_COLOR };
+  }
+  if (totalCount > 0 && generatedCount >= totalCount) {
+    return getStatusInfo(2);
+  }
+  if (generatedCount > 0) {
+    return { label: '部分生成', color: 'blue' };
+  }
+
+  return getStatusInfo(0);
+};
+
+const renderInstrumentGroupStatus = (record: InstrumentTaskGroupItem) => {
+  const status = getGroupStatusInfo(record);
+  return <Tag color={status.color}>{status.label}</Tag>;
+};
+
+const isInstrumentGroupSealed = (record?: InstrumentTaskGroupItem | null) => {
+  if (Number(record?.status) === 5) return true;
+  const totalCount = toNumber(record?.totalCount);
+  return totalCount > 0 && toNumber(record?.sealedCount) >= totalCount;
+};
+
 const getGroupRowKey = (record: InstrumentTaskGroupItem) =>
   String(
     record.groupId ??
@@ -265,6 +344,24 @@ const getDocumentRowKey = (record: InstrumentTaskItem) => String(record.id);
 
 const isProcessingStatus = (status?: number) =>
   Number(status) === 1 || Number(status) === 4;
+
+const getDocumentFileOssId = (
+  record?: InstrumentTaskItem | null,
+  detail?: InstrumentTaskDetail | null,
+) =>
+  detail?.displayOssId ||
+  record?.displayOssId ||
+  detail?.sealedOssId ||
+  record?.sealedOssId ||
+  detail?.draftOssId ||
+  record?.draftOssId;
+
+const isSealedDocument = (
+  record?: InstrumentTaskItem | null,
+  detail?: InstrumentTaskDetail | null,
+) =>
+  String(detail?.displayStage || record?.displayStage || '').toUpperCase() ===
+    'SEALED' || Number(detail?.status ?? record?.status) === 5;
 
 const normalizeFlowId = (value: unknown) => {
   if (value === null || value === undefined) return undefined;
@@ -311,6 +408,22 @@ const isSubjectStandingGroup = (
   group?.category === SUBJECT_STANDING_GROUP_NAME ||
   group?.displayGroupName === SUBJECT_STANDING_GROUP_NAME;
 
+const formatStandingApplicability = (item: StandingMatchItem) => {
+  if (item.wildcard || (item.startNum == null && item.endNum == null)) {
+    return '全部';
+  }
+  if (item.startNum != null && item.endNum != null) {
+    return `${item.startNum}-${item.endNum}`;
+  }
+  if (item.startNum != null) {
+    return `${item.startNum} 起`;
+  }
+  if (item.endNum != null) {
+    return `${item.endNum} 以内`;
+  }
+  return '全部';
+};
+
 const isEmptyHtml = (value: string) => {
   const text = value
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -323,11 +436,81 @@ const isEmptyHtml = (value: string) => {
 const hasSealPlaceholder = (value: string) =>
   /\bdata-seal-placeholder\b/i.test(value);
 
-const buildSealPlaceholderHtml = () =>
-  '<p style="text-align:right;margin-top:32px;"><span class="instrument-seal-placeholder" data-seal-placeholder="company_seal" data-seal-code="company_seal" data-width-mm="36" data-height-mm="36" style="display:inline-block;width:36mm;height:36mm;border:1px dashed #cbd5e1;border-radius:4px;"></span></p>';
+const escapeHtmlAttribute = (value: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
-const buildDefaultSupplementalHtml = (title = '补充材料') =>
-  `<h2 style="text-align:center;">${title}</h2><p>业主姓名：{{debtorName}}</p><p>资产编号：{{debtNumber}}</p><p></p>${buildSealPlaceholderHtml()}`;
+const normalizeSealRows = (response: unknown): SealVO[] => {
+  const res = response as {
+    data?: { page?: { rows?: SealVO[] }; rows?: SealVO[] };
+    rows?: SealVO[];
+  };
+  return res.data?.page?.rows ?? res.data?.rows ?? res.rows ?? [];
+};
+
+const getSealOptionId = (seal: SealVO) => String(seal.id);
+
+const isSealEnabled = (seal: SealVO) => String(seal.status) === '1';
+
+const isSealApplicableToDebtNumber = (
+  seal: SealVO,
+  debtNumber?: string | number,
+) => {
+  if (seal.startNum == null && seal.endNum == null) return true;
+  if (debtNumber === undefined || debtNumber === null || debtNumber === '') {
+    return false;
+  }
+  const current = Number(debtNumber);
+  if (!Number.isFinite(current)) return false;
+  const start = seal.startNum ?? Number.NEGATIVE_INFINITY;
+  const end = seal.endNum ?? Number.POSITIVE_INFINITY;
+  return current >= start && current <= end;
+};
+
+const getSealRangeText = (seal: SealVO) =>
+  seal.startNum != null && seal.endNum != null
+    ? `${seal.startNum}-${seal.endNum}`
+    : '全部资产';
+
+const formatSealOptionLabel = (seal: SealVO) =>
+  `${seal.sealName || seal.sealCode}｜${getSealRangeText(seal)}`;
+
+const resolveSealCodes = (seals: SealVO[]) => {
+  const selectedCodes = new Set(
+    seals.map((seal) => seal.sealCode).filter(Boolean),
+  );
+  return SUPPLEMENTAL_SEAL_CODES.filter((sealCode) =>
+    selectedCodes.has(sealCode),
+  );
+};
+
+const buildSealPlaceholdersHtml = (seals: SealVO[]) => {
+  const sealCodes = resolveSealCodes(seals);
+  if (!sealCodes.length) return '';
+  return `<p style="text-align:right;margin-top:32px;"><span class="instrument-seal-placeholder" data-seal-placeholder="seal_group" data-seal-codes="${escapeHtmlAttribute(sealCodes.join(','))}" data-width-mm="36" data-height-mm="36" style="display:inline-flex;align-items:center;justify-content:center;gap:6mm;width:auto;min-width:36mm;height:36mm;border:1px dashed #cbd5e1;border-radius:4px;vertical-align:middle;"></span></p>`;
+};
+
+const buildSealPlaceholderBlock = (seals: SealVO[]) => {
+  const placeholdersHtml = buildSealPlaceholdersHtml(seals);
+  return placeholdersHtml
+    ? `<div data-seal-placeholder-block="selected">${placeholdersHtml}</div>`
+    : '';
+};
+
+const ensureSealPlaceholderBlock = (html: string, selectedSeals: SealVO[]) => {
+  const nextBlock = buildSealPlaceholderBlock(selectedSeals);
+  if (SEAL_PLACEHOLDER_BLOCK_REGEXP.test(html)) {
+    return html.replace(SEAL_PLACEHOLDER_BLOCK_REGEXP, nextBlock);
+  }
+  if (!nextBlock) return html;
+  return `${html || '<p></p>'}${nextBlock}`;
+};
+
+const buildDefaultSupplementalHtml = (seals: SealVO[] = []) =>
+  buildSealPlaceholdersHtml(seals);
 
 const previewViewerStyle = `
   @page { size: A4; margin: 0; }
@@ -339,9 +522,9 @@ const previewViewerStyle = `
   @media screen and (max-width: 860px) { body { padding: 18px 0 32px !important; } .instrument-pdf-page { width: calc(100vw - 32px); min-height: auto; padding: 40px 44px 56px; } }
   h1, h2, h3 { margin: 0 0 18px; color: #111827; line-height: 1.45; }
   p { margin: 0 0 12px; line-height: 1.9; }
-  [data-seal-placeholder], .instrument-seal-placeholder { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36mm; height: 36mm; border: 1px dashed #cbd5e1; border-radius: 4px; background: repeating-linear-gradient(45deg, #f8fafc 0, #f8fafc 8px, #f1f5f9 8px, #f1f5f9 16px); color: #94a3b8; font-size: 12px; line-height: 1.4; vertical-align: middle; }
-  [data-seal-placeholder]::after, .instrument-seal-placeholder::after { content: "签章位置"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 12px; letter-spacing: 0; pointer-events: none; }
-  .instrument-seal-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+  [data-seal-placeholder], .instrument-seal-placeholder { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6mm; width: auto; min-width: 36mm; height: 36mm; border: 1px dashed #cbd5e1; border-radius: 4px; background: repeating-linear-gradient(45deg, #f8fafc 0, #f8fafc 8px, #f1f5f9 8px, #f1f5f9 16px); color: #94a3b8; font-size: 12px; line-height: 1.4; vertical-align: middle; }
+  [data-seal-placeholder]::after, .instrument-seal-placeholder::after { content: "签章组"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 12px; letter-spacing: 0; pointer-events: none; }
+  .instrument-seal-image { display: inline-block; width: 36mm; height: 36mm; object-fit: contain; }
   img { max-width: 100%; }
   .tiptap-variable { color: #1677ff; background: #e6f4ff; border: 1px solid #91caff; border-radius: 4px; padding: 0 4px; }
 `;
@@ -397,10 +580,33 @@ const buildContentJson = (
   instrumentName,
 });
 
-const buildTemplateJson = (instrumentName: string) => ({
+const buildTemplateJson = (instrumentName: string, sealIds: string[]) => ({
   instrumentName,
-  debtorName: '{{debtorName}}',
-  debtNumber: '{{debtNumber}}',
+  sealIds,
+});
+
+const buildLocalEditedDocumentPreview = (
+  record: InstrumentTaskItem,
+  detail: InstrumentTaskDetail | null,
+  instrumentName: string,
+  html: string,
+  isSupplemental: boolean,
+): InstrumentTaskDetail => ({
+  ...record,
+  ...(detail ?? {}),
+  instrumentName,
+  status: 1,
+  displayStage: 'DRAFT',
+  displayOssId: undefined,
+  draftOssId: undefined,
+  sealedOssId: undefined,
+  hasPendingRevision: true,
+  previewHtml: html,
+  ...(isSupplemental
+    ? { customTemplateHtml: html }
+    : {
+        contentHtml: html,
+      }),
 });
 
 const normalizeTaskPage = (response: unknown) => {
@@ -517,7 +723,6 @@ const InstrumentListPage = () => {
   const isNarrow = !screens.md;
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
-  const confirmDelete = useDeleteConfirm({ modal: modalApi, messageApi });
   const { variables: templateVariables } = useTemplateVariables();
   const [queryForm] = Form.useForm<QueryValues>();
   const [editForm] = Form.useForm<EditFormValues>();
@@ -538,6 +743,8 @@ const InstrumentListPage = () => {
   >([]);
   const [cityOptions, setCityOptions] = useState<string[]>([]);
   const [organizationOptions, setOrganizationOptions] = useState<string[]>([]);
+  const [sealOptions, setSealOptions] = useState<SealVO[]>([]);
+  const [sealLoading, setSealLoading] = useState(false);
 
   const [groupVisible, setGroupVisible] = useState(false);
   const [groupLoading, setGroupLoading] = useState(false);
@@ -589,10 +796,21 @@ const InstrumentListPage = () => {
     fileName: '',
     fileUrl: '',
   });
+  const [deliveryDetailOpen, setDeliveryDetailOpen] = useState(false);
+  const [deliveryDetailLoading, setDeliveryDetailLoading] = useState(false);
+  const [deliveryDetail, setDeliveryDetail] = useState<DeliveryTaskItem | null>(
+    null,
+  );
+  const [retryingDeliveryTaskId, setRetryingDeliveryTaskId] = useState<
+    string | null
+  >(null);
+  const [workspaceFilePreview, setWorkspaceFilePreview] =
+    useState<WorkspaceFilePreview>({
+      loading: false,
+      fileUrl: '',
+    });
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
-  const [instrumentToolbarOpen, setInstrumentToolbarOpen] = useState(false);
-
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
@@ -627,6 +845,51 @@ const InstrumentListPage = () => {
       console.error('加载文书筛选项失败:', error);
     }
   }, []);
+
+  const fetchSealOptions = useCallback(
+    async (debtNumber?: string | number) => {
+      setSealLoading(true);
+      try {
+        const results = await Promise.all(
+          SUPPLEMENTAL_SEAL_CODES.map((sealCode) =>
+            listSeal({ sealCode, pageNum: 1, pageSize: 1000, status: '1' }),
+          ),
+        );
+        const deduped = new Map<string, SealVO>();
+        results
+          .flatMap((response) => normalizeSealRows(response))
+          .filter(isSealEnabled)
+          .filter((seal) => isSealApplicableToDebtNumber(seal, debtNumber))
+          .forEach((seal) => {
+            deduped.set(getSealOptionId(seal), seal);
+          });
+        setSealOptions(Array.from(deduped.values()));
+      } catch (error) {
+        console.error('获取签章印章失败:', error);
+        setSealOptions([]);
+        messageApi.error('获取签章印章失败');
+      } finally {
+        setSealLoading(false);
+      }
+    },
+    [messageApi],
+  );
+
+  const resolveSelectedSeals = useCallback(
+    (selectedSealIds: string[] = []) => {
+      const selectedSet = new Set(selectedSealIds.map(String));
+      return sealOptions.filter((seal) =>
+        selectedSet.has(getSealOptionId(seal)),
+      );
+    },
+    [sealOptions],
+  );
+
+  const handleSealSelectionChange = (selectedSealIds: string[]) => {
+    const selectedSeals = resolveSelectedSeals(selectedSealIds);
+    setEditorValue((value) => ensureSealPlaceholderBlock(value, selectedSeals));
+    setEditorTab('preview');
+  };
 
   const loadStandingMatch = useCallback(
     async (debtId?: number | string) => {
@@ -670,6 +933,14 @@ const InstrumentListPage = () => {
         );
         if (nextSelected) {
           setSelectedDocument(nextSelected);
+          try {
+            const nextSelectedDetail = await getInstrumentTaskDetail(
+              nextSelected.id,
+            );
+            setSelectedDocumentDetail(nextSelectedDetail.data ?? null);
+          } catch (error) {
+            console.error('刷新选中文书详情失败:', error);
+          }
         }
       }
     } catch (error) {
@@ -703,7 +974,7 @@ const InstrumentListPage = () => {
   );
 
   const getMetricTitle = (key: string, fallback: string) =>
-    metricMap.get(key)?.label || fallback;
+    normalizeInstrumentMetricTitle(metricMap.get(key)?.label, fallback);
 
   const getMetricValue = (key: string): StatDisplayValue => {
     const metric = metricMap.get(key);
@@ -755,7 +1026,7 @@ const InstrumentListPage = () => {
       icon: <SendOutlined />,
     },
     {
-      title: getMetricTitle('litigation', '已经入法诉程序被告数'),
+      title: getMetricTitle('litigation', '已进入法诉程序'),
       value: getMetricValue('litigation'),
       tone: 'warning',
       icon: <SyncOutlined />,
@@ -770,7 +1041,15 @@ const InstrumentListPage = () => {
 
   const handleQuery = async () => {
     const values = await queryForm.validateFields();
-    setQueryValues(values);
+    setQueryValues(
+      activeCategory === '催收函件'
+        ? values
+        : {
+            debtNumber: values.debtNumber,
+            city: values.city,
+            organization: values.organization,
+          },
+    );
     setPageNum(1);
   };
 
@@ -820,6 +1099,7 @@ const InstrumentListPage = () => {
   const resetWorkspaceDocument = () => {
     setSelectedDocument(null);
     setSelectedDocumentDetail(null);
+    setWorkspaceFilePreview({ loading: false, fileUrl: '' });
     setEditingRecord(null);
     setEditingDetail(null);
     setEditorValue('<p></p>');
@@ -897,7 +1177,7 @@ const InstrumentListPage = () => {
     }
   };
 
-  const openDeliveryDetail = (
+  const openDeliveryDetail = async (
     sceneCode?: string,
     businessId?: number | string,
   ) => {
@@ -905,11 +1185,53 @@ const InstrumentListPage = () => {
       messageApi.warning('暂无可关联的送达任务');
       return;
     }
-    const params = new URLSearchParams({
-      sceneCode,
-      keyword: String(businessId),
+    setDeliveryDetailOpen(true);
+    setDeliveryDetailLoading(true);
+    setDeliveryDetail(null);
+    try {
+      const detail = await getDeliveryTaskByBusiness(sceneCode, businessId);
+      setDeliveryDetail(detail ?? null);
+    } catch (error) {
+      messageApi.error(
+        error instanceof Error ? error.message : '送达详情加载失败，请稍后重试',
+      );
+    } finally {
+      setDeliveryDetailLoading(false);
+    }
+  };
+
+  const retryDeliveryDetail = () => {
+    if (!deliveryDetail?.taskId) {
+      messageApi.warning('当前送达任务缺少任务ID，无法重试');
+      return;
+    }
+
+    modalApi.confirm({
+      title: '确认重试送达任务',
+      content: `将重新提交资产 ${toText(
+        deliveryDetail.debtNumber ?? deliveryDetail.debtId,
+      )} 的送达任务。`,
+      okText: '重试',
+      cancelText: '取消',
+      async onOk() {
+        setRetryingDeliveryTaskId(deliveryDetail.taskId);
+        try {
+          const nextDetail = await retryDeliveryTask(deliveryDetail.taskId);
+          setDeliveryDetail(nextDetail ?? deliveryDetail);
+          messageApi.success('送达任务已重新提交');
+          await fetchList();
+        } catch (error) {
+          messageApi.error(
+            error instanceof Error
+              ? error.message
+              : '送达任务重试失败，请稍后重试',
+          );
+          throw error;
+        } finally {
+          setRetryingDeliveryTaskId(null);
+        }
+      },
     });
-    history.push(`/delivery?${params.toString()}`);
   };
 
   const buildGroupContext = (
@@ -963,9 +1285,10 @@ const InstrumentListPage = () => {
       setGroupVisible(true);
       setCurrentGroup(null);
       setGroupDetail(null);
-      setSelectedDocument(null);
-      setSelectedDocumentDetail(null);
     }
+    setSelectedDocument(null);
+    setSelectedDocumentDetail(null);
+    setWorkspaceFilePreview({ loading: false, fileUrl: '' });
     setWorkspaceMode('add');
     setEditMode('add');
     setEditingRecord(null);
@@ -982,74 +1305,40 @@ const InstrumentListPage = () => {
         : null,
     );
     setEditorTab('edit');
-    setEditorValue(buildDefaultSupplementalHtml('补充材料'));
+    setEditorValue(buildDefaultSupplementalHtml());
+    setSealOptions([]);
+    void fetchSealOptions(context.debtNumber);
     editForm.setFieldsValue({
       instrumentName: '',
       debtorName: context.debtorName,
+      sealIds: [],
     });
-  };
-
-  const openEditDocument = async (record: InstrumentTaskItem) => {
-    setWorkspaceMode('edit');
-    setSelectedDocument(record);
-    setSelectedDocumentDetail(null);
-    setEditMode('edit');
-    setEditingRecord(record);
-    setSelectedDebt(record);
-    setGroupContext({
-      debtId: record.debtId,
-      debtorName: record.debtorName,
-      debtNumber: record.debtNumber,
-      category: record.category || activeCategory,
-      displayGroupCode: record.displayGroupCode || '',
-      displayGroupName: record.displayGroupName || '',
-    });
-    setEditorValue('<p></p>');
-    setEditorTab('edit');
-    editForm.setFieldsValue({
-      instrumentName: record.instrumentName,
-      debtorName: record.debtorName,
-    });
-    setDocumentLoading(true);
-    try {
-      const response = await getInstrumentTaskDetail(record.id);
-      const detail = response.data ?? null;
-      setSelectedDocumentDetail(detail);
-      setEditingDetail(detail);
-      setEditorValue(
-        detail?.contentHtml ||
-          detail?.customTemplateHtml ||
-          detail?.templateHtml ||
-          buildDefaultSupplementalHtml(detail?.instrumentName || '补充材料'),
-      );
-      editForm.setFieldsValue({
-        instrumentName: detail?.instrumentName || record.instrumentName,
-        debtorName: detail?.debtorName || record.debtorName,
-      });
-    } catch (error) {
-      console.error('获取文书详情失败:', error);
-      messageApi.error('获取文书详情失败');
-      setWorkspaceMode('preview');
-    } finally {
-      setDocumentLoading(false);
-    }
   };
 
   const insertSealPlaceholder = () => {
+    const selectedSealIds = editForm.getFieldValue('sealIds') ?? [];
+    const selectedSeals = resolveSelectedSeals(selectedSealIds);
+    if (selectedSeals.length === 0) {
+      messageApi.warning('请选择签章印章');
+      return;
+    }
     if (hasSealPlaceholder(editorValue)) {
       messageApi.info('当前内容已存在盖章位');
       return;
     }
-    setEditorValue(
-      (value) => `${value || '<p></p>'}${buildSealPlaceholderHtml()}`,
-    );
+    setEditorValue((value) => ensureSealPlaceholderBlock(value, selectedSeals));
     setEditorTab('preview');
   };
 
   const doSaveDocument = async (values: EditFormValues) => {
     setSaveLoading(true);
     try {
-      const savedRecord = editingRecord;
+      const selectedSealIds = values.sealIds ?? [];
+      const selectedSeals = resolveSelectedSeals(selectedSealIds);
+      const contentHtml = ensureSealPlaceholderBlock(
+        editorValue,
+        selectedSeals,
+      );
       if (editMode === 'add') {
         const debtId = selectedDebt?.debtId ?? groupContext?.debtId;
         if (!debtId) {
@@ -1069,8 +1358,11 @@ const InstrumentListPage = () => {
             config?.displayGroupName ||
             activeCategory,
           instrumentName: values.instrumentName,
-          customTemplateJson: buildTemplateJson(values.instrumentName),
-          customTemplateHtml: editorValue,
+          customTemplateJson: buildTemplateJson(
+            values.instrumentName,
+            selectedSealIds,
+          ),
+          customTemplateHtml: contentHtml,
           autoRun: true,
         });
         messageApi.success('已保存，正在生成并盖章');
@@ -1082,22 +1374,32 @@ const InstrumentListPage = () => {
         await updateInstrumentTaskContent(editingRecord.id, {
           ...(isSupplemental
             ? {
-                customTemplateJson: buildTemplateJson(values.instrumentName),
-                customTemplateHtml: editorValue,
+                customTemplateJson: buildTemplateJson(
+                  values.instrumentName,
+                  selectedSealIds,
+                ),
+                customTemplateHtml: contentHtml,
               }
             : {
                 contentJson: buildContentJson(
                   editingDetail,
                   values.instrumentName,
                 ),
-                contentHtml: editorValue,
+                contentHtml,
               }),
           autoRun: true,
         });
         messageApi.success('已保存，正在重新生成并盖章');
-        if (savedRecord) {
-          await loadDocumentPreview(savedRecord);
-        }
+        const nextPreviewDetail = buildLocalEditedDocumentPreview(
+          editingRecord,
+          editingDetail,
+          values.instrumentName,
+          contentHtml,
+          isSupplemental,
+        );
+        setSelectedDocument(nextPreviewDetail);
+        setSelectedDocumentDetail(nextPreviewDetail);
+        setWorkspaceFilePreview({ loading: false, fileUrl: '' });
       }
       setWorkspaceMode('preview');
       void fetchList();
@@ -1112,7 +1414,13 @@ const InstrumentListPage = () => {
 
   const handleSaveDocument = async () => {
     const values = await editForm.validateFields();
-    if (isEmptyHtml(editorValue)) {
+    const selectedSealIds = values.sealIds ?? [];
+    const selectedSeals = resolveSelectedSeals(selectedSealIds);
+    const contentHtml = ensureSealPlaceholderBlock(editorValue, selectedSeals);
+    if (contentHtml !== editorValue) {
+      setEditorValue(contentHtml);
+    }
+    if (isEmptyHtml(contentHtml) && !hasSealPlaceholder(contentHtml)) {
       messageApi.warning('请输入文书内容');
       return;
     }
@@ -1284,7 +1592,10 @@ const InstrumentListPage = () => {
       ...record,
       debtId,
     });
-    editForm.setFieldsValue({ debtorName: record.debtorName });
+    editForm.setFieldsValue({ debtorName: record.debtorName, sealIds: [] });
+    setEditorValue(buildDefaultSupplementalHtml());
+    setSealOptions([]);
+    void fetchSealOptions(record.debtNumber);
     setDebtVisible(false);
   };
 
@@ -1336,36 +1647,26 @@ const InstrumentListPage = () => {
     const debtNumber = groupDetail?.debtNumber ?? currentGroup?.debtNumber;
     if (debtNumber) params.set('debtNumber', String(debtNumber));
     if (item?.standingCode) params.set('standingCode', item.standingCode);
+    params.set('returnFrom', 'instrument-list');
+    params.set('returnTo', '/instrument-list');
     history.push(`/sys/standing?${params.toString()}`);
   };
 
-  const handleDelete = (record: InstrumentTaskItem) => {
-    confirmDelete({
-      records: [record],
-      entityName: '文书任务',
-      getName: (item) => item.instrumentName || item.debtorName || item.id,
-      description: '删除后该文书任务不可恢复。',
-      onConfirm: async ([item]) => {
-        await deleteInstrumentTask(item.id);
-      },
-      onSuccess: () => {
-        void fetchList();
-        if (groupVisible) void refreshGroupDetail();
-      },
-    });
-  };
-
-  const openPreview = async (record: InstrumentTaskItem) => {
-    const ossId =
-      record.displayOssId || record.sealedOssId || record.draftOssId;
-    const fileName = `${record.debtorName || '文书'}_${record.instrumentName || '材料'}.pdf`;
+  const openPreview = async (
+    record: InstrumentTaskItem,
+    detail?: InstrumentTaskDetail | null,
+  ) => {
+    const ossId = getDocumentFileOssId(record, detail);
+    const fileName = `${detail?.debtorName || record.debtorName || '文书'}_${
+      detail?.instrumentName || record.instrumentName || '材料'
+    }.pdf`;
     setPreview({
       visible: true,
       loading: Boolean(ossId),
       downloading: false,
       ossId,
-      instrumentName: record.instrumentName || '',
-      debtorName: record.debtorName || '',
+      instrumentName: detail?.instrumentName || record.instrumentName || '',
+      debtorName: detail?.debtorName || record.debtorName || '',
       fileName,
       fileUrl: '',
     });
@@ -1404,118 +1705,55 @@ const InstrumentListPage = () => {
     }
   };
 
-  const selectedSource = selectedGroups.length > 0 ? 'selected' : 'all';
-  const currentCategoryGroupConfig = getCategoryGroupConfig(activeCategory);
-  const instrumentToolbarActions = [
-    ...(currentCategoryGroupConfig
-      ? [
-          {
-            key: 'generate-debt',
-            label: '选择债务生成',
-            icon: <FileDoneOutlined />,
-            onClick: () => openDebtSelector('generate'),
-          },
-          {
-            key: 'add-supplemental',
-            label: '新增补充材料',
-            icon: <PlusOutlined />,
-            onClick: () => openAddSupplemental(null),
-          },
-        ]
-      : []),
-    {
-      key: 'batch-run',
-      label: '批量生成盖章',
-      icon: <SyncOutlined />,
-      onClick: () => void submitAction('run', selectedSource),
-    },
-    {
-      key: 'batch-retry',
-      label: '批量重试',
-      icon: <RetweetOutlined />,
-      onClick: () => void submitAction('retry', selectedSource),
-    },
-  ];
-  const instrumentToolbarMenuItems = [
-    ...(currentCategoryGroupConfig
-      ? [
-          ...instrumentToolbarActions.slice(0, 2).map((item) => ({
-            key: item.key,
-            label: item.label,
-            icon: item.icon,
-          })),
-          {
-            type: 'divider' as const,
-          },
-        ]
-      : []),
-    ...instrumentToolbarActions
-      .slice(currentCategoryGroupConfig ? 2 : 0)
-      .map((item) => ({
-        key: item.key,
-        label: item.label,
-        icon: item.icon,
-      })),
-  ] satisfies MenuProps['items'];
-  const handleInstrumentToolbarMenuClick: MenuProps['onClick'] = ({ key }) => {
-    const action = instrumentToolbarActions.find((item) => item.key === key);
-    setInstrumentToolbarOpen(false);
-    action?.onClick();
-  };
-
   const groupColumns: any[] = [
+    {
+      title: '资产编号',
+      dataIndex: 'debtNumber',
+      width: RECOV_LIST_COLUMN_WIDTH.debtNumber,
+      fixed: 'left',
+      ellipsis: { showTitle: false },
+      render: renderRecovSingleLineText,
+    },
+    {
+      title: '所属城市',
+      dataIndex: 'city',
+      width: RECOV_LIST_COLUMN_WIDTH.city,
+      ellipsis: { showTitle: false },
+      render: renderRecovSingleLineText,
+    },
+    {
+      title: '所属项目',
+      dataIndex: 'organization',
+      width: RECOV_LIST_COLUMN_WIDTH.organization,
+      ellipsis: { showTitle: false },
+      render: renderRecovSingleLineText,
+    },
     {
       title: '业主姓名',
       dataIndex: 'debtorName',
       width: 140,
-      fixed: 'left',
-      render: (value: unknown) => <Text strong>{toText(value)}</Text>,
+      ellipsis: { showTitle: false },
+      render: renderRecovSingleLineText,
     },
     {
-      title: '资产编号',
-      dataIndex: 'debtNumber',
-      width: 170,
-      ellipsis: true,
-      render: toText,
-    },
-    {
-      title: '文书分组',
+      title: activeCategory === '催收函件' ? '函件类型' : '材料类型',
       dataIndex: 'displayGroupName',
       width: 160,
-      ellipsis: true,
-      render: (value: unknown, record: InstrumentTaskGroupItem) => (
-        <Space size={6} wrap={false}>
-          <Text>{toText(value)}</Text>
-          {record.readyForFiling ? <Tag color="green">可立案</Tag> : null}
-        </Space>
+      ellipsis: { showTitle: false },
+      render: (value: unknown) => (
+        <span className="instrument-type-cell">
+          <span className="instrument-type-cell-text">
+            {renderRecovSingleLineText(toText(value))}
+          </span>
+        </span>
       ),
     },
     {
-      title: '文书进度',
-      width: 180,
-      render: (_: unknown, record: InstrumentTaskGroupItem) => {
-        const totalCount = toNumber(record.totalCount);
-        const sealedCount = toNumber(record.sealedCount);
-        return (
-          <Space size={6} wrap>
-            <Tag
-              color={
-                sealedCount === totalCount && totalCount > 0 ? 'green' : 'blue'
-              }
-            >
-              {sealedCount}/{totalCount}
-            </Tag>
-            {toNumber(record.processingCount) > 0 ? (
-              <Tag color="processing">
-                处理中 {toText(record.processingCount)}
-              </Tag>
-            ) : null}
-            {toNumber(record.failedCount) > 0 ? (
-              <Tag color="error">异常 {toText(record.failedCount)}</Tag>
-            ) : null}
-          </Space>
-        );
-      },
+      title: '状态',
+      dataIndex: 'status',
+      width: 112,
+      render: (_: unknown, record: InstrumentTaskGroupItem) =>
+        renderInstrumentGroupStatus(record),
     },
     {
       title: '逾期金额',
@@ -1530,20 +1768,6 @@ const InstrumentListPage = () => {
       width: 110,
       render: (value: unknown) =>
         toNumber(value) > 0 ? <Tag color="red">{toText(value)} 天</Tag> : '-',
-    },
-    {
-      title: '所属城市',
-      dataIndex: 'city',
-      width: RECOV_LIST_COLUMN_WIDTH.city,
-      ellipsis: true,
-      render: toText,
-    },
-    {
-      title: '所属项目',
-      dataIndex: 'organization',
-      width: RECOV_LIST_COLUMN_WIDTH.organization,
-      ellipsis: { showTitle: false },
-      render: renderRecovSingleLineText,
     },
     {
       title: '更新时间',
@@ -1591,13 +1815,17 @@ const InstrumentListPage = () => {
                   },
                 ]
               : []),
-            {
-              key: 'run',
-              label: '生成盖章',
-              icon: <SyncOutlined />,
-              disabled: toNumber(record.processingCount) > 0,
-              onClick: () => void submitAction('run', 'group', record),
-            },
+            ...(!isInstrumentGroupSealed(record)
+              ? [
+                  {
+                    key: 'run',
+                    label: '生成盖章',
+                    icon: <SyncOutlined />,
+                    disabled: toNumber(record.processingCount) > 0,
+                    onClick: () => void submitAction('run', 'group', record),
+                  },
+                ]
+              : []),
             ...(canShowInstrumentGroupFlowDetail(record)
               ? [
                   {
@@ -1688,48 +1916,136 @@ const InstrumentListPage = () => {
   const isSubjectWorkspace = isSubjectStandingGroup(
     groupDetail ?? currentGroup ?? groupContext,
   );
-  const selectedDocumentStatus = getStatusInfo(selectedDocument?.status);
-  const selectedDocumentOssId =
-    selectedDocument?.displayOssId ||
-    selectedDocument?.sealedOssId ||
-    selectedDocument?.draftOssId;
+  const isAddingSupplementalDocument = workspaceMode === 'add';
+  const selectedDocumentStatusCode = !isAddingSupplementalDocument
+    ? (selectedDocumentDetail?.status ?? selectedDocument?.status)
+    : undefined;
+  const selectedDocumentStatus = getStatusInfo(selectedDocumentStatusCode);
+  const selectedDocumentOssId = getDocumentFileOssId(
+    selectedDocument,
+    selectedDocumentDetail,
+  );
   const selectedDocumentHtml =
     selectedDocumentDetail?.previewHtml ||
     selectedDocumentDetail?.contentHtml ||
     selectedDocumentDetail?.customTemplateHtml ||
     selectedDocumentDetail?.templateHtml ||
     '<p></p>';
-  const workspaceDocumentName =
-    workspaceMode === 'add'
-      ? '新增补充文书'
-      : toText(
-          selectedDocument?.instrumentName ??
-            groupDetail?.displayGroupName ??
-            currentGroup?.displayGroupName,
-        );
+  const selectedDocumentIsSealed = isSealedDocument(
+    selectedDocument,
+    selectedDocumentDetail,
+  );
+  const selectedDocumentHasPendingRevision = Boolean(
+    selectedDocumentDetail?.hasPendingRevision ||
+      selectedDocument?.hasPendingRevision,
+  );
+  const selectedDocumentPdfOssId =
+    selectedDocumentIsSealed &&
+    !selectedDocumentHasPendingRevision &&
+    selectedDocumentOssId
+      ? selectedDocumentOssId
+      : undefined;
+
+  useEffect(() => {
+    if (workspaceMode !== 'preview' || !selectedDocumentPdfOssId) {
+      setWorkspaceFilePreview((prev) =>
+        prev.ossId || prev.fileUrl || prev.loading
+          ? { loading: false, fileUrl: '' }
+          : prev,
+      );
+      return;
+    }
+
+    let active = true;
+    setWorkspaceFilePreview({
+      ossId: selectedDocumentPdfOssId,
+      loading: true,
+      fileUrl: '',
+    });
+
+    listOssByIds(selectedDocumentPdfOssId)
+      .then((response) => {
+        if (!active) return;
+        const oss = response.data?.[0];
+        setWorkspaceFilePreview({
+          ossId: selectedDocumentPdfOssId,
+          loading: false,
+          fileUrl: oss?.url || '',
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error('获取盖章文件 URL 失败:', error);
+        setWorkspaceFilePreview({
+          ossId: selectedDocumentPdfOssId,
+          loading: false,
+          fileUrl: '',
+        });
+        messageApi.warning('盖章文件加载失败，已展示正文预览');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [messageApi, selectedDocumentPdfOssId, workspaceMode]);
+
+  const selectedDocumentPreviewHasSealPlaceholder =
+    hasSealPlaceholder(selectedDocumentHtml);
+  const selectedDocumentSealPreviewMismatch =
+    !isAddingSupplementalDocument &&
+    selectedDocumentIsSealed &&
+    selectedDocumentPreviewHasSealPlaceholder &&
+    !workspaceFilePreview.loading &&
+    !workspaceFilePreview.fileUrl;
+  const workspaceDocumentName = isAddingSupplementalDocument
+    ? '新增补充文书'
+    : toText(
+        selectedDocument?.instrumentName ??
+          groupDetail?.displayGroupName ??
+          currentGroup?.displayGroupName,
+      );
   const workspaceHeaderTitle = `${toText(
     groupDetail?.debtorName ??
       currentGroup?.debtorName ??
       selectedDebt?.debtorName,
   )} - ${workspaceDocumentName}`;
-  const workspaceLastSaved =
-    selectedDocumentDetail?.updateTime ||
-    selectedDocument?.createTime ||
-    currentGroup?.latestUpdateTime;
-  const canEditSelected =
+  const workspaceLastSaved = isAddingSupplementalDocument
+    ? undefined
+    : selectedDocumentDetail?.updateTime ||
+      selectedDocument?.createTime ||
+      currentGroup?.latestUpdateTime;
+  const workspaceMetaItems = [
+    {
+      label: '资产编号',
+      value: toText(groupDetail?.debtNumber ?? currentGroup?.debtNumber),
+    },
+    {
+      label: '所属城市',
+      value: toText(groupDetail?.city ?? currentGroup?.city),
+    },
+    {
+      label: '所属项目',
+      value: toText(groupDetail?.organization ?? currentGroup?.organization),
+    },
+    ...(workspaceLastSaved
+      ? [{ label: '最后保存', value: formatDateTime(workspaceLastSaved) }]
+      : []),
+  ];
+  const canRunSelected =
     Boolean(selectedDocument) &&
-    selectedDocument?.editable !== false &&
+    !selectedDocumentIsSealed &&
     !isProcessingStatus(selectedDocument?.status);
-  const canShowDelivery =
-    Boolean(selectedDocument) &&
-    isDeliveryGroup(
-      selectedDocument?.displayGroupCode || selectedDocument?.instrumentCode,
-    ) &&
-    Number(selectedDocument?.status) === 5;
   const editorDebtLocked = editMode === 'edit' || Boolean(groupContext?.debtId);
   const canAddWorkspaceSupplemental = isFilingGroup(
     groupDetail ?? currentGroup ?? groupContext,
   );
+  const deliveryDetailStatus = getDeliveryStatusInfo(
+    deliveryDetail?.taskStatus,
+  );
+  const canRetryDeliveryDetail = Number(deliveryDetail?.taskStatus) === 3;
+  const shouldShowDeliveryException =
+    Number(deliveryDetail?.taskStatus) === 3 &&
+    Boolean(deliveryDetail?.errorMessage);
   const showWorkspaceSidebar =
     canAddWorkspaceSupplemental ||
     workspaceDocuments.length > 1 ||
@@ -1749,54 +2065,18 @@ const InstrumentListPage = () => {
       </>
     ) : (
       <>
-        <Tooltip title="修改文书">
-          <Button
-            icon={<EditOutlined />}
-            disabled={!canEditSelected}
-            onClick={() =>
-              selectedDocument && void openEditDocument(selectedDocument)
-            }
-          />
-        </Tooltip>
-        <Tooltip title="生成盖章">
-          <Button
-            type="primary"
-            icon={<SyncOutlined />}
-            disabled={
-              !selectedDocument || isProcessingStatus(selectedDocument.status)
-            }
-            onClick={() =>
-              selectedDocument && submitDocumentAction('run', selectedDocument)
-            }
-          >
-            生成盖章
-          </Button>
-        </Tooltip>
-        <Tooltip title="删除文书">
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            disabled={
-              !selectedDocument ||
-              selectedDocument.editable === false ||
-              isProcessingStatus(selectedDocument.status)
-            }
-            onClick={() => selectedDocument && handleDelete(selectedDocument)}
-          />
-        </Tooltip>
-        {canShowDelivery ? (
-          <Tooltip title="送达详情">
+        {canRunSelected ? (
+          <Tooltip title="生成盖章">
             <Button
-              icon={<SendOutlined />}
+              type="primary"
+              icon={<SyncOutlined />}
               onClick={() =>
                 selectedDocument &&
-                openDeliveryDetail(
-                  selectedDocument.displayGroupCode ||
-                    selectedDocument.instrumentCode,
-                  selectedDocument.id,
-                )
+                submitDocumentAction('run', selectedDocument)
               }
-            />
+            >
+              生成盖章
+            </Button>
           </Tooltip>
         ) : null}
         <Tooltip title="查看文件">
@@ -1804,7 +2084,8 @@ const InstrumentListPage = () => {
             icon={<EyeOutlined />}
             disabled={!selectedDocumentOssId || !selectedDocument}
             onClick={() =>
-              selectedDocument && void openPreview(selectedDocument)
+              selectedDocument &&
+              void openPreview(selectedDocument, selectedDocumentDetail)
             }
           />
         </Tooltip>
@@ -1846,15 +2127,21 @@ const InstrumentListPage = () => {
               />
               <div className="instrument-workspace-title-main">
                 <Space size={8} wrap>
-                  <Text strong className="instrument-workspace-title">
-                    {workspaceHeaderTitle}
-                  </Text>
-                  {selectedDocument ? (
+                  <Tooltip title={workspaceHeaderTitle}>
+                    <Text strong className="instrument-workspace-title">
+                      {workspaceHeaderTitle}
+                    </Text>
+                  </Tooltip>
+                  {!isAddingSupplementalDocument && selectedDocument ? (
                     <>
-                      <Tag>V{selectedDocument.currentRevisionNo || 0}</Tag>
                       <Tag color={selectedDocumentStatus.color}>
                         {selectedDocumentStatus.label}
                       </Tag>
+                      {selectedDocumentSealPreviewMismatch ? (
+                        <Tooltip title="盖章文件未加载，当前仅展示正文占位预览">
+                          <Tag color="warning">盖章未显示</Tag>
+                        </Tooltip>
+                      ) : null}
                       {selectedDocument.taskSource === 'SUPPLEMENTAL' ? (
                         <Tag color="purple">补充</Tag>
                       ) : null}
@@ -1862,30 +2149,21 @@ const InstrumentListPage = () => {
                   ) : null}
                 </Space>
                 <div className="instrument-workspace-meta">
-                  <span>
-                    资产编号：
-                    {toText(
-                      groupDetail?.debtNumber ?? currentGroup?.debtNumber,
-                    )}
-                  </span>
-                  <span>
-                    所属城市：{toText(groupDetail?.city ?? currentGroup?.city)}
-                  </span>
-                  <span>
-                    所属项目：
-                    {toText(
-                      groupDetail?.organization ?? currentGroup?.organization,
-                    )}
-                  </span>
-                  <span>
-                    逾期金额：
-                    {formatAmount(
-                      groupDetail?.overdueAmount ?? currentGroup?.overdueAmount,
-                    )}
-                  </span>
-                  {workspaceLastSaved ? (
-                    <span>最后保存：{formatDateTime(workspaceLastSaved)}</span>
-                  ) : null}
+                  {workspaceMetaItems.map((item) => (
+                    <Tooltip
+                      key={item.label}
+                      title={`${item.label}：${item.value}`}
+                    >
+                      <span className="instrument-workspace-meta-item">
+                        <span className="instrument-workspace-meta-label">
+                          {item.label}：
+                        </span>
+                        <span className="instrument-workspace-meta-value">
+                          {item.value}
+                        </span>
+                      </span>
+                    </Tooltip>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1948,22 +2226,23 @@ const InstrumentListPage = () => {
                                       }`}
                                     >
                                       <div className="instrument-standing-item-main">
-                                        <Space size={6} wrap>
-                                          <FilePdfOutlined />
-                                          <Text strong>
-                                            {item.standingCodeName}
-                                          </Text>
-                                          <Tag
-                                            color={
-                                              item.matched ? 'green' : 'orange'
-                                            }
+                                        <div className="instrument-standing-title-row">
+                                          <Space
+                                            size={6}
+                                            className="instrument-standing-title"
                                           >
-                                            {item.matched ? '已匹配' : '缺失'}
-                                          </Tag>
-                                          {item.wildcard ? (
-                                            <Tag color="blue">全部资产</Tag>
+                                            <FilePdfOutlined />
+                                            <Text
+                                              strong
+                                              className="instrument-standing-item-name"
+                                            >
+                                              {item.standingCodeName}
+                                            </Text>
+                                          </Space>
+                                          {!item.matched ? (
+                                            <Tag color="orange">缺失</Tag>
                                           ) : null}
-                                        </Space>
+                                        </div>
                                         <Text
                                           type={
                                             item.matched
@@ -1978,6 +2257,15 @@ const InstrumentListPage = () => {
                                             : item.missingReason ||
                                               '未匹配到材料'}
                                         </Text>
+                                        {item.matched ? (
+                                          <Text
+                                            type="secondary"
+                                            className="instrument-standing-applicability"
+                                          >
+                                            适用资产：
+                                            {formatStandingApplicability(item)}
+                                          </Text>
+                                        ) : null}
                                       </div>
                                       <Space size={4}>
                                         <Tooltip title="预览">
@@ -2075,7 +2363,13 @@ const InstrumentListPage = () => {
 
               <Splitter.Panel>
                 <section className="instrument-doc-main">
-                  <Spin spinning={documentLoading}>
+                  <Spin
+                    spinning={
+                      documentLoading ||
+                      (workspaceMode === 'preview' &&
+                        workspaceFilePreview.loading)
+                    }
+                  >
                     {workspaceMode === 'edit' || workspaceMode === 'add' ? (
                       <div className="instrument-editor-panel">
                         <Form
@@ -2084,7 +2378,7 @@ const InstrumentListPage = () => {
                           className="instrument-editor-form"
                           initialValues={{ instrumentName: '', debtorName: '' }}
                         >
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                             <Form.Item
                               name="instrumentName"
                               label="文书名称"
@@ -2097,32 +2391,60 @@ const InstrumentListPage = () => {
                                 disabled={editMode === 'edit'}
                               />
                             </Form.Item>
-                            <Form.Item label="关联债务" required>
-                              <Space.Compact block>
-                                <Form.Item
-                                  name="debtorName"
-                                  noStyle
-                                  rules={[
-                                    {
-                                      required: true,
-                                      message: '请选择关联债务',
-                                    },
-                                  ]}
-                                >
-                                  <Input
-                                    readOnly
-                                    placeholder="请选择关联债务"
-                                    disabled={editorDebtLocked}
-                                  />
-                                </Form.Item>
-                                {editMode === 'add' && !groupContext?.debtId ? (
+                            {editorDebtLocked ? (
+                              <Form.Item name="debtorName" hidden>
+                                <Input />
+                              </Form.Item>
+                            ) : null}
+                            {!editorDebtLocked ? (
+                              <Form.Item label="关联债务" required>
+                                <Space.Compact block>
+                                  <Form.Item
+                                    name="debtorName"
+                                    noStyle
+                                    rules={[
+                                      {
+                                        required: true,
+                                        message: '请选择关联债务',
+                                      },
+                                    ]}
+                                  >
+                                    <Input
+                                      readOnly
+                                      placeholder="请选择关联债务"
+                                    />
+                                  </Form.Item>
                                   <Button
                                     onClick={() => openDebtSelector('attach')}
                                   >
                                     选择
                                   </Button>
-                                ) : null}
-                              </Space.Compact>
+                                </Space.Compact>
+                              </Form.Item>
+                            ) : null}
+                            <Form.Item
+                              name="sealIds"
+                              label="签章印章"
+                              rules={[
+                                {
+                                  required: true,
+                                  message: '请选择签章印章',
+                                },
+                              ]}
+                            >
+                              <Select
+                                mode="multiple"
+                                allowClear
+                                loading={sealLoading}
+                                maxTagCount="responsive"
+                                placeholder="请选择签章印章"
+                                showSearch={{ optionFilterProp: 'label' }}
+                                options={sealOptions.map((seal) => ({
+                                  label: formatSealOptionLabel(seal),
+                                  value: getSealOptionId(seal),
+                                }))}
+                                onChange={handleSealSelectionChange}
+                              />
                             </Form.Item>
                           </div>
                         </Form>
@@ -2181,11 +2503,21 @@ const InstrumentListPage = () => {
                       </div>
                     ) : selectedDocument ? (
                       <div className="instrument-doc-stage">
-                        <iframe
-                          title="文书预览"
-                          srcDoc={renderPreviewHtml(selectedDocumentHtml)}
-                          className="instrument-preview-frame"
-                        />
+                        {workspaceFilePreview.fileUrl ? (
+                          <PdfPreview
+                            className="instrument-preview-frame"
+                            fileName={workspaceHeaderTitle}
+                            height="100%"
+                            ossId={workspaceFilePreview.ossId}
+                            url={workspaceFilePreview.fileUrl}
+                          />
+                        ) : (
+                          <iframe
+                            title="文书预览"
+                            srcDoc={renderPreviewHtml(selectedDocumentHtml)}
+                            className="instrument-preview-frame"
+                          />
+                        )}
                       </div>
                     ) : (
                       <div className="instrument-empty-stage">
@@ -2237,7 +2569,8 @@ const InstrumentListPage = () => {
                 className="recov-table-toolbar"
                 onFinish={handleQuery}
               >
-                <div
+                <section
+                  className="instrument-list-toolbar-row"
                   style={{
                     display: 'flex',
                     flexWrap: 'wrap',
@@ -2246,7 +2579,7 @@ const InstrumentListPage = () => {
                     gap: 12,
                   }}
                 >
-                  <Space size={12} wrap>
+                  <div className="instrument-list-toolbar-filter-group">
                     <Form.Item name="debtNumber" noStyle>
                       <Input
                         allowClear
@@ -2283,6 +2616,16 @@ const InstrumentListPage = () => {
                         style={RECOV_FILTER_CONTROL_STYLE}
                       />
                     </Form.Item>
+                    {activeCategory === '催收函件' ? (
+                      <Form.Item name="displayGroupCode" noStyle>
+                        <Select
+                          allowClear
+                          placeholder="函件类型"
+                          options={LETTER_TYPE_FILTER_OPTIONS}
+                          style={RECOV_FILTER_CONTROL_STYLE}
+                        />
+                      </Form.Item>
+                    ) : null}
                     <Button
                       type="primary"
                       icon={<SearchOutlined />}
@@ -2296,30 +2639,8 @@ const InstrumentListPage = () => {
                     >
                       重置
                     </Button>
-                  </Space>
-                  <Space size={8} wrap>
-                    <Dropdown
-                      menu={{
-                        items: instrumentToolbarMenuItems,
-                        onClick: handleInstrumentToolbarMenuClick,
-                      }}
-                      open={instrumentToolbarOpen}
-                      placement="bottomRight"
-                      trigger={[]}
-                      onOpenChange={setInstrumentToolbarOpen}
-                    >
-                      <Button
-                        icon={<DownOutlined />}
-                        iconPlacement="end"
-                        onClick={() => {
-                          setInstrumentToolbarOpen((open) => !open);
-                        }}
-                      >
-                        更多操作
-                      </Button>
-                    </Dropdown>
-                  </Space>
-                </div>
+                  </div>
+                </section>
               </Form>
 
               <Table
@@ -2329,7 +2650,7 @@ const InstrumentListPage = () => {
                 loading={loading}
                 columns={groupColumns}
                 dataSource={tableData}
-                scroll={{ x: 1510 }}
+                scroll={{ x: 1420 }}
                 rowSelection={{
                   selectedRowKeys: selectedGroupKeys,
                   onChange: (keys, rows) => {
@@ -2450,39 +2771,103 @@ const InstrumentListPage = () => {
         }
       >
         <Spin spinning={preview.loading}>
-          <Descriptions column={2} bordered size="small" className="mb-4">
-            <Descriptions.Item label="文书名称">
-              {toText(preview.instrumentName)}
-            </Descriptions.Item>
-            <Descriptions.Item label="关联债务">
-              {toText(preview.debtorName)}
-            </Descriptions.Item>
-          </Descriptions>
           {preview.fileUrl ? (
-            <object
-              data={preview.fileUrl}
-              type="application/pdf"
-              style={{
-                width: '100%',
-                height: 560,
-                border: '1px solid #f0f0f0',
-              }}
-            >
-              <div className="flex h-[320px] flex-col items-center justify-center gap-3">
-                <Text type="secondary">当前浏览器不支持内嵌预览该文档</Text>
-                <Button
-                  type="primary"
-                  onClick={() => window.open(preview.fileUrl, '_blank')}
-                >
-                  新窗口打开
-                </Button>
-              </div>
-            </object>
+            <PdfPreview
+              fileName={preview.fileName}
+              height={560}
+              ossId={preview.ossId}
+              url={preview.fileUrl}
+            />
           ) : (
             <Empty description="暂无可预览文档" />
           )}
         </Spin>
       </Modal>
+
+      <Drawer
+        title="送达详情"
+        open={deliveryDetailOpen}
+        size={720}
+        destroyOnHidden
+        loading={deliveryDetailLoading}
+        onClose={() => setDeliveryDetailOpen(false)}
+        footer={
+          deliveryDetail && canRetryDeliveryDetail ? (
+            <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={retryingDeliveryTaskId === deliveryDetail.taskId}
+                type="primary"
+                onClick={retryDeliveryDetail}
+              >
+                重试
+              </Button>
+            </Space>
+          ) : null
+        }
+      >
+        {deliveryDetail ? (
+          <Flex vertical gap={12} style={{ width: '100%' }}>
+            <Descriptions column={2} bordered size="small">
+              <Descriptions.Item label="资产编号">
+                {toText(deliveryDetail.debtNumber ?? deliveryDetail.debtId)}
+              </Descriptions.Item>
+              <Descriptions.Item label="业主姓名">
+                {toText(deliveryDetail.debtorName)}
+              </Descriptions.Item>
+              <Descriptions.Item label="所属城市">
+                {toText(deliveryDetail.city)}
+              </Descriptions.Item>
+              <Descriptions.Item label="所属项目">
+                {toText(deliveryDetail.projectName)}
+              </Descriptions.Item>
+              <Descriptions.Item label="送达场景">
+                {toText(deliveryDetail.sceneName)}
+              </Descriptions.Item>
+              <Descriptions.Item label="送达渠道">
+                {toText(deliveryDetail.wayName)}
+              </Descriptions.Item>
+              <Descriptions.Item label="送达状态">
+                <Tag color={deliveryDetailStatus.color}>
+                  {deliveryDetailStatus.label}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {toText(
+                  deliveryDetail.createTime ?? deliveryDetail.taskCreateTime,
+                )}
+              </Descriptions.Item>
+            </Descriptions>
+            {shouldShowDeliveryException ? (
+              <Alert
+                showIcon
+                type="error"
+                title="异常明细"
+                description={
+                  <Flex vertical gap={6} style={{ width: '100%' }}>
+                    <Text>{deliveryDetail.errorMessage}</Text>
+                  </Flex>
+                }
+              />
+            ) : null}
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label="送达文件">
+                {toText(deliveryDetail.fileName ?? deliveryDetail.fileOssId)}
+              </Descriptions.Item>
+              <Descriptions.Item label="发送主题">
+                {toText(deliveryDetail.subjectContent)}
+              </Descriptions.Item>
+              <Descriptions.Item label="发送内容">
+                <div style={{ whiteSpace: 'pre-wrap' }}>
+                  {toText(deliveryDetail.sendContent)}
+                </div>
+              </Descriptions.Item>
+            </Descriptions>
+          </Flex>
+        ) : (
+          <Empty description="暂无详情" />
+        )}
+      </Drawer>
 
       <FlowTraceDrawer
         open={traceOpen}

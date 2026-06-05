@@ -13,6 +13,13 @@ export interface StandingVO {
   status: string;
   startNum?: number | null;
   endNum?: number | null;
+  legalRepName?: string | null;
+  legalRepIdCard?: string | null;
+  legalRepAge?: number | null;
+  legalRepAddress?: string | null;
+  legalRepPhone?: string | null;
+  parseStatus?: string | null;
+  parseErrorMessage?: string | null;
   createBy?: number | string;
   createTime?: string;
   updateTime?: string;
@@ -109,6 +116,11 @@ export const updateStandingStatus = (id: number | string, status: string) =>
   ruoyiRequest(`/system/instrument/standing/status/${id}`, {
     method: 'put',
     params: { status },
+  });
+
+export const retryStandingParse = (id: number | string) =>
+  ruoyiRequest(`/system/instrument/standing/${id}/parse/retry`, {
+    method: 'post',
   });
 
 export const getStandingRange = (

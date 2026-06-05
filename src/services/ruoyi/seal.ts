@@ -11,6 +11,7 @@ export interface SealVO {
   sealOssId: number | string;
   status: string;
   lawyerUsername?: string;
+  accountIdentity?: string;
   startNum?: number | null;
   endNum?: number | null;
   createBy?: number | string;
@@ -53,6 +54,7 @@ export interface LawyerAccountForm {
   id: number;
   lawyerUsername: string;
   lawyerPassword: string;
+  accountIdentity: string;
 }
 
 export interface SealRangeUsedItem {
@@ -138,39 +140,42 @@ export const getSealRange = (sealCode: string, excludeId?: number | string) =>
   });
 
 /**
- * 新增律师账号（仅律师章使用）。
+ * 新增立案账号（企业章、律师章使用）。
  */
-export const addLawyerAccount = (
+export const addFilingAccount = (
   id: number | string,
-  lawyerUsername: string,
-  lawyerPassword: string,
+  accountUsername: string,
+  accountPassword: string,
+  accountIdentity: string,
 ) =>
-  ruoyiRequest(`/system/instrument/seal/lawyer-account/${id}`, {
+  ruoyiRequest(`/system/instrument/seal/filing-account/${id}`, {
     method: 'post',
-    params: { lawyerUsername, lawyerPassword },
+    params: { accountUsername, accountPassword, accountIdentity },
   });
 
 /**
- * 修改律师账号；用户名或密码为空时不更新对应字段。
+ * 修改立案账号；账号、密码或身份为空时不更新对应字段。
  */
-export const updateLawyerAccount = (
+export const updateFilingAccount = (
   id: number | string,
-  lawyerUsername?: string,
-  lawyerPassword?: string,
+  accountUsername?: string,
+  accountPassword?: string,
+  accountIdentity?: string,
 ) => {
   const params: Record<string, string> = {};
-  if (lawyerUsername) params.lawyerUsername = lawyerUsername;
-  if (lawyerPassword) params.lawyerPassword = lawyerPassword;
-  return ruoyiRequest(`/system/instrument/seal/lawyer-account/${id}`, {
+  if (accountUsername) params.accountUsername = accountUsername;
+  if (accountPassword) params.accountPassword = accountPassword;
+  if (accountIdentity) params.accountIdentity = accountIdentity;
+  return ruoyiRequest(`/system/instrument/seal/filing-account/${id}`, {
     method: 'put',
     params,
   });
 };
 
 /**
- * 删除律师账号。
+ * 删除立案账号。
  */
-export const deleteLawyerAccount = (id: number | string) =>
-  ruoyiRequest(`/system/instrument/seal/lawyer-account/${id}`, {
+export const deleteFilingAccount = (id: number | string) =>
+  ruoyiRequest(`/system/instrument/seal/filing-account/${id}`, {
     method: 'delete',
   });

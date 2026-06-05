@@ -5,6 +5,7 @@ import {
   normalizeVariableName,
 } from '../extensions/Variable';
 import type { TemplateVariable } from '../types';
+import { convertHtmlVariableTokensToEditorNodes } from './htmlVariableTokens';
 
 const escapeHtml = (value: string) =>
   value
@@ -17,6 +18,284 @@ const escapeHtml = (value: string) =>
 const getAttr = (attrs: string, name: string) => {
   const match = attrs.match(new RegExp(`${name}=(["'])(.*?)\\1`, 'i'));
   return match?.[2] ?? '';
+};
+
+const CJK_TEXT_CHAR_SOURCE =
+  '[\\u3400-\\u9fff\\uf900-\\ufaff\\u3000-\\u303f\\uff00-\\uffef]';
+const VARIABLE_TOKEN_SOURCE = '\\{\\{\\s*[^{}]+?\\s*\\}\\}';
+const CJK_BEFORE_VARIABLE_SPACE_RE = new RegExp(
+  `(${CJK_TEXT_CHAR_SOURCE})[\\t \\u00a0\\u3000]+(${VARIABLE_TOKEN_SOURCE})`,
+  'g',
+);
+const VARIABLE_BEFORE_CJK_SPACE_RE = new RegExp(
+  `(${VARIABLE_TOKEN_SOURCE})[\\t \\u00a0\\u3000]+(${CJK_TEXT_CHAR_SOURCE})`,
+  'g',
+);
+
+const normalizeCjkVariableTokenSpacingInText = (value: string) =>
+  value
+    .replace(CJK_BEFORE_VARIABLE_SPACE_RE, '$1$2')
+    .replace(VARIABLE_BEFORE_CJK_SPACE_RE, '$1$2');
+
+const normalizeTextOutsideTags = (
+  html: string,
+  normalizeText: (value: string) => string,
+) => {
+  let result = '';
+  let textBuffer = '';
+  let inTag = false;
+
+  for (const char of html) {
+    if (char === '<') {
+      if (textBuffer) {
+        result += normalizeText(textBuffer);
+        textBuffer = '';
+      }
+      inTag = true;
+      result += char;
+      continue;
+    }
+
+    if (char === '>') {
+      inTag = false;
+      result += char;
+      continue;
+    }
+
+    if (inTag) {
+      result += char;
+      continue;
+    }
+
+    textBuffer += char;
+  }
+
+  if (textBuffer) {
+    result += normalizeText(textBuffer);
+  }
+
+  return result;
+};
+
+const normalizeCjkVariableTokenSpacingInHtml = (html: string) =>
+  normalizeTextOutsideTags(html, normalizeCjkVariableTokenSpacingInText);
+
+const SUPPORTED_BLOCK_ALIGNMENTS = new Set([
+  'left',
+  'center',
+  'right',
+  'justify',
+]);
+
+const LEGACY_BLOCK_ALIGNMENT_SELECTOR = 'p,h1,h2,h3';
+const SUPPORTED_BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3']);
+
+type SupportedBlockStyle = {
+  textAlign?: string;
+  textIndent?: string;
+};
+
+const normalizeTextAlign = (value: string | null | undefined) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return SUPPORTED_BLOCK_ALIGNMENTS.has(normalized) ? normalized : undefined;
+};
+
+const normalizeTextIndent = (value: string | null | undefined) => {
+  const trimmed = String(value ?? '').trim();
+  if (
+    /^-?(?:\d+|\d*\.\d+)(?:px|em|rem|pt|pc|mm|cm|in|ch|ex|%)$/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return undefined;
+};
+
+const parseSupportedCssDeclarations = (declarations: string) => {
+  const style: SupportedBlockStyle = {};
+
+  for (const declaration of declarations.split(';')) {
+    const separatorIndex = declaration.indexOf(':');
+    if (separatorIndex <= 0) continue;
+
+    const property = declaration.slice(0, separatorIndex).trim().toLowerCase();
+    const value = declaration.slice(separatorIndex + 1).trim();
+
+    if (property === 'text-align') {
+      const textAlign = normalizeTextAlign(value);
+      if (textAlign) style.textAlign = textAlign;
+      continue;
+    }
+
+    if (property === 'text-indent') {
+      const textIndent = normalizeTextIndent(value);
+      if (textIndent) style.textIndent = textIndent;
+    }
+  }
+
+  return style;
+};
+
+const hasSupportedBlockStyle = (style: SupportedBlockStyle) =>
+  Boolean(style.textAlign || style.textIndent);
+
+const parseSupportedCssRules = (styleText: string) => {
+  const rules: Array<{ selectors: string[]; style: SupportedBlockStyle }> = [];
+  const ruleRE = /([^{}]+)\{([^{}]*)\}/g;
+
+  for (
+    let match = ruleRE.exec(styleText);
+    match;
+    match = ruleRE.exec(styleText)
+  ) {
+    const selectorText = match[1].trim();
+    if (!selectorText || selectorText.startsWith('@')) continue;
+
+    const style = parseSupportedCssDeclarations(match[2]);
+    if (!hasSupportedBlockStyle(style)) continue;
+
+    rules.push({
+      selectors: selectorText
+        .split(',')
+        .map((selector) => selector.trim())
+        .filter(Boolean),
+      style,
+    });
+  }
+
+  return rules;
+};
+
+const mergeSupportedBlockStyle = (
+  element: HTMLElement,
+  style: SupportedBlockStyle,
+) => {
+  if (style.textAlign && !element.style.textAlign) {
+    element.style.textAlign = style.textAlign;
+  }
+
+  if (style.textIndent && !element.style.textIndent) {
+    element.style.textIndent = style.textIndent;
+  }
+};
+
+const applySupportedBlockStyle = (
+  element: HTMLElement,
+  style: SupportedBlockStyle,
+) => {
+  if (SUPPORTED_BLOCK_TAGS.has(element.tagName)) {
+    mergeSupportedBlockStyle(element, style);
+    return;
+  }
+
+  for (const child of element.querySelectorAll<HTMLElement>(
+    LEGACY_BLOCK_ALIGNMENT_SELECTOR,
+  )) {
+    mergeSupportedBlockStyle(child, style);
+  }
+};
+
+const getElementsBySupportedSelector = (
+  container: HTMLElement,
+  selector: string,
+) => {
+  const normalizedSelector = selector.trim();
+  const tagSelector = normalizedSelector.toLowerCase();
+  if (['p', 'h1', 'h2', 'h3'].includes(tagSelector)) {
+    return Array.from(
+      container.querySelectorAll<HTMLElement>(normalizedSelector),
+    );
+  }
+
+  const classMatch = normalizedSelector.match(/^\.([A-Za-z0-9_-]+)$/);
+  if (classMatch) {
+    return Array.from(container.getElementsByClassName(classMatch[1])).filter(
+      (element): element is HTMLElement => element instanceof HTMLElement,
+    );
+  }
+
+  const tagClassMatch = normalizedSelector.match(
+    /^(?:div|p|h1|h2|h3)\.([A-Za-z0-9_-]+)$/i,
+  );
+  if (tagClassMatch) {
+    return Array.from(
+      container.getElementsByClassName(tagClassMatch[1]),
+    ).filter(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement &&
+        element.tagName.toLowerCase() ===
+          normalizedSelector.split('.')[0].toLowerCase(),
+    );
+  }
+
+  return [];
+};
+
+const applySupportedCssRules = (
+  container: HTMLElement,
+  styleTexts: string[],
+) => {
+  for (const styleText of styleTexts) {
+    for (const rule of parseSupportedCssRules(styleText)) {
+      for (const selector of rule.selectors) {
+        for (const element of getElementsBySupportedSelector(
+          container,
+          selector,
+        )) {
+          applySupportedBlockStyle(element, rule.style);
+        }
+      }
+    }
+  }
+};
+
+const parseHtmlForEditor = (html: string) => {
+  if (typeof document === 'undefined') return null;
+
+  const container = document.createElement('div');
+  const styleTexts: string[] = [];
+  const hasDocumentShell = /(?:<!doctype\b|<html\b|<head\b|<body\b)/i.test(
+    html,
+  );
+
+  if (hasDocumentShell && typeof DOMParser !== 'undefined') {
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    for (const styleElement of parsed.querySelectorAll('style')) {
+      styleTexts.push(styleElement.textContent ?? '');
+    }
+    container.innerHTML = parsed.body?.innerHTML ?? '';
+    return { container, styleTexts };
+  }
+
+  container.innerHTML = html;
+  for (const styleElement of container.querySelectorAll('style')) {
+    styleTexts.push(styleElement.textContent ?? '');
+    styleElement.remove();
+  }
+
+  return { container, styleTexts };
+};
+
+const normalizeLegacyBlockAlignmentAttributes = (html: string) => {
+  const parsed = parseHtmlForEditor(html);
+  if (!parsed) return html;
+
+  applySupportedCssRules(parsed.container, parsed.styleTexts);
+
+  for (const element of parsed.container.querySelectorAll<HTMLElement>(
+    LEGACY_BLOCK_ALIGNMENT_SELECTOR,
+  )) {
+    const align = normalizeTextAlign(element.getAttribute('align'));
+
+    if (align && !element.style.textAlign) {
+      element.style.textAlign = align;
+    }
+
+    element.removeAttribute('align');
+  }
+
+  return parsed.container.innerHTML;
 };
 
 export const toVariableToken = (value: string) => buildVariableToken(value);
@@ -195,9 +474,16 @@ export const textToEditorHtml = (
   return blocks.join('');
 };
 
-export const htmlToEditorHtml = (content: string) => {
+export const htmlToEditorHtml = (
+  content: string,
+  variables: TemplateVariable[] = [],
+  options: { enableVariables?: boolean } = {},
+) => {
   const html = String(content || '<p></p>');
-  return html.replace(
+  const normalizedBlockStyle = normalizeCjkVariableTokenSpacingInHtml(
+    normalizeLegacyBlockAlignmentAttributes(html),
+  );
+  const normalized = normalizedBlockStyle.replace(
     /<span\b([^>]*data-type=(["'])variable\2[^>]*)>[\s\S]*?<\/span>/gi,
     (full, attrs) => {
       const label = getAttr(attrs, 'data-label');
@@ -205,16 +491,24 @@ export const htmlToEditorHtml = (content: string) => {
       return `<span${attrs}>${escapeHtml(label)}</span>`;
     },
   );
+  return convertHtmlVariableTokensToEditorNodes(
+    normalized,
+    (raw) => variableToHtml(raw, variables),
+    { enabled: options.enableVariables !== false },
+  );
 };
 
 export const serializeHtmlWithVariableTokens = (content: string) => {
-  return String(content ?? '').replace(
-    /<span\b([^>]*data-type=(["'])variable\2[^>]*)>[\s\S]*?<\/span>/gi,
-    (full, attrs) => {
-      const name = getAttr(attrs, 'data-name') || getAttr(attrs, 'data-token');
-      if (!name) return full;
-      return `<span${attrs}>${escapeHtml(toVariableToken(name))}</span>`;
-    },
+  return normalizeCjkVariableTokenSpacingInHtml(
+    String(content ?? '').replace(
+      /<span\b([^>]*data-type=(["'])variable\2[^>]*)>[\s\S]*?<\/span>/gi,
+      (full, attrs) => {
+        const name =
+          getAttr(attrs, 'data-name') || getAttr(attrs, 'data-token');
+        if (!name) return full;
+        return escapeHtml(toVariableToken(name));
+      },
+    ),
   );
 };
 

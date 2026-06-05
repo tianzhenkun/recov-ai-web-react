@@ -27,14 +27,8 @@ export const isDebtFlowExceptionRecord = (record: DebtRecordItem) => {
   );
 };
 
-const isSuccessfulFlowRecord = (record: DebtRecordItem) => {
-  const status = String(record.currentStatus ?? '').trim();
-  return status === '已完成' || status === '流程已完成';
-};
-
 export const canShowDebtFlowDetail = (record: DebtRecordItem) =>
-  isFlowStartFailedRecord(record) ||
-  (Boolean(normalizeFlowId(record.flowId)) && !isSuccessfulFlowRecord(record));
+  isDebtFlowExceptionRecord(record) || Boolean(normalizeFlowId(record.flowId));
 
 export const canShowDebtPersonaAction = (
   record: DebtRecordItem,

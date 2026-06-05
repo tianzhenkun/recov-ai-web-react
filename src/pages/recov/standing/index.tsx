@@ -1,6 +1,6 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { ProCard } from '@ant-design/pro-components';
-import { useLocation } from '@umijs/max';
+import { history, useLocation } from '@umijs/max';
 import { Button, Empty, Modal, message, Spin, Tabs } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
@@ -9,6 +9,7 @@ import { downloadOss, listOssByIds } from '@/services/ruoyi/oss';
 import {
   delStanding,
   listStanding,
+  retryStandingParse,
   type StandingCode,
   type StandingVO,
   updateStandingStatus,
@@ -31,6 +32,9 @@ const emptyStandingMap = (): StandingMap => ({
 
 const DEFAULT_STANDING_CODE = STANDING_TYPES[0].code;
 
+const isSafeInternalPath = (path?: string | null) =>
+  Boolean(path?.startsWith('/') && !path.startsWith('//'));
+
 type DrawerState = {
   open: boolean;
   mode: 'add' | 'edit';
@@ -48,6 +52,7 @@ const SmartStandingPage = () => {
     emptyStandingMap(),
   );
   const [switchingId, setSwitchingId] = useState<number | string | null>(null);
+  const [retryingId, setRetryingId] = useState<number | string | null>(null);
   const [activeStandingCode, setActiveStandingCode] = useState<StandingCode>(
     DEFAULT_STANDING_CODE,
   );
@@ -57,6 +62,14 @@ const SmartStandingPage = () => {
   });
 
   const confirmDelete = useDeleteConfirm({ modal: modalApi, messageApi });
+
+  const { returnTo, showInstrumentReturn } = useMemo(() => {
+    const params = new URLSearchParams(locationSearch);
+    return {
+      returnTo: params.get('returnTo') || '/instrument-list',
+      showInstrumentReturn: params.get('returnFrom') === 'instrument-list',
+    };
+  }, [locationSearch]);
 
   const loadAllStandings = useCallback(async () => {
     setLoading(true);
@@ -188,6 +201,30 @@ const SmartStandingPage = () => {
     });
   };
 
+  const handleRetryParse = (record: StandingVO) => {
+    modalApi.confirm({
+      title: '重新解析主体资格材料',
+      content: `确定要重新解析「${record.standingName}」吗？系统会重新提交后台解析任务。`,
+      okText: '重新解析',
+      cancelText: '取消',
+      onOk: async () => {
+        setRetryingId(record.id);
+        try {
+          await retryStandingParse(record.id);
+          messageApi.success('已提交解析任务');
+          await loadAllStandings();
+          window.setTimeout(() => {
+            void loadAllStandings();
+          }, 2500);
+        } catch {
+          messageApi.error('提交解析任务失败');
+        } finally {
+          setRetryingId(null);
+        }
+      },
+    });
+  };
+
   const handlePreview = (record: StandingVO) => {
     if (!record.fileUrl) {
       messageApi.warning('文件地址不存在');
@@ -207,6 +244,27 @@ const SmartStandingPage = () => {
     }
   };
 
+  const pushInstrumentReturnFallback = () => {
+    if (isSafeInternalPath(returnTo)) {
+      history.push(returnTo);
+      return;
+    }
+    history.push('/instrument-list');
+  };
+
+  const handleReturnToInstrument = () => {
+    if (window.history.length > 1) {
+      history.back();
+      window.setTimeout(() => {
+        if (window.location.pathname === '/sys/standing') {
+          pushInstrumentReturnFallback();
+        }
+      }, 600);
+      return;
+    }
+    pushInstrumentReturnFallback();
+  };
+
   const standingTabItems = useMemo(
     () =>
       STANDING_TYPES.map((item) => {
@@ -223,6 +281,9 @@ const SmartStandingPage = () => {
   const activeStandingList = standingDataMap[activeStandingCode] ?? [];
   const drawerStandingCode = drawerState.standingCode ?? activeStandingCode;
   const drawerSameTypeRows = standingDataMap[drawerStandingCode] ?? [];
+  const instrumentReturnHref = isSafeInternalPath(returnTo)
+    ? returnTo
+    : '/instrument-list';
   const sameTypeUsedRanges = useMemo(
     () =>
       pickUsedRangesInSameType(
@@ -245,7 +306,24 @@ const SmartStandingPage = () => {
   );
 
   return (
-    <RecovListPage title="原告主体资格材料管理" breadcrumbRender={false}>
+    <RecovListPage
+      title="原告主体资格材料管理"
+      breadcrumbRender={false}
+      extra={
+        showInstrumentReturn ? (
+          <Button
+            href={instrumentReturnHref}
+            icon={<ArrowLeftOutlined />}
+            onClick={(event) => {
+              event.preventDefault();
+              handleReturnToInstrument();
+            }}
+          >
+            返回文书管理
+          </Button>
+        ) : undefined
+      }
+    >
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
@@ -281,11 +359,13 @@ const SmartStandingPage = () => {
                     key={item.id}
                     item={item}
                     switching={switchingId === item.id}
+                    retrying={retryingId === item.id}
                     onPreview={handlePreview}
                     onDownload={(record) => void handleDownload(record)}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onToggleStatus={handleToggleStatus}
+                    onRetryParse={handleRetryParse}
                   />
                 ))}
               </div>

@@ -23,9 +23,11 @@ import {
   type LitigationTabKey,
   PAGE_TITLE,
   TAB_AUTO_COLLECTION,
+  TAB_LAWYER_COURT,
   TAB_LITIGATION,
 } from './_shared';
 import AutoCollectionPanel from './AutoCollectionPanel';
+import LawyerCourtFeePanel from './LawyerCourtFeePanel';
 import LitigationConfigPanel from './LitigationConfigPanel';
 
 const LitigationStrategyPage = () => {
@@ -190,6 +192,11 @@ const LitigationStrategyPage = () => {
                   onSave={handleSaveAuto}
                 />
               ),
+            },
+            {
+              key: TAB_LAWYER_COURT,
+              label: '代开庭策略',
+              children: <LawyerCourtFeePanel />,
             },
           ]}
         />

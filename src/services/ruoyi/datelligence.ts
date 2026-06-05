@@ -28,6 +28,8 @@ export type DebtRecordItem = {
   debtTime?: string;
   debtorName?: string;
   debtorPhone?: string;
+  emergencyContact?: string;
+  emergencyContactPhone?: string;
   debtorGender?: string;
   debtorAge?: string | number;
   debtor_gender?: string;

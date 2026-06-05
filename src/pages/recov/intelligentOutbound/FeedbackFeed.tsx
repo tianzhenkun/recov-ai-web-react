@@ -4,14 +4,23 @@ import {
   MehOutlined,
   SmileOutlined,
 } from '@ant-design/icons';
-import { Empty, Skeleton, Space, Tag, Tooltip, Typography, theme } from 'antd';
+import { Empty, Skeleton, Tag, Tooltip, Typography, theme } from 'antd';
 import React, { type ReactNode } from 'react';
 import type { FeedbackItem, FeedbackSentiment } from './_shared';
+import './FeedbackFeed.css';
 
 const { Text } = Typography;
 
 const MAX_VISIBLE_TAGS = 3;
-const FEEDBACK_CARD_MAX_HEIGHT = 120;
+const FEEDBACK_SUMMARY_MAX_LINES = 2;
+
+const singleLineEllipsisStyle: React.CSSProperties = {
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
 
 type FeedbackFeedProps = {
   items: FeedbackItem[];
@@ -36,6 +45,7 @@ const FeedbackFeed = ({
   onItemClick,
 }: FeedbackFeedProps) => {
   const { token } = theme.useToken();
+  const feedRowCount = Math.max(items.length, 1);
 
   const sentimentMeta: Record<FeedbackSentiment, SentimentMeta> = {
     negative: {
@@ -66,15 +76,19 @@ const FeedbackFeed = ({
 
   if (loading && items.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+      <div
+        className="grid min-h-0 flex-1 gap-2 overflow-hidden pr-1"
+        style={{
+          gridTemplateRows: `repeat(${pageSize}, minmax(0, 1fr))`,
+        }}
+      >
         {Array.from(
           { length: pageSize },
           (_, idx) => `feedback-skeleton-${idx + 1}`,
         ).map((skeletonKey) => (
           <div
             key={skeletonKey}
-            className="shrink-0 overflow-hidden rounded-lg px-4 py-3"
-            style={{ maxHeight: FEEDBACK_CARD_MAX_HEIGHT }}
+            className="min-h-0 overflow-hidden rounded-lg px-4 py-3"
           >
             <Skeleton active avatar paragraph={{ rows: 2 }} />
           </div>
@@ -95,7 +109,12 @@ const FeedbackFeed = ({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+    <div
+      className="grid min-h-0 flex-1 gap-2 overflow-hidden pr-1"
+      style={{
+        gridTemplateRows: `repeat(${feedRowCount}, minmax(0, 1fr))`,
+      }}
+    >
       {items.map((item) => {
         const meta = sentimentMeta[item.sentiment];
         const visibleTags = item.semanticTags.slice(0, MAX_VISIBLE_TAGS);
@@ -106,9 +125,8 @@ const FeedbackFeed = ({
             key={item.id}
             type="button"
             onClick={() => onItemClick(item)}
-            className="flex w-full shrink-0 cursor-pointer items-start gap-3 overflow-hidden rounded-lg border border-solid px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
+            className="flex h-full min-h-0 w-full cursor-pointer items-start gap-3 overflow-hidden rounded-lg border border-solid px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
             style={{
-              maxHeight: FEEDBACK_CARD_MAX_HEIGHT,
               overflow: 'hidden',
               borderColor: token.colorBorderSecondary,
               backgroundColor: token.colorBgContainer,
@@ -121,35 +139,67 @@ const FeedbackFeed = ({
             >
               {meta.icon}
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <Space size={8} align="center" wrap>
-                <Text strong>{item.ownerName}</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  来自 {item.project}
-                </Text>
-                {feedbackRecordCount > 1 ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    共 {feedbackRecordCount} 次反馈
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1 overflow-hidden">
+              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                <Tooltip title={item.ownerName}>
+                  <Text
+                    strong
+                    style={{
+                      ...singleLineEllipsisStyle,
+                      flex: '0 1 auto',
+                      maxWidth: 128,
+                    }}
+                  >
+                    {item.ownerName}
                   </Text>
+                </Tooltip>
+                <Tooltip title={`来自 ${item.project}`}>
+                  <Text
+                    type="secondary"
+                    style={{
+                      ...singleLineEllipsisStyle,
+                      flex: '1 1 auto',
+                      fontSize: 12,
+                    }}
+                  >
+                    来自 {item.project}
+                  </Text>
+                </Tooltip>
+                {feedbackRecordCount > 1 ? (
+                  <Tooltip title={`共 ${feedbackRecordCount} 次反馈`}>
+                    <Text
+                      type="secondary"
+                      style={{
+                        ...singleLineEllipsisStyle,
+                        flex: '0 1 auto',
+                        fontSize: 12,
+                        maxWidth: 92,
+                      }}
+                    >
+                      共 {feedbackRecordCount} 次反馈
+                    </Text>
+                  </Tooltip>
                 ) : null}
-              </Space>
+              </div>
               <Tooltip title={item.summary}>
                 <Text
+                  className="feedback-summary-clamp"
                   type="secondary"
-                  italic
-                  style={{
-                    display: '-webkit-box',
-                    overflow: 'hidden',
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: 2,
-                  }}
+                  style={
+                    {
+                      '--feedback-summary-lines': String(
+                        FEEDBACK_SUMMARY_MAX_LINES,
+                      ),
+                      fontSize: 13,
+                      fontStyle: 'italic',
+                      lineHeight: 1.55,
+                    } as React.CSSProperties
+                  }
                 >
                   “{item.summary}”
                 </Text>
               </Tooltip>
-              <div className="mt-auto flex min-w-0 overflow-hidden">
+              <div className="mt-auto flex min-w-0 shrink-0 overflow-hidden">
                 {visibleTags.length > 0 ? (
                   <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
                     {visibleTags.map((tag) => (
@@ -191,27 +241,38 @@ const FeedbackFeed = ({
                 )}
               </div>
             </div>
-            <div className="flex self-stretch shrink-0 flex-col items-end justify-between gap-2">
+            <div className="flex h-full min-h-0 shrink-0 flex-col items-end justify-between gap-2 overflow-hidden">
               <Tag
                 icon={meta.icon}
                 style={{
+                  maxWidth: 116,
                   marginInlineEnd: 0,
                   color: meta.tagColor,
                   backgroundColor: meta.tagBg,
                   borderColor: meta.tagBorder,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {item.feedbackType}
               </Tag>
               {item.startedAt ? (
-                <Space className="shrink-0" size={4}>
+                <div className="flex max-w-[136px] shrink-0 items-center gap-1 overflow-hidden">
                   <ClockCircleOutlined
+                    className="shrink-0"
                     style={{ color: token.colorTextTertiary }}
                   />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text
+                    type="secondary"
+                    style={{
+                      ...singleLineEllipsisStyle,
+                      fontSize: 12,
+                    }}
+                  >
                     {item.startedAt}
                   </Text>
-                </Space>
+                </div>
               ) : null}
             </div>
           </button>

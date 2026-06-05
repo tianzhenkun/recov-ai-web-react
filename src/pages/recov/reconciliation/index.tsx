@@ -157,6 +157,15 @@ const hasSystemAmount = (record: ReconciliationItem) =>
 const getRowKey = (record: ReconciliationItem) =>
   String(record.id ?? record.debtId ?? record.debtNumber);
 
+const getRepaymentTotalAmount = (record?: ReconciliationItem | null) =>
+  toNumber(record?.debtAmount) + toNumber(record?.overdueAmount);
+
+const getRepaymentRemainingAmount = (record?: ReconciliationItem | null) =>
+  Math.max(
+    getRepaymentTotalAmount(record) - toNumber(record?.recordedAmount),
+    0,
+  );
+
 type StatCardProps = {
   title: string;
   value: StatDisplayValue;
@@ -277,6 +286,64 @@ export const ModeIndicator = ({ label }: { label: string }) => {
         当前模式：
       </Text>
       <Text style={{ fontSize: 12, lineHeight: 1.6 }}>{label}</Text>
+    </div>
+  );
+};
+
+const RepaymentInfoField = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) => (
+  <div className="min-w-0 break-words">
+    <Text type="secondary">{label}</Text>
+    <div>{children}</div>
+  </div>
+);
+
+export const RepaymentInfoCard = ({
+  row,
+}: {
+  row?: ReconciliationItem | null;
+}) => {
+  const { token } = theme.useToken();
+
+  return (
+    <div
+      className="grid grid-cols-1 gap-3 rounded-lg border border-solid p-4 sm:grid-cols-2"
+      style={{
+        background: token.colorFillQuaternary,
+        borderColor: token.colorBorderSecondary,
+      }}
+    >
+      <RepaymentInfoField label="资产编号">
+        {toText(row?.debtNumber)}
+      </RepaymentInfoField>
+      <RepaymentInfoField label="业主姓名">
+        {toText(row?.debtorName)}
+      </RepaymentInfoField>
+      <RepaymentInfoField label="所属城市">
+        {toText(row?.city)}
+      </RepaymentInfoField>
+      <RepaymentInfoField label="所属项目">
+        {toText(row?.organization)}
+      </RepaymentInfoField>
+      <RepaymentInfoField label="逾期金额">
+        <Text strong>{formatAmount(row?.debtAmount)}</Text>
+      </RepaymentInfoField>
+      <RepaymentInfoField label="违约（滞纳）金">
+        <Text strong>{formatAmount(row?.overdueAmount)}</Text>
+      </RepaymentInfoField>
+      <RepaymentInfoField label="当前已录入金额">
+        <Text strong style={{ color: token.colorPrimary, fontSize: 18 }}>
+          {formatAmount(row?.recordedAmount)}
+        </Text>
+      </RepaymentInfoField>
+      <RepaymentInfoField label="剩余待回款">
+        <Text strong>{formatAmount(getRepaymentRemainingAmount(row))}</Text>
+      </RepaymentInfoField>
     </div>
   );
 };
@@ -871,41 +938,7 @@ const ReconciliationPage = () => {
         }}
       >
         <Space direction="vertical" size={18} style={{ width: '100%' }}>
-          <div
-            className="grid grid-cols-1 gap-3 rounded-lg border border-solid p-4 sm:grid-cols-2"
-            style={{
-              background: token.colorFillQuaternary,
-              borderColor: token.colorBorderSecondary,
-            }}
-          >
-            <div className="min-w-0 break-words">
-              <Text type="secondary">资产编号</Text>
-              <div>{toText(currentRow?.debtNumber)}</div>
-            </div>
-            <div className="min-w-0 break-words">
-              <Text type="secondary">业主姓名</Text>
-              <div>{toText(currentRow?.debtorName)}</div>
-            </div>
-            <div className="min-w-0 break-words">
-              <Text type="secondary">所属城市</Text>
-              <div>{toText(currentRow?.city)}</div>
-            </div>
-            <div className="min-w-0 break-words">
-              <Text type="secondary">所属项目</Text>
-              <div>{toText(currentRow?.organization)}</div>
-            </div>
-            <div className="min-w-0 break-words sm:col-span-2">
-              <Text type="secondary">当前已录入金额</Text>
-              <div>
-                <Text
-                  strong
-                  style={{ color: token.colorPrimary, fontSize: 18 }}
-                >
-                  {formatAmount(currentRow?.recordedAmount)}
-                </Text>
-              </div>
-            </div>
-          </div>
+          <RepaymentInfoCard row={currentRow} />
 
           <Form form={repaymentForm} layout="vertical">
             <Form.Item

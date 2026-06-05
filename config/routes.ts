@@ -482,6 +482,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/instrument-template',
+    component: './recov/instrumentTemplate',
+    hideInMenu: true,
+  },
+  {
     path: '/sys/standing',
     component: './recov/standing',
     hideInMenu: true,
@@ -509,6 +514,11 @@ export default [
   {
     path: '/sys/fee',
     component: './recov/fee',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys/project',
+    component: './recov/project',
     hideInMenu: true,
   },
   {

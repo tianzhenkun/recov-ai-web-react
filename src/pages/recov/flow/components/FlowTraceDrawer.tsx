@@ -1,12 +1,19 @@
-import { LoadingOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  CheckCircleOutlined,
+  LinkOutlined,
+  LoadingOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 import {
   Alert,
   Button,
   Descriptions,
   Drawer,
   Empty,
+  Image,
   Modal,
   message,
+  Select,
   Space,
   Spin,
   Tabs,
@@ -25,13 +32,19 @@ import React, {
 import {
   type FlowEventItem,
   type FlowExecutionTrace,
+  type FlowFilingEvidence,
   type FlowInstanceDetail,
   type FlowTraceStep,
+  getFilingMaterialSubmitEvidence,
   getFlowEvents,
   getFlowExecutionTrace,
   getFlowInstanceDetail,
+  type LitigationCourtItem,
+  listLitigationCourts,
   retryFlowCurrentStep,
+  saveFlowCourt,
 } from '@/services/ruoyi/flowInstance';
+import { listOssByIds, type OssItem } from '@/services/ruoyi/oss';
 import {
   buildInitialFlowModuleMap,
   getFlowModuleMeta,
@@ -40,7 +53,13 @@ import {
 const { Paragraph, Text } = Typography;
 
 const TRACE_POLLING_INTERVAL = 4000;
+const FILING_MATERIAL_SUBMIT_NODE_CODE = 'filing_material_submit';
 const flowModuleMap = buildInitialFlowModuleMap();
+const COURT_SELECTION_FAILURE_KEYWORDS = [
+  '无法自动确定受理法院',
+  '请选择法院后继续',
+  'AI未能确定唯一法院',
+];
 
 type FlowTraceDrawerProps = {
   open: boolean;
@@ -51,6 +70,18 @@ type FlowTraceDrawerProps = {
 
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
+
+const toCleanText = (value: unknown) => String(value ?? '').trim();
+
+const courtOptionKey = (court: LitigationCourtItem) =>
+  toCleanText(court.courtKey || court.id || court.courtName);
+
+const isCourtSelectionFailureText = (value?: string | null) => {
+  const text = toCleanText(value);
+  return COURT_SELECTION_FAILURE_KEYWORDS.some((keyword) =>
+    text.includes(keyword),
+  );
+};
 
 const shouldShowNodeIdentity = (nodeCode?: string | null) =>
   nodeCode === 'ai_call';
@@ -94,6 +125,15 @@ const flowStatusColor = (value: unknown) => {
   if (status === '3') return 'error';
   if (status === '4' || status === '5' || status === '6') return 'default';
   if (status === '0' || status === '1') return 'processing';
+  return 'default';
+};
+
+const filingEvidenceStatusColor = (value: unknown) => {
+  const status = normalizeStatus(value);
+  if (status === '2') return 'success';
+  if (status === '3') return 'error';
+  if (status === '1') return 'processing';
+  if (status === '4') return 'warning';
   return 'default';
 };
 
@@ -300,7 +340,17 @@ const FlowTraceDrawer = ({
   const [trace, setTrace] = useState<FlowExecutionTrace | null>(null);
   const [events, setEvents] = useState<FlowEventItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [filingEvidence, setFilingEvidence] =
+    useState<FlowFilingEvidence | null>(null);
+  const [filingEvidenceLoading, setFilingEvidenceLoading] = useState(false);
+  const [filingEvidenceOssMap, setFilingEvidenceOssMap] = useState<
+    Map<string, OssItem>
+  >(new Map());
   const [retrying, setRetrying] = useState(false);
+  const [courtLoading, setCourtLoading] = useState(false);
+  const [courtSaving, setCourtSaving] = useState(false);
+  const [courtOptions, setCourtOptions] = useState<LitigationCourtItem[]>([]);
+  const [selectedCourtKey, setSelectedCourtKey] = useState<string>();
   const pollingTimerRef = useRef<number | null>(null);
   const requestSeqRef = useRef(0);
 
@@ -313,6 +363,15 @@ const FlowTraceDrawer = ({
   const shouldPollTrace =
     open && !!trace && isPollingFlowStatus(trace.flowStatus);
   const flowSteps = useMemo(() => trace?.steps ?? [], [trace?.steps]);
+  const hasReachedFilingMaterialSubmit = useMemo(
+    () =>
+      flowSteps.some(
+        (step) =>
+          step.nodeCode === FILING_MATERIAL_SUBMIT_NODE_CODE &&
+          Boolean(step.reached),
+      ),
+    [flowSteps],
+  );
   const currentIssueMessage = useMemo(
     () =>
       toUserFacingTraceMessage(currentStep?.latestResultMessage) ||
@@ -329,6 +388,36 @@ const FlowTraceDrawer = ({
       toUserFacingTraceMessage(currentStep?.latestProgressMessage) ||
       toUserFacingTraceMessage(currentStep?.latestExecStatusName),
     [currentStep?.latestExecStatusName, currentStep?.latestProgressMessage],
+  );
+  const shouldShowCourtSelector = useMemo(() => {
+    if (!isNodeFailedStatus(trace?.flowStatus)) return false;
+    const nodeCode = currentStep?.nodeCode ?? trace?.currentNodeCode;
+    if (nodeCode !== FILING_MATERIAL_SUBMIT_NODE_CODE) return false;
+    return [
+      currentStep?.latestResultMessage,
+      detail?.resultMessage,
+      detail?.errorMessage,
+      currentIssueMessage,
+      ...events.flatMap((event) => [event.eventContent, event.reasonText]),
+    ].some((text) => isCourtSelectionFailureText(text));
+  }, [
+    currentIssueMessage,
+    currentStep?.latestResultMessage,
+    currentStep?.nodeCode,
+    detail?.errorMessage,
+    detail?.resultMessage,
+    events,
+    trace?.currentNodeCode,
+    trace?.flowStatus,
+  ]);
+  const courtCityName = useMemo(
+    () => toCleanText(trace?.city ?? detail?.city),
+    [detail?.city, trace?.city],
+  );
+  const selectedCourt = useMemo(
+    () =>
+      courtOptions.find((court) => courtOptionKey(court) === selectedCourtKey),
+    [courtOptions, selectedCourtKey],
   );
   const overviewItems = useMemo(() => {
     if (!trace) return [];
@@ -451,6 +540,56 @@ const FlowTraceDrawer = ({
     [instanceId, messageApi, stopPolling],
   );
 
+  const loadFilingEvidence = useCallback(async () => {
+    if (!instanceId || !hasReachedFilingMaterialSubmit) {
+      setFilingEvidence(null);
+      setFilingEvidenceOssMap(new Map());
+      return;
+    }
+    setFilingEvidenceLoading(true);
+    try {
+      const result = await getFilingMaterialSubmitEvidence(instanceId);
+      setFilingEvidence(result.data ?? null);
+    } catch {
+      setFilingEvidence(null);
+      messageApi.error('RPA执行证据加载失败，请稍后重试');
+    } finally {
+      setFilingEvidenceLoading(false);
+    }
+  }, [hasReachedFilingMaterialSubmit, instanceId, messageApi]);
+
+  const loadCourtOptions = useCallback(async () => {
+    if (!shouldShowCourtSelector) {
+      setCourtOptions([]);
+      setSelectedCourtKey(undefined);
+      return;
+    }
+    setCourtLoading(true);
+    try {
+      const result = await listLitigationCourts({
+        cityName: courtCityName || undefined,
+      });
+      const rows = Array.isArray(result.data)
+        ? result.data.filter((court) => !!toCleanText(court.courtName))
+        : [];
+      setCourtOptions(rows);
+      setSelectedCourtKey((current) => {
+        if (
+          current &&
+          rows.some((court) => courtOptionKey(court) === current)
+        ) {
+          return current;
+        }
+        return rows.length === 1 ? courtOptionKey(rows[0]) : undefined;
+      });
+    } catch {
+      setCourtOptions([]);
+      messageApi.error('法院列表加载失败，请稍后重试');
+    } finally {
+      setCourtLoading(false);
+    }
+  }, [courtCityName, messageApi, shouldShowCourtSelector]);
+
   useEffect(() => {
     if (!open || !instanceId) {
       setDetail(null);
@@ -463,6 +602,55 @@ const FlowTraceDrawer = ({
   }, [instanceId, loadTrace, open, stopPolling]);
 
   useEffect(() => {
+    if (!open || !instanceId || !hasReachedFilingMaterialSubmit) {
+      setFilingEvidence(null);
+      setFilingEvidenceOssMap(new Map());
+      return;
+    }
+    void loadFilingEvidence();
+  }, [
+    hasReachedFilingMaterialSubmit,
+    instanceId,
+    loadFilingEvidence,
+    open,
+    trace?.flowStatus,
+    trace?.updateTime,
+  ]);
+
+  useEffect(() => {
+    const screenshots =
+      filingEvidence?.screenshots?.filter((item) => item.ossId) ?? [];
+    if (!open || !screenshots.length) {
+      setFilingEvidenceOssMap(new Map());
+      return;
+    }
+    const ossIds = screenshots
+      .map((item) => item.ossId)
+      .filter((id): id is number | string => id !== undefined && id !== null);
+    if (!ossIds.length) {
+      setFilingEvidenceOssMap(new Map());
+      return;
+    }
+    void (async () => {
+      try {
+        const response = await listOssByIds(
+          Array.from(new Set(ossIds.map(String))).join(','),
+        );
+        const rows = Array.isArray(response.data) ? response.data : [];
+        setFilingEvidenceOssMap(
+          new Map(
+            rows
+              .filter((item) => item.ossId !== undefined && item.ossId !== null)
+              .map((item) => [String(item.ossId), item]),
+          ),
+        );
+      } catch {
+        setFilingEvidenceOssMap(new Map());
+      }
+    })();
+  }, [filingEvidence?.screenshots, open]);
+
+  useEffect(() => {
     stopPolling();
     if (!shouldPollTrace || !instanceId) return;
     pollingTimerRef.current = window.setInterval(() => {
@@ -470,6 +658,15 @@ const FlowTraceDrawer = ({
     }, TRACE_POLLING_INTERVAL);
     return stopPolling;
   }, [instanceId, loadTrace, shouldPollTrace, stopPolling]);
+
+  useEffect(() => {
+    if (!open) {
+      setCourtOptions([]);
+      setSelectedCourtKey(undefined);
+      return;
+    }
+    void loadCourtOptions();
+  }, [loadCourtOptions, open]);
 
   const handleRetryCurrentStep = () => {
     const retryInstanceId = trace?.instanceId ?? instanceId;
@@ -492,6 +689,30 @@ const FlowTraceDrawer = ({
         }
       },
     });
+  };
+
+  const handleSaveCourtAndRetry = async () => {
+    const retryInstanceId = trace?.instanceId ?? instanceId;
+    if (!retryInstanceId || !selectedCourt) return;
+    const courtName = toCleanText(selectedCourt.courtName);
+    if (!courtName) {
+      messageApi.warning('请选择受理法院');
+      return;
+    }
+    setCourtSaving(true);
+    try {
+      await saveFlowCourt(retryInstanceId, {
+        courtName,
+        provinceName: toCleanText(selectedCourt.provinceName) || undefined,
+        cityName: toCleanText(selectedCourt.cityName) || courtCityName,
+        retry: true,
+      });
+      messageApi.success('已保存受理法院并重新触发当前节点');
+      onChanged?.();
+      await loadTrace(true);
+    } finally {
+      setCourtSaving(false);
+    }
   };
 
   const stepTimelineItems = flowSteps.map((step) => {
@@ -566,6 +787,86 @@ const FlowTraceDrawer = ({
     };
   });
 
+  const filingEvidenceScreenshots =
+    filingEvidence?.screenshots?.filter((item) => item.ossId) ?? [];
+  const filingEvidenceMessage = toUserFacingTraceMessage(
+    filingEvidence?.message,
+  );
+
+  const renderFilingEvidencePanel = () => {
+    if (!hasReachedFilingMaterialSubmit) return null;
+    return (
+      <div className="rounded border border-[#e5e7eb] bg-white p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Text strong>RPA执行证据</Text>
+          {filingEvidence?.statusName || filingEvidence?.status ? (
+            <Tag color={filingEvidenceStatusColor(filingEvidence?.status)}>
+              {filingEvidence?.statusName || toText(filingEvidence?.status)}
+            </Tag>
+          ) : null}
+          {filingEvidence?.rpaStatus ? (
+            <Tag>{filingEvidence.rpaStatus}</Tag>
+          ) : null}
+        </div>
+        {filingEvidenceLoading ? (
+          <Spin size="small" />
+        ) : (
+          <>
+            {filingEvidenceMessage ? (
+              <Paragraph style={{ marginBottom: 8 }}>
+                {filingEvidenceMessage}
+              </Paragraph>
+            ) : null}
+            {filingEvidenceScreenshots.length > 0 ? (
+              <Image.PreviewGroup>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {filingEvidenceScreenshots.map((shot) => {
+                    const ossId = String(shot.ossId);
+                    const oss = filingEvidenceOssMap.get(ossId);
+                    const label = shot.name || oss?.originalName || 'RPA截图';
+                    return (
+                      <div
+                        key={`${ossId}-${shot.type || label}`}
+                        className="min-w-0 rounded border border-[#f1f5f9] p-2"
+                      >
+                        <Text style={{ fontSize: 12 }}>{label}</Text>
+                        {oss?.url ? (
+                          <div className="mt-2 flex flex-col gap-2">
+                            <Image
+                              src={oss.url}
+                              alt={label}
+                              style={{ maxHeight: 180, objectFit: 'contain' }}
+                            />
+                            <a href={oss.url} target="_blank" rel="noreferrer">
+                              <LinkOutlined /> 打开原图
+                            </a>
+                          </div>
+                        ) : (
+                          <Text
+                            type="secondary"
+                            style={{
+                              display: 'block',
+                              marginTop: 8,
+                              fontSize: 12,
+                            }}
+                          >
+                            附件暂不可预览
+                          </Text>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Image.PreviewGroup>
+            ) : (
+              <Text type="secondary">暂无RPA截图</Text>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Drawer
       title="流程执行详情"
@@ -635,12 +936,47 @@ const FlowTraceDrawer = ({
                       />
                     ) : null}
 
+                    {shouldShowCourtSelector ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                          showSearch
+                          allowClear
+                          loading={courtLoading}
+                          value={selectedCourtKey}
+                          placeholder="选择受理法院"
+                          optionFilterProp="label"
+                          style={{ width: 320, maxWidth: '100%' }}
+                          options={courtOptions.map((court) => {
+                            const courtName = toCleanText(court.courtName);
+                            const cityName = toCleanText(court.cityName);
+                            return {
+                              value: courtOptionKey(court),
+                              label: cityName
+                                ? `${courtName}（${cityName}）`
+                                : courtName,
+                            };
+                          })}
+                          onChange={setSelectedCourtKey}
+                        />
+                        <Button
+                          icon={<CheckCircleOutlined aria-hidden={true} />}
+                          loading={courtSaving}
+                          type="primary"
+                          disabled={!selectedCourt}
+                          onClick={handleSaveCourtAndRetry}
+                        >
+                          保存并重试
+                        </Button>
+                      </div>
+                    ) : null}
+
                     <Descriptions
                       bordered
                       size="small"
                       column={2}
                       items={overviewItems}
                     />
+                    {renderFilingEvidencePanel()}
                   </div>
                 ),
               },
@@ -661,12 +997,16 @@ const FlowTraceDrawer = ({
               {
                 key: 'events',
                 label: '流程动态',
-                children:
-                  eventItems.length > 0 ? (
-                    <Timeline items={eventItems} />
-                  ) : (
-                    <Empty description="暂无流程动态" />
-                  ),
+                children: (
+                  <div className="flex flex-col gap-4">
+                    {renderFilingEvidencePanel()}
+                    {eventItems.length > 0 ? (
+                      <Timeline items={eventItems} />
+                    ) : (
+                      <Empty description="暂无流程动态" />
+                    )}
+                  </div>
+                ),
               },
             ]}
           />

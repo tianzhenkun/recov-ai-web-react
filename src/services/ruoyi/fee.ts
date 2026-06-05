@@ -14,23 +14,23 @@ export interface OverduePeriodRow {
   rates: Record<string, FeeRateConfig>;
 }
 
-export interface CityTierMatrix {
-  cityTier: string;
-  tierName: string;
+export interface FeeTierMatrix {
+  feeTier: string;
+  feeTierName: string;
   rows: OverduePeriodRow[];
 }
 
 export interface FeeMatrixResponse {
   currentAmountRangeType: AmountRangeType | string;
   currentRangeLabel: string;
-  matrix: CityTierMatrix[];
+  matrix: FeeTierMatrix[];
 }
 
 export interface FeeRateUpdate {
   configId: number;
   feeRate: number;
   overduePeriod?: string;
-  cityTier?: string;
+  feeTier?: string;
   amountRangeType?: AmountRangeType | string;
 }
 
@@ -41,7 +41,7 @@ export interface BatchUpdateRequest {
 
 export interface MatchedRule {
   configId: number;
-  cityTier: string;
+  feeTier: string;
   overduePeriod: string;
   amountRangeType: string;
   feeRate: number;
@@ -56,7 +56,10 @@ export interface MatchResult {
   debtId: number;
   debtorName: string;
   city: string;
-  cityTier: string;
+  projectId: number;
+  projectName: string;
+  feeTier: string;
+  feeTierName: string;
   debtAge: string;
   debtAgeLabel: string;
   hasLitigation: number;

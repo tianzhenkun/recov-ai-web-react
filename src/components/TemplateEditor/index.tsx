@@ -32,6 +32,7 @@ import {
   useReducer,
   useRef,
 } from 'react';
+import DocumentBlockStyle from './extensions/DocumentBlockStyle';
 import SealPlaceholder from './extensions/SealPlaceholder';
 import Variable, { buildVariableAttrs } from './extensions/Variable';
 import './templateEditor.css';
@@ -142,7 +143,9 @@ const TemplateEditor = ({
         enableLists: resolved.list,
       });
     }
-    return htmlToEditorHtml(raw ?? '<p></p>');
+    return htmlToEditorHtml(raw ?? '<p></p>', variablesRef.current, {
+      enableVariables: resolved.variable,
+    });
   };
 
   const serialize = (instance: ReturnType<typeof useEditor>): string => {
@@ -184,7 +187,9 @@ const TemplateEditor = ({
   const editorExtensions = useMemo(
     () => [
       StarterKit.configure({
-        heading: false,
+        heading: {
+          levels: [1, 2, 3],
+        },
         codeBlock: false,
         blockquote: false,
         ...(resolved.list
@@ -201,7 +206,8 @@ const TemplateEditor = ({
       FontSize.configure({ types: ['textStyle'] }),
       Color.configure({ types: ['textStyle'] }),
       BackgroundColor.configure({ types: ['textStyle'] }),
-      TextAlign.configure({ types: ['paragraph'] }),
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
+      DocumentBlockStyle,
       ...(resolved.variable ? [Variable] : []),
       SealPlaceholder,
     ],

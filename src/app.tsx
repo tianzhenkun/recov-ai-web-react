@@ -81,6 +81,8 @@ const recovListPagePaths = new Set([
   '/litigation-process',
   '/reconciliation',
   '/sys/instrument-standing',
+  '/sys/instrument-template',
+  '/sys/project',
   '/test11',
 ]);
 
@@ -475,6 +477,12 @@ const AppLayoutChildren = ({
   const flowProcessRequestSeqRef = React.useRef(0);
   const flowEventUnreadRequestSeqRef = React.useRef(0);
   const flowProcessPanelExpandedRef = React.useRef(false);
+  const flowEventUnreadCountRef = React.useRef(0);
+  const shouldMarkFlowProcessReadOnCollapseRef = React.useRef(false);
+
+  React.useEffect(() => {
+    flowEventUnreadCountRef.current = flowEventUnreadCount;
+  }, [flowEventUnreadCount]);
 
   const loadFlowProcessItems = React.useCallback(
     async (silent = false) => {
@@ -497,6 +505,12 @@ const AppLayoutChildren = ({
         });
         if (seq !== flowProcessRequestSeqRef.current) return false;
         const pageResult = normalizeFlowEventPageResult(response);
+        if (
+          flowProcessPanelExpandedRef.current &&
+          pageResult.rows.some((item) => item.read === false)
+        ) {
+          shouldMarkFlowProcessReadOnCollapseRef.current = true;
+        }
         setFlowProcessItems(pageResult.rows.map(toFlowProcessItem));
         return true;
       } catch {
@@ -528,9 +542,12 @@ const AppLayoutChildren = ({
     try {
       const response = await getFlowEventUnreadCount();
       if (seq !== flowEventUnreadRequestSeqRef.current) return;
-      setFlowEventUnreadCount(normalizeFlowEventUnreadCount(response));
+      const nextUnreadCount = normalizeFlowEventUnreadCount(response);
+      flowEventUnreadCountRef.current = nextUnreadCount;
+      setFlowEventUnreadCount(nextUnreadCount);
     } catch {
       if (seq !== flowEventUnreadRequestSeqRef.current) return;
+      flowEventUnreadCountRef.current = 0;
       setFlowEventUnreadCount(0);
     }
   }, [
@@ -549,6 +566,8 @@ const AppLayoutChildren = ({
           item.read === false ? { ...item, read: true } : item,
         ),
       );
+      flowEventUnreadCountRef.current = 0;
+      shouldMarkFlowProcessReadOnCollapseRef.current = false;
       setFlowEventUnreadCount(0);
       void loadFlowEventUnreadCount();
     } catch {
@@ -561,20 +580,23 @@ const AppLayoutChildren = ({
     loadFlowEventUnreadCount,
   ]);
 
-  const loadFlowProcessItemsAndMarkRead = React.useCallback(
+  const loadFlowProcessItemsForViewing = React.useCallback(
     async (silent = false) => {
       const loaded = await loadFlowProcessItems(silent);
       if (loaded) {
-        await markFlowProcessItemsRead();
+        if (flowEventUnreadCountRef.current > 0) {
+          shouldMarkFlowProcessReadOnCollapseRef.current = true;
+        }
         return;
       }
       void loadFlowEventUnreadCount();
     },
-    [loadFlowEventUnreadCount, loadFlowProcessItems, markFlowProcessItemsRead],
+    [loadFlowEventUnreadCount, loadFlowProcessItems],
   );
 
   React.useEffect(() => {
     flowProcessPanelExpandedRef.current = false;
+    shouldMarkFlowProcessReadOnCollapseRef.current = false;
     setFlowProcessItems([]);
     void loadFlowEventUnreadCount();
   }, [loadFlowEventUnreadCount]);
@@ -585,9 +607,20 @@ const AppLayoutChildren = ({
     return subscribeSseMessage((message) => {
       if (!isFlowEventSseMessage(message)) return;
       if (flowProcessPanelExpandedRef.current) {
-        void loadFlowProcessItemsAndMarkRead(true);
+        shouldMarkFlowProcessReadOnCollapseRef.current = true;
+        flowEventUnreadCountRef.current = Math.max(
+          flowEventUnreadCountRef.current,
+          1,
+        );
+        setFlowEventUnreadCount((current) => Math.max(current, 1));
+        void loadFlowProcessItemsForViewing(true);
         return;
       }
+      flowEventUnreadCountRef.current = Math.max(
+        flowEventUnreadCountRef.current,
+        1,
+      );
+      setFlowEventUnreadCount((current) => Math.max(current, 1));
       void loadFlowEventUnreadCount();
     });
   }, [
@@ -595,17 +628,21 @@ const AppLayoutChildren = ({
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
     loadFlowEventUnreadCount,
-    loadFlowProcessItemsAndMarkRead,
+    loadFlowProcessItemsForViewing,
   ]);
 
   const handleFlowProcessPanelExpandedChange = React.useCallback(
     (nextExpanded: boolean) => {
       flowProcessPanelExpandedRef.current = nextExpanded;
       if (nextExpanded) {
-        void loadFlowProcessItemsAndMarkRead();
+        void loadFlowProcessItemsForViewing();
+        return;
+      }
+      if (shouldMarkFlowProcessReadOnCollapseRef.current) {
+        void markFlowProcessItemsRead();
       }
     },
-    [loadFlowProcessItemsAndMarkRead],
+    [loadFlowProcessItemsForViewing, markFlowProcessItemsRead],
   );
 
   return (

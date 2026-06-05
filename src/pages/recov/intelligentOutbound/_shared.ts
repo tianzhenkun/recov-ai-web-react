@@ -142,6 +142,8 @@ export const emptyDashboard: AiCallDashboard = {
   activeCallCount: 0,
   todayCompletedCount: 0,
   todayCallDurationSeconds: 0,
+  semanticPersonaTotal: 0,
+  semanticPersonaDistribution: [],
 };
 
 const numberFormatter = new Intl.NumberFormat('zh-CN', {

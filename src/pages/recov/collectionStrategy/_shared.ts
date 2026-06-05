@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import type { ComponentType, CSSProperties } from 'react';
 import type {
+  CallConfigVO,
   FlowNodeTypeVO,
   StepExecutionConfig,
   StepFailStrategy,
@@ -205,6 +206,33 @@ const flowModuleLabelOverrideMap: Record<string, string> = {
 
 export const aiCallRoleOptions: Array<{ label: string; value: AiCallRole }> =
   aiCallRoleValues.map((role) => ({ label: role, value: role }));
+
+export const sortCallConfigsByIdentity = <
+  T extends Pick<CallConfigVO, 'identityName'>,
+>(
+  list: T[],
+): T[] =>
+  list
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const leftIsProjectEmployee =
+        normalizeAiCallRole(left.item.identityName) === '项目员工';
+      const rightIsProjectEmployee =
+        normalizeAiCallRole(right.item.identityName) === '项目员工';
+      if (leftIsProjectEmployee !== rightIsProjectEmployee) {
+        return leftIsProjectEmployee ? -1 : 1;
+      }
+      return left.index - right.index;
+    })
+    .map(({ item }) => item);
+
+export const getCallConfigKey = (id?: number | string | null): string =>
+  id == null ? '' : String(id);
+
+export const findCallConfigByKey = <T extends Pick<CallConfigVO, 'id'>>(
+  list: T[],
+  key: string,
+): T | null => list.find((item) => getCallConfigKey(item.id) === key) ?? null;
 
 const legacyAiCallRoleMap: Record<string, AiCallRole> = {
   enterprise_service: '企业客服',

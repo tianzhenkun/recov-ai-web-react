@@ -1,8 +1,4 @@
-import {
-  AppstoreOutlined,
-  BarChartOutlined,
-  ExperimentOutlined,
-} from '@ant-design/icons';
+import { BarChartOutlined, ExperimentOutlined } from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
@@ -33,7 +29,6 @@ export type RuoyiMenuContext = {
   matchedMenuItem?: RuoyiMenuDataItem;
 };
 
-const templateMenuPath = '/template';
 const salesAgentPath = '/sales';
 const salesOverviewPath = '/sales/dashboard';
 const salesOverviewTitle = '数据总览';
@@ -208,40 +203,6 @@ const toRuoyiMenuItem = (
   return item;
 };
 
-const isTemplateMenuItem = (item: MenuDataItem) => {
-  if (item.hideInMenu) return false;
-  if (!item.path) return false;
-  if (item.path === '/' || item.path.startsWith('/user')) return false;
-  if (!item.name && !item.children?.length) return false;
-  return true;
-};
-
-const cloneTemplateMenuItem = (item: MenuDataItem): MenuDataItem => ({
-  ...item,
-  locale: item.locale ?? false,
-  children: item.children
-    ?.filter(isTemplateMenuItem)
-    .map((child) => cloneTemplateMenuItem(child)),
-});
-
-const buildTemplateMenu = (
-  defaultMenuData: MenuDataItem[],
-): MenuDataItem | null => {
-  const children = defaultMenuData
-    .filter(isTemplateMenuItem)
-    .map((item) => cloneTemplateMenuItem(item));
-
-  if (children.length === 0) return null;
-
-  return {
-    key: templateMenuPath,
-    name: '模板示例',
-    locale: false,
-    icon: <AppstoreOutlined />,
-    children,
-  };
-};
-
 export const buildRuoyiMenuData = (routes: RuoyiRoute[] = []) =>
   routes
     .map((route) => toRuoyiMenuItem(route))
@@ -249,11 +210,9 @@ export const buildRuoyiMenuData = (routes: RuoyiRoute[] = []) =>
 
 export const buildLayoutMenuData = (
   ruoyiMenuData: RuoyiMenuDataItem[],
-  defaultMenuData: MenuDataItem[],
+  _defaultMenuData: MenuDataItem[],
 ) => {
-  const salesMenuData = attachSalesAgentOverviewMenu(ruoyiMenuData);
-  const templateMenu = buildTemplateMenu(defaultMenuData);
-  return templateMenu ? [...salesMenuData, templateMenu] : salesMenuData;
+  return attachSalesAgentOverviewMenu(ruoyiMenuData);
 };
 
 export const setCachedRuoyiMenuData = (menuData: RuoyiMenuDataItem[]) => {

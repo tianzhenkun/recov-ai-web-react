@@ -115,6 +115,13 @@ export const BASE_COLUMNS: ColumnSchema[] = [
     type: 'status',
   },
   {
+    prop: 'overdueDays',
+    label: '逾期天数',
+    minWidth: 110,
+    align: 'center',
+    type: 'days',
+  },
+  {
     prop: 'caseNo',
     label: '案号',
     minWidth: 180,

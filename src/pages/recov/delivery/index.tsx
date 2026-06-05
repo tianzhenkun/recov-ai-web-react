@@ -39,8 +39,8 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import PdfPreview from '@/components/PdfPreview';
 import TableActions from '@/components/TableActions';
-import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
@@ -57,7 +57,6 @@ import {
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
-import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   type DeliveryOverview,
   type DeliveryTaskItem,
@@ -67,6 +66,7 @@ import {
   listDeliveryCities,
   listDeliveryOrganizations,
   listDeliveryTasks,
+  retryDeliveryTask,
 } from '@/services/ruoyi/deliveryTask';
 import { downloadOss } from '@/services/ruoyi/oss';
 
@@ -89,9 +89,10 @@ type DeliveryFileKind = 'image' | 'pdf' | 'spreadsheet' | 'text' | 'unknown';
 
 type DeliveryFilePreviewState = {
   open: boolean;
+  ossId?: number | string;
   fileUrl: string;
   fileName: string;
-  previewType: 'image' | 'embed';
+  previewType: 'image' | 'pdf' | 'embed';
 };
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -210,18 +211,6 @@ const normalizeStatus = (value: unknown): DeliveryTaskStatus | undefined => {
   return n === 0 || n === 1 || n === 2 || n === 3 ? n : undefined;
 };
 
-const normalizeFlowId = (value: unknown) => {
-  if (value === null || value === undefined) return undefined;
-  const text = String(value).trim();
-  return text || undefined;
-};
-
-const canShowDeliveryFlowDetail = (record?: DeliveryTaskItem | null) => {
-  if (!record) return false;
-  const status = normalizeStatus(record.taskStatus);
-  return status !== 2 && Boolean(normalizeFlowId(record.flowId));
-};
-
 const formatCurrency = (value: unknown) =>
   currencyFormatter.format(toNumber(value));
 
@@ -303,6 +292,30 @@ const getStatusText = (record: DeliveryTaskItem) => {
     : record.taskStatusLabel || '-';
 };
 
+const normalizeDeliveryErrorMessage = (message?: string | null) => {
+  const text = getNonEmptyText(message);
+  if (!text) return '';
+  if (
+    text.includes('debt_record.debtor_email') ||
+    text.includes('valid recipient email')
+  ) {
+    return '缺少收件人邮箱，请维护业主邮箱后重试';
+  }
+  if (text.startsWith('missing config:')) {
+    return '腾讯云邮件配置不完整，请联系管理员检查邮件服务配置';
+  }
+  if (text.includes('provider_template_id is required')) {
+    return '邮件送达渠道未配置邮件模板ID，请先完善送达渠道配置';
+  }
+  if (text.includes('invalid provider_template_id')) {
+    return '邮件送达渠道的邮件模板ID无效，请检查送达渠道配置';
+  }
+  return text;
+};
+
+const getDeliveryErrorMessage = (record?: DeliveryTaskItem | null) =>
+  normalizeDeliveryErrorMessage(record?.errorMessage);
+
 type DeliveryStatusTagProps = {
   record: DeliveryTaskItem;
   style?: CSSProperties;
@@ -316,6 +329,7 @@ export const DeliveryStatusTag = ({
   const status = normalizeStatus(record.taskStatus);
   const meta = status !== undefined ? STATUS_META[status] : undefined;
   const isDelivered = status === 2;
+  const errorMessage = getDeliveryErrorMessage(record);
   const deliveredStyle: CSSProperties = isDelivered
     ? {
         color: token.colorPrimaryText,
@@ -323,7 +337,7 @@ export const DeliveryStatusTag = ({
       }
     : {};
 
-  return (
+  const tag = (
     <Tag
       color={isDelivered ? undefined : (meta?.color ?? 'default')}
       icon={meta?.icon}
@@ -332,6 +346,20 @@ export const DeliveryStatusTag = ({
     >
       {getStatusText(record)}
     </Tag>
+  );
+
+  if (status !== 3 || !errorMessage) return tag;
+
+  return (
+    <Tooltip
+      title={
+        <div style={{ maxWidth: 360, whiteSpace: 'pre-wrap' }}>
+          {errorMessage}
+        </div>
+      }
+    >
+      {tag}
+    </Tooltip>
   );
 };
 
@@ -442,6 +470,26 @@ const DetailSubsection = ({
   </section>
 );
 
+const ExceptionTextBlock = ({ children }: { children: ReactNode }) => (
+  <div className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-md border border-solid border-red-100 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700">
+    {children}
+  </div>
+);
+
+const DeliveryExceptionPanel = ({ record }: { record: DeliveryTaskItem }) => {
+  const errorMessage = getDeliveryErrorMessage(record);
+  const shouldShowDeliveryException =
+    normalizeStatus(record.taskStatus) === 3 && Boolean(errorMessage);
+
+  if (!shouldShowDeliveryException) return null;
+
+  return (
+    <DetailPanel title="失败原因">
+      <ExceptionTextBlock>{errorMessage}</ExceptionTextBlock>
+    </DetailPanel>
+  );
+};
+
 const DeliveryPage = () => {
   const [form] = Form.useForm<QueryFormValues>();
   const [searchParams] = useSearchParams();
@@ -477,8 +525,6 @@ const DeliveryPage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [currentRow, setCurrentRow] = useState<DeliveryTaskItem | null>(null);
-  const [traceOpen, setTraceOpen] = useState(false);
-  const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
   const [filePreview, setFilePreview] = useState<DeliveryFilePreviewState>({
     open: false,
     fileUrl: '',
@@ -486,9 +532,12 @@ const DeliveryPage = () => {
     previewType: 'embed',
   });
   const [downloadingFile, setDownloadingFile] = useState(false);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
 
   const queryRef = useRef(query);
   queryRef.current = query;
+  const currentRowRef = useRef(currentRow);
+  currentRowRef.current = currentRow;
 
   useEffect(() => {
     form.setFieldsValue({
@@ -595,13 +644,6 @@ const DeliveryPage = () => {
         tone: 'success' as const,
       },
       {
-        key: 'sms',
-        title: '发送短信总量',
-        value: numberFormatter.format(overview.smsTotal),
-        icon: <MessageOutlined />,
-        tone: 'primary' as const,
-      },
-      {
         key: 'email',
         title: '发送邮件总量',
         value: numberFormatter.format(overview.emailTotal),
@@ -663,14 +705,48 @@ const DeliveryPage = () => {
     }
   };
 
-  const openFlowDetail = (record: DeliveryTaskItem) => {
-    const flowId = normalizeFlowId(record.flowId);
-    if (!flowId) {
-      messageApi.warning('当前送达任务暂无关联流程实例');
+  const retryTask = (record: DeliveryTaskItem) => {
+    if (!record.taskId) {
+      messageApi.warning('当前送达任务缺少任务ID，无法重试');
       return;
     }
-    setTraceInstanceId(flowId);
-    setTraceOpen(true);
+
+    const errorMessage = getDeliveryErrorMessage(record);
+    Modal.confirm({
+      title: '确认重试送达任务',
+      content: (
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Text>将重新提交资产 {getAssetNumber(record)} 的送达任务。</Text>
+          {errorMessage ? (
+            <DetailSubsection title="失败原因">
+              <ExceptionTextBlock>{errorMessage}</ExceptionTextBlock>
+            </DetailSubsection>
+          ) : null}
+        </Space>
+      ),
+      okText: '重试',
+      cancelText: '取消',
+      async onOk() {
+        setRetryingTaskId(record.taskId);
+        try {
+          const nextRecord = await retryDeliveryTask(record.taskId);
+          messageApi.success('送达任务已重新提交');
+          if (currentRowRef.current?.taskId === record.taskId && nextRecord) {
+            setCurrentRow(nextRecord);
+          }
+          await loadList(queryRef.current, true);
+        } catch (error) {
+          messageApi.error(
+            error instanceof Error
+              ? error.message
+              : '送达任务重试失败，请稍后重试',
+          );
+          throw error;
+        } finally {
+          setRetryingTaskId(null);
+        }
+      },
+    });
   };
 
   const renderDeliveryStatusTag = useCallback(
@@ -701,9 +777,11 @@ const DeliveryPage = () => {
 
     setFilePreview({
       open: true,
+      ossId: getNonEmptyText(record.fileOssId),
       fileUrl,
       fileName: getDeliveryFileName(record),
-      previewType: kind === 'image' ? 'image' : 'embed',
+      previewType:
+        kind === 'image' ? 'image' : kind === 'pdf' ? 'pdf' : 'embed',
     });
   };
 
@@ -854,7 +932,7 @@ const DeliveryPage = () => {
       {
         title: '所属项目',
         dataIndex: 'projectName',
-        width: 260,
+        width: RECOV_LIST_COLUMN_WIDTH.organization,
         ellipsis: { showTitle: false },
         render: renderRecovSingleLineText,
       },
@@ -870,20 +948,6 @@ const DeliveryPage = () => {
         dataIndex: 'debtorPhone',
         width: 130,
         render: toText,
-      },
-      {
-        title: '逾期金额',
-        dataIndex: 'debtAmount',
-        width: 120,
-        align: 'right',
-        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
-      },
-      {
-        title: '违约（滞纳）金',
-        dataIndex: 'overdueAmount',
-        width: 140,
-        align: 'right',
-        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
       },
       {
         title: '状态',
@@ -910,13 +974,39 @@ const DeliveryPage = () => {
         },
       },
       {
+        title: '逾期天数',
+        dataIndex: 'overdueDays',
+        width: 110,
+        align: 'center',
+        render: (value) =>
+          toNumber(value) > 0 ? (
+            <Tag color="red">{toNumber(value)} 天</Tag>
+          ) : (
+            '-'
+          ),
+      },
+      {
+        title: '逾期金额',
+        dataIndex: 'debtAmount',
+        width: 120,
+        align: 'right',
+        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
+      },
+      {
+        title: '违约（滞纳）金',
+        dataIndex: 'overdueAmount',
+        width: 140,
+        align: 'right',
+        render: (value) => <Text strong>{formatCurrency(value)}</Text>,
+      },
+      {
         title: '操作',
         key: 'action',
-        width: 128,
+        width: 96,
         fixed: 'right',
-        align: 'left',
+        align: 'center',
         render: (_, record) => {
-          const status = normalizeStatus(record.taskStatus);
+          const canRetry = normalizeStatus(record.taskStatus) === 3;
           return (
             <TableActions
               maxVisible={2}
@@ -929,13 +1019,14 @@ const DeliveryPage = () => {
                     void openDetail(record);
                   },
                 },
-                ...(canShowDeliveryFlowDetail(record)
+                ...(canRetry
                   ? [
                       {
-                        key: 'flow',
-                        label: status === 3 ? '处理异常' : '查看进度',
-                        icon: getFlowActionIcon(status === 3),
-                        onClick: () => openFlowDetail(record),
+                        key: 'retry',
+                        label: '重试',
+                        icon: <ReloadOutlined />,
+                        loading: retryingTaskId === record.taskId,
+                        onClick: () => retryTask(record),
                       },
                     ]
                   : []),
@@ -945,7 +1036,7 @@ const DeliveryPage = () => {
         },
       },
     ],
-    [renderDeliveryStatusTag],
+    [renderDeliveryStatusTag, retryingTaskId],
   );
 
   const currentStatus = normalizeStatus(currentRow?.taskStatus);
@@ -956,7 +1047,7 @@ const DeliveryPage = () => {
       {messageContextHolder}
 
       <RecovListStack>
-        <RecovStatsStrip className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <RecovStatsStrip className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
           {statCards.map((card) => (
             <StatCard
               key={card.key}
@@ -1057,10 +1148,11 @@ const DeliveryPage = () => {
       <Drawer
         title="送达详情"
         open={detailOpen}
-        width={720}
+        size={720}
         destroyOnHidden
         loading={detailLoading}
         onClose={() => setDetailOpen(false)}
+        footer={null}
       >
         {currentRow ? (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -1099,6 +1191,8 @@ const DeliveryPage = () => {
                 </Descriptions.Item>
               </Descriptions>
             </DetailPanel>
+
+            <DeliveryExceptionPanel record={currentRow} />
 
             <DetailPanel
               title={currentIsExpressDelivery ? '送达文件' : '送达内容'}
@@ -1180,6 +1274,13 @@ const DeliveryPage = () => {
                 objectFit: 'contain',
               }}
             />
+          ) : filePreview.previewType === 'pdf' ? (
+            <PdfPreview
+              fileName={filePreview.fileName}
+              height="70vh"
+              ossId={filePreview.ossId}
+              url={filePreview.fileUrl}
+            />
           ) : (
             <object
               data={filePreview.fileUrl}
@@ -1211,18 +1312,6 @@ const DeliveryPage = () => {
           <Empty description="暂无可预览文件" />
         )}
       </Modal>
-
-      <FlowTraceDrawer
-        open={traceOpen}
-        instanceId={traceInstanceId}
-        onClose={() => setTraceOpen(false)}
-        onChanged={() => {
-          void loadList(queryRef.current, true);
-          if (currentRow?.taskId) {
-            void openDetail(currentRow);
-          }
-        }}
-      />
     </RecovListPage>
   );
 };

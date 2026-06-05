@@ -23,6 +23,7 @@ export type InstrumentTaskGroupItem = {
   processingCount?: number | string;
   failedCount?: number | string;
   readyForFiling?: boolean;
+  status?: InstrumentTaskStatus | number;
   latestUpdateTime?: string;
 };
 

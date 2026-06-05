@@ -17,6 +17,8 @@ import {
   type FeeTableRow,
   flattenFeeMatrix,
   formatFeeRate,
+  formatFeeTierDisplay,
+  formatOverduePeriodDisplay,
   getCurrentRangeLabel,
   getFeeRate,
   getRowKey,
@@ -118,11 +120,11 @@ const FeeConfigPage = () => {
 
     setEditForm({
       configId: rateConfig?.configId ?? 0,
-      periodName: row.periodName,
-      tierName: row.tierName,
+      periodName: formatOverduePeriodDisplay(row.periodName),
+      feeTierName: formatFeeTierDisplay(row.feeTier, row.feeTierName),
       feeRate: rateConfig?.feeRate ?? 0,
       overduePeriod: row.overduePeriod,
-      cityTier: row.cityTier,
+      feeTier: row.feeTier,
     });
     setEditOpen(true);
   };
@@ -143,7 +145,7 @@ const FeeConfigPage = () => {
 
       if (editForm.configId === 0) {
         update.overduePeriod = editForm.overduePeriod;
-        update.cityTier = editForm.cityTier;
+        update.feeTier = editForm.feeTier;
         update.amountRangeType = currentAmountRangeType;
       }
 
@@ -182,12 +184,14 @@ const FeeConfigPage = () => {
 
     return [
       {
-        title: '对应城市层级',
-        dataIndex: 'tierName',
+        title: '城市层级',
+        dataIndex: 'feeTierName',
         width: 150,
         fixed: 'left',
-        render: (tierName: string) => (
-          <Typography.Text>{tierName}</Typography.Text>
+        render: (_: string, row: FeeTableRow) => (
+          <Typography.Text>
+            {formatFeeTierDisplay(row.feeTier, row.feeTierName)}
+          </Typography.Text>
         ),
       },
       {
@@ -195,7 +199,9 @@ const FeeConfigPage = () => {
         dataIndex: 'periodName',
         minWidth: 180,
         render: (periodName: string) => (
-          <Typography.Text>{periodName}</Typography.Text>
+          <Typography.Text>
+            {formatOverduePeriodDisplay(periodName)}
+          </Typography.Text>
         ),
       },
       ...rangeColumns,

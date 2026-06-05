@@ -332,6 +332,23 @@ describe('FloatingProcessPanel', () => {
     expect(screen.getByTestId('floating-process-unread-dot')).toBeTruthy();
   });
 
+  it('shows controlled unread dot only on the collapsed agent icon', () => {
+    render(
+      <FloatingProcessPanel
+        defaultExpanded
+        hasUnread
+        items={items}
+        title="流程动态"
+      />,
+    );
+
+    expect(screen.queryByTestId('floating-process-unread-dot')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '收起流程信息面板' }));
+
+    expect(screen.getByTestId('floating-process-unread-dot')).toBeTruthy();
+  });
+
   it('marks unread timeline items with red dots', () => {
     render(
       <FloatingProcessPanel
@@ -477,6 +494,44 @@ describe('FloatingProcessPanel', () => {
     );
 
     expect(drawerWrapper?.style.width).toBe('560px');
+  });
+
+  it('keeps the process panel expanded after closing the detail drawer', async () => {
+    render(
+      <FloatingProcessPanel
+        defaultExpanded
+        items={[
+          {
+            ...items[0],
+            detail: {
+              debtNumber: 'A-001',
+              eventContent: '系统已记录失败原因，等待补充地址后重试。',
+              nodeName: '律师函',
+              reasonText: '收件地址缺失',
+            },
+            summary: '律师函发送失败。',
+            time: '2026-05-30T10:00:00+08:00',
+          },
+        ]}
+        title="流程动态"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('律师函发送失败。'));
+    expect(screen.getByText('智能体动态详情')).toBeTruthy();
+    expect(screen.getByText('查看全量运行日志')).toBeTruthy();
+
+    const closeButton =
+      document.querySelector<HTMLElement>('.ant-drawer-close');
+    expect(closeButton).toBeTruthy();
+
+    fireEvent.pointerDown(closeButton as HTMLElement);
+    fireEvent.click(closeButton as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.queryByText('智能体动态详情')).toBeNull();
+    });
+    expect(screen.getByText('查看全量运行日志')).toBeTruthy();
   });
 
   it('collapses when clicking outside while expanded', () => {

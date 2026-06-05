@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 export type FeeEditFormState = {
   configId: number;
   periodName: string;
-  tierName: string;
+  feeTierName: string;
   feeRate: number;
   overduePeriod: string;
-  cityTier: string;
+  feeTier: string;
 };
 
 export type FeeEditModalProps = {
@@ -57,7 +57,7 @@ const FeeEditModal = ({
 
   const summaryItems = [
     { label: '逾期账龄', value: initial.periodName },
-    { label: '对应城市层级', value: initial.tierName },
+    { label: '计费层级', value: initial.feeTierName },
   ];
 
   return (

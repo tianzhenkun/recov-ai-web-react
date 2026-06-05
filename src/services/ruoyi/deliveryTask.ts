@@ -142,6 +142,17 @@ export const getDeliveryTask = async (taskId: string) => {
   return res.data;
 };
 
+export const getDeliveryTaskByBusiness = async (
+  sceneCode: string,
+  businessId: number | string,
+) => {
+  const res = await ruoyiRequest<DeliveryTaskItem>(`${BASE}/by-business`, {
+    method: 'get',
+    params: { sceneCode, businessId },
+  });
+  return res.data;
+};
+
 export const retryDeliveryTask = async (taskId: string) => {
   const res = await ruoyiRequest<DeliveryTaskItem>(`${BASE}/${taskId}/retry`, {
     method: 'post',

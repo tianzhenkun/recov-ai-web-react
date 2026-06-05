@@ -95,6 +95,7 @@ export type FlowTraceStep = {
   stepStatus?: string;
   stepStatusName?: string;
   latestTaskId?: number | string;
+  latestBusinessId?: number | string | null;
   latestExecStatus?: number | string;
   latestExecStatusName?: string;
   latestResultMessage?: string | null;
@@ -132,6 +133,7 @@ export type FlowExecutionTrace = {
   flowContext?: Record<string, unknown>;
   steps?: FlowTraceStep[];
   messages?: FlowTraceMessage[];
+  updateTime?: string;
 };
 
 export type FlowEventItem = {
@@ -156,7 +158,55 @@ export type FlowEventItem = {
   createTime?: string;
 };
 
+export type FlowFilingEvidenceScreenshot = {
+  name?: string;
+  type?: string;
+  ossId?: number | string;
+};
+
+export type FlowFilingEvidence = {
+  nodeCode?: string;
+  nodeType?: string;
+  litigationId?: number | string;
+  courtName?: string | null;
+  status?: number | string | null;
+  statusName?: string | null;
+  message?: string | null;
+  rpaStatus?: string | null;
+  runReportPath?: string | null;
+  tracePath?: string | null;
+  result?: string | null;
+  resultBody?: Record<string, unknown> | null;
+  screenshots?: FlowFilingEvidenceScreenshot[];
+  updateTime?: string | null;
+};
+
 const BASE = '/system/recov/flow/instance';
+const COURT_BASE = '/system/recov/litigation/courts';
+
+export type LitigationCourtItem = {
+  id?: number | string;
+  provinceName?: string | null;
+  cityName?: string | null;
+  courtName?: string | null;
+  courtKey?: string | null;
+  status?: number | string;
+  source?: string | null;
+  lastSyncTime?: string | null;
+};
+
+export type LitigationCourtQuery = {
+  provinceName?: string;
+  cityName?: string;
+  keyword?: string;
+};
+
+export type FilingCourtSelection = {
+  courtName: string;
+  provinceName?: string;
+  cityName?: string;
+  retry?: boolean;
+};
 
 export const pageFlowInstances = (params?: FlowInstanceQuery) =>
   ruoyiRequest<FlowInstanceItem>(`${BASE}/page`, {
@@ -179,6 +229,14 @@ export const getFlowEvents = (instanceId: number | string) =>
     method: 'get',
   });
 
+export const getFilingMaterialSubmitEvidence = (instanceId: number | string) =>
+  ruoyiRequest<FlowFilingEvidence>(
+    `${BASE}/${instanceId}/filing-material-submit/evidence`,
+    {
+      method: 'get',
+    },
+  );
+
 export const retryFlowCurrentStep = (
   instanceId: number | string,
   stepId: string,
@@ -190,4 +248,19 @@ export const retryFlowCurrentStep = (
 export const terminateFlowInstance = (instanceId: number | string) =>
   ruoyiRequest(`${BASE}/${instanceId}/terminate`, {
     method: 'post',
+  });
+
+export const listLitigationCourts = (params?: LitigationCourtQuery) =>
+  ruoyiRequest<LitigationCourtItem[]>(COURT_BASE, {
+    method: 'get',
+    params,
+  });
+
+export const saveFlowCourt = (
+  instanceId: number | string,
+  data: FilingCourtSelection,
+) =>
+  ruoyiRequest(`${COURT_BASE}/flow/${instanceId}`, {
+    method: 'post',
+    data,
   });

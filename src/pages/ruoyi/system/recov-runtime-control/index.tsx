@@ -1,6 +1,6 @@
 import {
-  CheckCircleOutlined,
   ExclamationCircleOutlined,
+  InfoCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
@@ -17,7 +17,9 @@ import {
   Table,
   Tag,
   Tooltip,
+  theme,
 } from 'antd';
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   type FlowNodeControl,
@@ -197,9 +199,13 @@ const assertRange = (
 const ConfigStateTag = ({
   dirty,
   meta,
+  primaryIconStyle,
+  primaryTagStyle,
 }: {
   dirty: boolean;
   meta: ConfigMeta;
+  primaryIconStyle: CSSProperties;
+  primaryTagStyle: CSSProperties;
 }) => {
   if (meta.loadError) {
     return (
@@ -216,9 +222,16 @@ const ConfigStateTag = ({
   }
 
   return (
-    <Tag color="blue" icon={<CheckCircleOutlined />}>
-      v{meta.version ?? '-'}
-    </Tag>
+    <Tooltip
+      title={`配置版本号：${meta.version ?? '-'}。保存时用于校验配置是否已被他人更新，避免覆盖新配置。`}
+    >
+      <Tag
+        icon={<InfoCircleOutlined style={primaryIconStyle} />}
+        style={primaryTagStyle}
+      >
+        配置版本 {meta.version ?? '-'}
+      </Tag>
+    </Tooltip>
   );
 };
 
@@ -226,13 +239,22 @@ const SectionExtra = ({
   dirty,
   meta,
   onSave,
+  primaryIconStyle,
+  primaryTagStyle,
 }: {
   dirty: boolean;
   meta: ConfigMeta;
   onSave: () => void;
+  primaryIconStyle: CSSProperties;
+  primaryTagStyle: CSSProperties;
 }) => (
   <Space size={8}>
-    <ConfigStateTag dirty={dirty} meta={meta} />
+    <ConfigStateTag
+      dirty={dirty}
+      meta={meta}
+      primaryIconStyle={primaryIconStyle}
+      primaryTagStyle={primaryTagStyle}
+    />
     <Button
       type="primary"
       disabled={!dirty || meta.version === null}
@@ -245,6 +267,7 @@ const SectionExtra = ({
 );
 
 const RecovRuntimeControlPage = () => {
+  const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
 
@@ -294,6 +317,28 @@ const RecovRuntimeControlPage = () => {
     schedulerMeta.loading ||
     outboxMeta.loading ||
     nodeMeta.loading;
+  const themeLinkedAlertStyle = useMemo<CSSProperties>(
+    () => ({
+      background: token.colorPrimaryBg,
+      borderColor: token.colorPrimaryBorder,
+      color: token.colorText,
+    }),
+    [token.colorPrimaryBg, token.colorPrimaryBorder, token.colorText],
+  );
+  const themeLinkedTagStyle = useMemo<CSSProperties>(
+    () => ({
+      background: token.colorPrimaryBg,
+      borderColor: token.colorPrimaryBorder,
+      color: token.colorPrimary,
+    }),
+    [token.colorPrimary, token.colorPrimaryBg, token.colorPrimaryBorder],
+  );
+  const themeLinkedIconStyle = useMemo<CSSProperties>(
+    () => ({
+      color: token.colorPrimary,
+    }),
+    [token.colorPrimary],
+  );
 
   const nodeRows = useMemo<NodeRow[]>(
     () => [
@@ -703,8 +748,10 @@ const RecovRuntimeControlPage = () => {
 
       <Alert
         showIcon
+        icon={<InfoCircleOutlined style={themeLinkedIconStyle} />}
         type="info"
         className="mb-4"
+        style={themeLinkedAlertStyle}
         message="配置保存后将在约 3-5 秒内影响新调度和新消费，已在执行中的节点不会被强制中断。"
       />
 
@@ -716,6 +763,8 @@ const RecovRuntimeControlPage = () => {
               dirty={runtimeDirty}
               meta={runtimeMeta}
               onSave={saveRuntime}
+              primaryIconStyle={themeLinkedIconStyle}
+              primaryTagStyle={themeLinkedTagStyle}
             />
           }
         >
@@ -767,6 +816,8 @@ const RecovRuntimeControlPage = () => {
               dirty={schedulerDirty}
               meta={schedulerMeta}
               onSave={saveScheduler}
+              primaryIconStyle={themeLinkedIconStyle}
+              primaryTagStyle={themeLinkedTagStyle}
             />
           }
         >
@@ -836,6 +887,8 @@ const RecovRuntimeControlPage = () => {
             dirty={outboxDirty}
             meta={outboxMeta}
             onSave={() => void saveOutbox()}
+            primaryIconStyle={themeLinkedIconStyle}
+            primaryTagStyle={themeLinkedTagStyle}
           />
         }
       >
@@ -920,6 +973,8 @@ const RecovRuntimeControlPage = () => {
             dirty={nodeDirty}
             meta={nodeMeta}
             onSave={saveNodeControl}
+            primaryIconStyle={themeLinkedIconStyle}
+            primaryTagStyle={themeLinkedTagStyle}
           />
         }
       >

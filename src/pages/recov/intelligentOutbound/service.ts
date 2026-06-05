@@ -11,6 +11,15 @@ export type AiCallDashboard = {
   activeCallCount?: number | string;
   todayCompletedCount?: number | string;
   todayCallDurationSeconds?: number | string;
+  semanticPersonaTotal?: number | string;
+  semanticPersonaDistribution?: AiCallSemanticPersonaDistribution[];
+};
+
+export type AiCallSemanticPersonaDistribution = {
+  personaId?: number | string;
+  personaName?: string;
+  count?: number | string;
+  percentage?: number | string;
 };
 
 export type AiCallTimeHint = {

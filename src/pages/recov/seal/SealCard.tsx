@@ -10,28 +10,28 @@ import { pickInstrumentTypeName } from './_shared';
 
 export type SealCardProps = {
   item: SealVO;
-  isLawyerSeal: boolean;
+  supportsFilingAccount: boolean;
   sealTypeList: SealTypeVO[];
   switching?: boolean;
   onEdit: (item: SealVO) => void;
   onDelete: (item: SealVO) => void;
   onToggleStatus: (item: SealVO, nextStatus: '0' | '1') => void;
-  onAddLawyer: (item: SealVO) => void;
-  onEditLawyer: (item: SealVO) => void;
-  onDeleteLawyer: (item: SealVO) => void;
+  onAddFilingAccount: (item: SealVO) => void;
+  onEditFilingAccount: (item: SealVO) => void;
+  onDeleteFilingAccount: (item: SealVO) => void;
 };
 
 const SealCard = ({
   item,
-  isLawyerSeal,
+  supportsFilingAccount,
   sealTypeList,
   switching,
   onEdit,
   onDelete,
   onToggleStatus,
-  onAddLawyer,
-  onEditLawyer,
-  onDeleteLawyer,
+  onAddFilingAccount,
+  onEditFilingAccount,
+  onDeleteFilingAccount,
 }: SealCardProps) => {
   const { token } = theme.useToken();
   const docs = item.instrumentTypeCodeList ?? item.instrumentTypeCodes ?? [];
@@ -118,29 +118,34 @@ const SealCard = ({
             <span className="text-zinc-400">未配置</span>
           )}
         </div>
-        {isLawyerSeal ? (
+        {supportsFilingAccount ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-zinc-500">律师账号</span>
+            <span className="text-zinc-500">立案账号</span>
             {item.lawyerUsername ? (
               <span className="flex min-w-0 items-center gap-1">
-                <span className="truncate text-zinc-900">
+                <span className="min-w-0 truncate text-right text-zinc-900">
                   {item.lawyerUsername}
+                  {item.accountIdentity ? (
+                    <span className="ml-1 text-zinc-400">
+                      {item.accountIdentity}
+                    </span>
+                  ) : null}
                 </span>
-                <Tooltip title="编辑律师账号">
+                <Tooltip title="编辑立案账号">
                   <Button
                     type="text"
                     size="small"
                     icon={<EditOutlined />}
-                    onClick={() => onEditLawyer(item)}
+                    onClick={() => onEditFilingAccount(item)}
                   />
                 </Tooltip>
-                <Tooltip title="删除律师账号">
+                <Tooltip title="删除立案账号">
                   <Button
                     type="text"
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
-                    onClick={() => onDeleteLawyer(item)}
+                    onClick={() => onDeleteFilingAccount(item)}
                   />
                 </Tooltip>
               </span>
@@ -149,9 +154,9 @@ const SealCard = ({
                 type="link"
                 size="small"
                 icon={<PlusOutlined />}
-                onClick={() => onAddLawyer(item)}
+                onClick={() => onAddFilingAccount(item)}
               >
-                添加律师账号
+                添加立案账号
               </Button>
             )}
           </div>

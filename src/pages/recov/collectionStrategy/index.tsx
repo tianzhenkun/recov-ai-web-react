@@ -41,6 +41,8 @@ import {
   buildInitialFlowModuleMap,
   type FlowModuleMeta,
   failStrategyLabelMap,
+  findCallConfigByKey,
+  getCallConfigKey,
   getFlowIconComponent,
   getFlowModuleMeta,
   getNodeIdentityDisplayText,
@@ -49,6 +51,7 @@ import {
   type PreviewStep,
   resolveFlowPreviewColumns,
   skipStrategyLabelMap,
+  sortCallConfigsByIdentity,
   upsertNodeTypeMeta,
 } from './_shared';
 
@@ -75,7 +78,7 @@ const STRATEGY_CORE_FEATURES: TemplateEditorFeatures = {
 };
 
 type CallConfigForm = {
-  id: number | null;
+  id: number | string | null;
   identityName: string;
   strategyCore: string;
   speakingStyle: string;
@@ -253,7 +256,7 @@ const CollectionStrategyPage = () => {
   }, [flowPreviewColumns, previewSteps]);
 
   const callConfigTabKey = useMemo(
-    () => (callConfigForm.id == null ? '' : String(callConfigForm.id)),
+    () => getCallConfigKey(callConfigForm.id),
     [callConfigForm.id],
   );
 
@@ -371,8 +374,9 @@ const CollectionStrategyPage = () => {
           openingTemplate: config.openingTemplate ?? '',
           personaId: (config.personaId ?? personaId ?? 0) as number,
         }));
-        setCallConfigList(normalized);
-        fillCallConfigForm(normalized[0] ?? null, personaId);
+        const sorted = sortCallConfigsByIdentity(normalized);
+        setCallConfigList(sorted);
+        fillCallConfigForm(sorted[0] ?? null, personaId);
       } catch (error) {
         if (requestSeq !== loadCallConfigRequestSeqRef.current) return;
         console.error('加载外呼策略配置失败', error);
@@ -464,16 +468,14 @@ const CollectionStrategyPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const setActiveCallConfig = (configId: number | null) => {
-    const next = callConfigList.find((item) => item.id === configId) ?? null;
+  const setActiveCallConfig = (configKey: string) => {
+    const next = findCallConfigByKey(callConfigList, configKey);
     fillCallConfigForm(next, activePersonaId);
   };
 
   const handleCallConfigTabChange = async (key: string) => {
     if (key === callConfigTabKey) return;
-    const nextId = Number(key);
-    if (!Number.isFinite(nextId)) return;
-    setActiveCallConfig(nextId);
+    setActiveCallConfig(key);
   };
 
   const handlePersonaTabClick = (personaId: PersonaId) => {
@@ -490,7 +492,7 @@ const CollectionStrategyPage = () => {
   };
 
   const openCallConfigEditor = () => {
-    if (!callConfigForm.id) {
+    if (callConfigForm.id == null) {
       messageApi.warning('请选择外呼策略配置');
       return;
     }
@@ -503,7 +505,7 @@ const CollectionStrategyPage = () => {
   };
 
   const saveCallConfig = async () => {
-    if (!callConfigForm.id) {
+    if (callConfigForm.id == null) {
       messageApi.warning('请选择外呼策略配置');
       return;
     }
@@ -534,7 +536,7 @@ const CollectionStrategyPage = () => {
       };
       setCallConfigList((prev) =>
         prev.map((item) =>
-          item.id === callConfigForm.id
+          getCallConfigKey(item.id) === getCallConfigKey(callConfigForm.id)
             ? {
                 ...item,
                 strategyCore: nextCallConfigForm.strategyCore,
@@ -746,7 +748,9 @@ const CollectionStrategyPage = () => {
                         shape="circle"
                         aria-label="编辑"
                         icon={<EditOutlined />}
-                        disabled={!callConfigForm.id || callConfigLoading}
+                        disabled={
+                          callConfigForm.id == null || callConfigLoading
+                        }
                         onClick={openCallConfigEditor}
                       />
                     </Tooltip>
@@ -762,7 +766,7 @@ const CollectionStrategyPage = () => {
                               void handleCallConfigTabChange(key)
                             }
                             items={callConfigList.map((config) => ({
-                              key: String(config.id),
+                              key: getCallConfigKey(config.id),
                               label:
                                 config.identityName?.trim() || '未命名身份',
                             }))}

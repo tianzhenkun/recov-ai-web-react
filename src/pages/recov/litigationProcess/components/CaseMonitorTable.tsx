@@ -142,8 +142,10 @@ const renderCell = (row: DisplayRow, column: ColumnSchema) => {
         </Text>
       );
     case 'days':
-      return (
+      return Number(value) > 0 ? (
         <Tag color={getOverdueDaysColor(Number(value))}>{`${value} 天`}</Tag>
+      ) : (
+        '-'
       );
     case 'status':
       return (

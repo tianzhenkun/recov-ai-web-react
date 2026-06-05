@@ -67,7 +67,7 @@ export interface UpdateFlowTemplateDTO {
  * 画像外呼策略。
  */
 export interface CallConfigVO {
-  id: number;
+  id: number | string;
   tenantId?: string;
   identityName?: string;
   strategyCore?: string;

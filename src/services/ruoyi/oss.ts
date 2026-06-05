@@ -82,10 +82,7 @@ export const deleteOss = (ossIds: number | string | (number | string)[]) =>
     method: 'delete',
   });
 
-export const downloadOss = async (
-  ossId: number | string,
-  filename = `oss_${ossId}`,
-) => {
+export const getOssBlob = async (ossId: number | string) => {
   const blob = await ruoyiRequest<Blob>(`/resource/oss/download/${ossId}`, {
     method: 'get',
     responseType: 'blob',
@@ -97,5 +94,13 @@ export const downloadOss = async (
     throw new Error(result.msg || '下载文件失败');
   }
 
+  return blob;
+};
+
+export const downloadOss = async (
+  ossId: number | string,
+  filename = `oss_${ossId}`,
+) => {
+  const blob = await getOssBlob(ossId);
   saveBlob(blob, filename);
 };

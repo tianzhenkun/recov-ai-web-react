@@ -29,7 +29,7 @@ describe('FeedbackFeed', () => {
     expect(document.querySelector('.ant-empty')).toBeTruthy();
   });
 
-  it('caps every feedback card height when the right feed is full', () => {
+  it('keeps feedback cards equal height while filling the right feed area', () => {
     render(
       <FeedbackFeed
         items={Array.from({ length: 5 }, (_, index) =>
@@ -41,11 +41,22 @@ describe('FeedbackFeed', () => {
     );
 
     const firstCard = screen.getByText('业主 1').closest('button');
+    const feed = firstCard?.parentElement;
+    const summary = screen
+      .getAllByText(/客户反馈需要再次确认还款计划/)[0]
+      .closest('.ant-typography') as HTMLElement | null;
 
+    expect(feed?.className).toContain('grid');
+    expect(feed?.className).toContain('overflow-hidden');
+    expect(feed?.style.gridTemplateRows).toBe('repeat(5, minmax(0, 1fr))');
     expect(firstCard).toBeTruthy();
-    expect(firstCard?.style.maxHeight).toBe('120px');
+    expect(firstCard?.style.maxHeight).toBe('');
     expect(firstCard?.style.overflow).toBe('hidden');
-    expect(firstCard?.className).toContain('shrink-0');
-    expect(firstCard?.className).not.toContain('h-full');
+    expect(firstCard?.className).toContain('h-full');
+    expect(firstCard?.className).toContain('min-h-0');
+    expect(summary?.className).toContain('feedback-summary-clamp');
+    expect(summary?.style.getPropertyValue('--feedback-summary-lines')).toBe(
+      '2',
+    );
   });
 });

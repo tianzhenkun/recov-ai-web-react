@@ -100,6 +100,27 @@
   margin-bottom: 0;
 }
 
+.template-editor-body .ProseMirror h1,
+.template-editor-body .ProseMirror h2,
+.template-editor-body .ProseMirror h3 {
+  margin: 0 0 16px;
+  color: rgba(0, 0, 0, 0.88);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.template-editor-body .ProseMirror h1 {
+  font-size: 24px;
+}
+
+.template-editor-body .ProseMirror h2 {
+  font-size: 20px;
+}
+
+.template-editor-body .ProseMirror h3 {
+  font-size: 18px;
+}
+
 .template-editor-body .ProseMirror ul,
 .template-editor-body .ProseMirror ol {
   margin: 0 0 12px;
@@ -140,15 +161,16 @@
 }
 
 .template-editor-body .tiptap-variable {
-  display: inline-block;
-  margin: 0 2px;
-  padding: 2px 8px;
+  display: inline;
+  margin: 0;
+  padding: 0 4px;
   border: 1px solid var(--template-editor-variable-border, #b3d8ff);
   border-radius: 4px;
   background: var(--template-editor-variable-bg, #ecf5ff);
   color: var(--template-editor-variable-color, #1677ff);
-  font-size: 13px;
+  font-size: inherit;
   font-weight: 500;
+  line-height: 1.4;
   user-select: none;
   vertical-align: baseline;
   white-space: nowrap;
@@ -156,8 +178,12 @@
 
 .template-editor-body .instrument-seal-placeholder {
   position: relative;
-  display: inline-block;
-  width: 36mm;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6mm;
+  width: auto;
+  min-width: 36mm;
   height: 36mm;
   border: 1px dashed #cbd5e1;
   border-radius: 4px;
@@ -182,7 +208,7 @@
   color: #94a3b8;
   font-size: 12px;
   letter-spacing: 0;
-  content: "签章位置";
+  content: "签章组";
   pointer-events: none;
 }
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import { listOssByIds } from '@/services/ruoyi/oss';
 import {
-  deleteLawyerAccount,
+  deleteFilingAccount,
   delSeal,
   listSeal,
   listSealType,
@@ -42,8 +42,10 @@ type LawyerModalState = {
   open: boolean;
   mode: 'add' | 'edit';
   sealId: number | string;
+  sealCode?: SealCode;
   sealName: string;
   initialUsername?: string;
+  initialIdentity?: string;
 };
 
 const SmartSealConfigPage = () => {
@@ -196,33 +198,36 @@ const SmartSealConfigPage = () => {
     });
   };
 
-  const handleAddLawyer = (item: SealVO) => {
+  const handleAddFilingAccount = (item: SealVO) => {
     setLawyerModalState({
       open: true,
       mode: 'add',
       sealId: item.id,
+      sealCode: item.sealCode as SealCode,
       sealName: item.sealName,
     });
   };
 
-  const handleEditLawyer = (item: SealVO) => {
+  const handleEditFilingAccount = (item: SealVO) => {
     setLawyerModalState({
       open: true,
       mode: 'edit',
       sealId: item.id,
+      sealCode: item.sealCode as SealCode,
       sealName: item.sealName,
       initialUsername: item.lawyerUsername ?? '',
+      initialIdentity: item.accountIdentity ?? '',
     });
   };
 
-  const handleDeleteLawyer = (item: SealVO) => {
+  const handleDeleteFilingAccount = (item: SealVO) => {
     confirmDelete<SealVO>({
       records: [item],
-      entityName: '律师账号',
+      entityName: '立案账号',
       getName: (rec) => rec.lawyerUsername ?? rec.sealName,
-      description: '删除后该印章将无法使用律师签章能力。',
+      description: '删除后该印章将无法使用立案账号能力。',
       onConfirm: async () => {
-        await deleteLawyerAccount(item.id);
+        await deleteFilingAccount(item.id);
       },
       onSuccess: () => {
         void loadAllSeals();
@@ -297,15 +302,18 @@ const SmartSealConfigPage = () => {
                   <SealCard
                     key={item.id}
                     item={item}
-                    isLawyerSeal={activeSealCode === 'lawyer_seal'}
+                    supportsFilingAccount={
+                      activeSealCode === 'company_seal' ||
+                      activeSealCode === 'lawyer_seal'
+                    }
                     sealTypeList={sealTypeList}
                     switching={switchingId === item.id}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onToggleStatus={handleToggleStatus}
-                    onAddLawyer={handleAddLawyer}
-                    onEditLawyer={handleEditLawyer}
-                    onDeleteLawyer={handleDeleteLawyer}
+                    onAddFilingAccount={handleAddFilingAccount}
+                    onEditFilingAccount={handleEditFilingAccount}
+                    onDeleteFilingAccount={handleDeleteFilingAccount}
                   />
                 ))}
               </div>
@@ -330,8 +338,10 @@ const SmartSealConfigPage = () => {
         open={lawyerModalState.open}
         mode={lawyerModalState.mode}
         sealId={lawyerModalState.sealId}
+        sealCode={lawyerModalState.sealCode}
         sealName={lawyerModalState.sealName}
         initialUsername={lawyerModalState.initialUsername}
+        initialIdentity={lawyerModalState.initialIdentity}
         onClose={closeLawyerModal}
         onSaved={handleLawyerSaved}
         messageApi={messageApi}

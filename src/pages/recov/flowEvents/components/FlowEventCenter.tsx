@@ -17,7 +17,6 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
 import React, {
   useCallback,
   useEffect,
@@ -39,8 +38,6 @@ import {
   markAllFlowEventsRead,
   normalizeFlowEventPageResult,
 } from '@/services/ruoyi/flowEvent';
-
-dayjs.extend(relativeTime);
 
 const { Text } = Typography;
 
@@ -64,15 +61,6 @@ const scopeMeta: Record<string, { color: string; label: string }> = {
   business: { color: 'gold', label: '业务' },
 };
 
-const eventTypeColor = (eventType?: string) => {
-  if (!eventType) return 'default';
-  if (eventType.includes('failed')) return 'error';
-  if (eventType.includes('completed')) return 'success';
-  if (eventType.includes('terminated')) return 'default';
-  if (eventType.includes('delayed')) return 'warning';
-  return 'processing';
-};
-
 const toText = (value: unknown) =>
   value === null || value === undefined || value === '' ? '-' : String(value);
 
@@ -85,7 +73,7 @@ const formatEventTime = (value?: string) => {
   if (!value) return '-';
   const dateValue = dayjs(value);
   if (!dateValue.isValid()) return value;
-  return `${dateValue.format('YYYY-MM-DD HH:mm:ss')} · ${dateValue.fromNow()}`;
+  return dateValue.format('YYYY-MM-DD HH:mm:ss');
 };
 
 const formatStructuredText = (value: unknown) => {
@@ -240,18 +228,9 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
         },
       },
       {
-        title: '事件类型',
-        dataIndex: 'eventType',
-        width: 140,
-        align: 'center',
-        render: (value) => (
-          <Tag color={eventTypeColor(String(value || ''))}>{toText(value)}</Tag>
-        ),
-      },
-      {
         title: '节点名称',
         dataIndex: 'nodeName',
-        width: 140,
+        width: 220,
         render: (value) => toText(value),
       },
       {
@@ -262,7 +241,7 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
           toText(buildFlowEventDisplaySummary(record)),
       },
       {
-        title: '流程实例 ID',
+        title: '流程批次',
         dataIndex: 'instanceId',
         width: 180,
         ellipsis: true,
@@ -330,7 +309,7 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
 
   const eventListContent = (
     <RecovListStack className="min-h-0">
-      <RecovTableCard title="流程事件列表">
+      <RecovTableCard title="流程事件">
         <Form form={form} className="recov-table-toolbar">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Space wrap size={12}>
@@ -400,7 +379,7 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
             },
           }}
           rowKey={getEventRowKey}
-          scroll={{ x: 1600 }}
+          scroll={{ x: 1500 }}
         />
       </RecovTableCard>
     </RecovListStack>
@@ -412,10 +391,11 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
       <Tabs
         className="flow-event-center-tabs flex min-h-0 flex-1 flex-col"
         defaultActiveKey="events"
+        destroyOnHidden
         items={[
           {
             key: 'events',
-            label: '流程事件列表',
+            label: '流程事件',
             children: eventListContent,
           },
           {
@@ -437,6 +417,18 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
       >
         {detailRecord ? (
           <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="事件 ID">
+              {toText(detailRecord.id)}
+            </Descriptions.Item>
+            <Descriptions.Item label="流程批次">
+              {toText(detailRecord.instanceId)}
+            </Descriptions.Item>
+            <Descriptions.Item label="任务 ID">
+              {toText(detailRecord.taskId)}
+            </Descriptions.Item>
+            <Descriptions.Item label="资产编号">
+              {toText(detailRecord.debtNumber)}
+            </Descriptions.Item>
             <Descriptions.Item label="事件标题">
               {toText(detailRecord.eventTitle)}
             </Descriptions.Item>
@@ -449,23 +441,14 @@ const FlowEventCenter = ({ onEventsRead }: FlowEventCenterProps) => {
             <Descriptions.Item label="失败原因">
               {renderDetailText(detailRecord.reasonText)}
             </Descriptions.Item>
-            <Descriptions.Item label="事件类型">
-              {toText(detailRecord.eventType)}
-            </Descriptions.Item>
             <Descriptions.Item label="节点名称">
               {toText(detailRecord.nodeName)}
             </Descriptions.Item>
-            <Descriptions.Item label="流程实例 ID">
-              {toText(detailRecord.instanceId)}
-            </Descriptions.Item>
-            <Descriptions.Item label="任务 ID">
-              {toText(detailRecord.taskId)}
-            </Descriptions.Item>
-            <Descriptions.Item label="资产编号">
-              {toText(detailRecord.debtNumber)}
-            </Descriptions.Item>
             <Descriptions.Item label="创建时间">
               {formatEventTime(detailRecord.createTime)}
+            </Descriptions.Item>
+            <Descriptions.Item label="事件类型">
+              {toText(detailRecord.eventType)}
             </Descriptions.Item>
             <Descriptions.Item label="变更前数据">
               {renderDetailText(detailRecord.beforeData)}

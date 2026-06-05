@@ -11,10 +11,12 @@ export const PAGE_TITLE = '诉讼策略配置';
 
 export const TAB_LITIGATION = 'litigation';
 export const TAB_AUTO_COLLECTION = 'autoCollection';
+export const TAB_LAWYER_COURT = 'lawyerCourt';
 
 export type LitigationTabKey =
   | typeof TAB_LITIGATION
-  | typeof TAB_AUTO_COLLECTION;
+  | typeof TAB_AUTO_COLLECTION
+  | typeof TAB_LAWYER_COURT;
 
 export type LitigationConfigSnapshot = Pick<
   LitigationConfigVo,

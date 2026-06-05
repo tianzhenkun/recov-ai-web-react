@@ -1,7 +1,7 @@
 import type {
   AmountRangeType,
-  CityTierMatrix,
   FeeRateConfig,
+  FeeTierMatrix,
   OverduePeriodRow,
 } from '@/services/ruoyi/fee';
 
@@ -26,18 +26,18 @@ export const AMOUNT_RANGES: {
 ];
 
 export type FeeTableRow = OverduePeriodRow & {
-  tierName: string;
-  cityTier: string;
+  feeTierName: string;
+  feeTier: string;
 };
 
-export const flattenFeeMatrix = (matrix: CityTierMatrix[]): FeeTableRow[] => {
+export const flattenFeeMatrix = (matrix: FeeTierMatrix[]): FeeTableRow[] => {
   const result: FeeTableRow[] = [];
-  for (const city of matrix) {
-    for (const row of city.rows) {
+  for (const tier of matrix) {
+    for (const row of tier.rows) {
       result.push({
         ...row,
-        tierName: city.tierName,
-        cityTier: city.cityTier,
+        feeTierName: tier.feeTierName,
+        feeTier: tier.feeTier,
       });
     }
   }
@@ -55,8 +55,37 @@ export const getFeeRate = (
 export const formatFeeRate = (value: number): string =>
   `${Number(value || 0).toFixed(2)}%`;
 
+const FEE_TIER_DISPLAY_MAP: Record<string, string> = {
+  TIER_1: '一线城市',
+  TIER_2: '二线城市',
+  TIER_3: '三线及以下城市',
+  OTHER: '其他城市',
+  一级: '一线城市',
+  二级: '二线城市',
+  三级: '三线及以下城市',
+  其他: '其他城市',
+};
+
+export const formatFeeTierDisplay = (
+  feeTier?: string,
+  feeTierName?: string,
+): string => {
+  const tierKey = String(feeTier || '').toUpperCase();
+  if (FEE_TIER_DISPLAY_MAP[tierKey]) {
+    return FEE_TIER_DISPLAY_MAP[tierKey];
+  }
+
+  const name = feeTierName || feeTier || '-';
+  return FEE_TIER_DISPLAY_MAP[name] ?? name;
+};
+
+export const formatOverduePeriodDisplay = (periodName?: string): string => {
+  if (periodName === '涉及诉讼未结') return '涉及司法诉讼';
+  return periodName || '-';
+};
+
 export const getCurrentRangeLabel = (rangeType: string): string =>
   AMOUNT_RANGES.find((item) => item.type === rangeType)?.label ?? rangeType;
 
 export const getRowKey = (row: FeeTableRow): string =>
-  `${row.cityTier}-${row.overduePeriod}`;
+  `${row.feeTier}-${row.overduePeriod}`;

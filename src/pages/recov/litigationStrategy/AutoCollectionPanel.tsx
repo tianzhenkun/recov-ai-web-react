@@ -73,8 +73,8 @@ const AutoCollectionPanel = ({
         <div className="grid grid-cols-1 gap-x-6 md:grid-cols-3">
           <Form.Item
             name="collectionAmountLimit"
-            label="催收金额 ≤"
-            rules={[{ required: true, message: '请输入催收金额上限' }]}
+            label="单笔金额≤"
+            rules={[{ required: true, message: '请输入单笔金额上限' }]}
           >
             <InputNumber
               style={{ width: '100%' }}
@@ -99,8 +99,8 @@ const AutoCollectionPanel = ({
 
           <Form.Item
             name="recallDays"
-            label="距开庭剩余天数 ≤"
-            rules={[{ required: true, message: '请输入距打回账天数' }]}
+            label="距开庭剩余天数仍未匹配到开庭律师"
+            rules={[{ required: true, message: '请输入距开庭剩余天数' }]}
           >
             <InputNumber style={{ width: '100%' }} min={0} suffix="天" />
           </Form.Item>

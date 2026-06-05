@@ -37,6 +37,69 @@ jest.mock('./service', () => ({
   getAiCallDebtTimeline: jest.fn(),
 }));
 
+jest.mock('@ant-design/plots', () => {
+  const React = require('react');
+  return {
+    Column: (props: {
+      height?: number;
+      scale?: { x?: { paddingInner?: number; paddingOuter?: number } };
+      axis?: {
+        x?: {
+          labelAutoEllipsis?: boolean;
+          labelAutoHide?: boolean;
+          labelAutoRotate?: boolean;
+        };
+        y?: {
+          title?: boolean | string;
+          labelFormatter?: (value: number | string) => string;
+          tickFilter?: (value: number | string) => boolean;
+        };
+      };
+      label?: {
+        position?: string;
+        text?: (datum: { percentage?: number }) => string;
+      };
+      slider?: { x?: boolean };
+      style?: {
+        columnWidthRatio?: number;
+        maxWidth?: number;
+        minWidth?: number;
+      };
+      xField?: string;
+      yField?: string;
+    }) =>
+      React.createElement('div', {
+        'data-testid': 'semantic-persona-distribution-chart',
+        'data-height': String(props.height || ''),
+        'data-x-field': props.xField || '',
+        'data-y-field': props.yField || '',
+        'data-x-padding-inner': String(props.scale?.x?.paddingInner || ''),
+        'data-x-label-auto-ellipsis': String(
+          props.axis?.x?.labelAutoEllipsis || '',
+        ),
+        'data-x-label-auto-hide': String(props.axis?.x?.labelAutoHide || ''),
+        'data-x-label-auto-rotate': String(
+          props.axis?.x?.labelAutoRotate || '',
+        ),
+        'data-y-axis-title': props.axis?.y?.title || '',
+        'data-y-label-zero': props.axis?.y?.labelFormatter?.(0) || '',
+        'data-y-label-one-hundred': props.axis?.y?.labelFormatter?.(100) || '',
+        'data-y-tick-filter-negative': String(
+          props.axis?.y?.tickFilter?.(-1) ?? '',
+        ),
+        'data-y-tick-filter-fifty': String(
+          props.axis?.y?.tickFilter?.(50) ?? '',
+        ),
+        'data-label-position': props.label?.position || '',
+        'data-label-text': props.label?.text?.({ percentage: 100 }) || '',
+        'data-slider-x': String(props.slider?.x || ''),
+        'data-column-width-ratio': String(props.style?.columnWidthRatio || ''),
+        'data-column-min-width': String(props.style?.minWidth || ''),
+        'data-column-max-width': String(props.style?.maxWidth || ''),
+      }),
+  };
+});
+
 jest.mock('./MetricsRow', () => {
   const React = require('react');
   return () => React.createElement('div', { 'data-testid': 'metrics-row' });
@@ -128,6 +191,132 @@ describe('IntelligentOutboundPage', () => {
         skippedCount: 0,
       },
     });
+  });
+
+  it('renders semantic persona distribution from dashboard data', async () => {
+    getAiCallDashboardMock.mockResolvedValue({
+      data: {
+        semanticPersonaTotal: 3,
+        semanticPersonaDistribution: [
+          {
+            personaId: 11,
+            personaName: '投诉挂钩型',
+            count: 2,
+            percentage: 66.67,
+          },
+          {
+            personaId: 12,
+            personaName: '疏忽遗忘型',
+            count: 1,
+            percentage: 33.33,
+          },
+        ],
+      },
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    expect(await screen.findByText('语义画像分布')).toBeTruthy();
+    expect(
+      await screen.findByTestId('semantic-persona-distribution-chart'),
+    ).toBeTruthy();
+    expect(screen.queryByText('共 3 个画像结果')).toBeNull();
+  });
+
+  it('places semantic persona distribution below monitor and feedback sections', async () => {
+    getAiCallDashboardMock.mockResolvedValue({
+      data: {
+        semanticPersonaTotal: 1,
+        semanticPersonaDistribution: [
+          {
+            personaId: 11,
+            personaName: '恶意对抗型',
+            count: 1,
+            percentage: 100,
+          },
+        ],
+      },
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    const liveMonitor = await screen.findByTestId('live-monitor-card');
+    const feedbackFeed = await screen.findByTestId('feedback-feed');
+    const chart = await screen.findByTestId(
+      'semantic-persona-distribution-chart',
+    );
+
+    expect(
+      liveMonitor.compareDocumentPosition(chart) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      feedbackFeed.compareDocumentPosition(chart) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('uses dashboard aging-analysis column style for a single semantic persona result', async () => {
+    getAiCallDashboardMock.mockResolvedValue({
+      data: {
+        semanticPersonaTotal: 1,
+        semanticPersonaDistribution: [
+          {
+            personaId: 11,
+            personaName: '恶意对抗型',
+            count: 1,
+            percentage: 100,
+          },
+        ],
+      },
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    const chart = await screen.findByTestId(
+      'semantic-persona-distribution-chart',
+    );
+
+    expect(chart.getAttribute('data-height')).toBe('300');
+    expect(chart.getAttribute('data-x-field')).toBe('personaName');
+    expect(chart.getAttribute('data-y-field')).toBe('percentage');
+    expect(chart.getAttribute('data-x-padding-inner')).toBe('0.8');
+    expect(chart.getAttribute('data-column-width-ratio')).toBe('0.2');
+    expect(chart.getAttribute('data-column-min-width')).toBe('18');
+    expect(chart.getAttribute('data-column-max-width')).toBe('18');
+    expect(chart.getAttribute('data-y-axis-title')).toBe('');
+    expect(chart.getAttribute('data-y-label-zero')).toBe('0%');
+    expect(chart.getAttribute('data-y-label-one-hundred')).toBe('100%');
+    expect(chart.getAttribute('data-y-tick-filter-negative')).toBe('false');
+    expect(chart.getAttribute('data-y-tick-filter-fifty')).toBe('true');
+    expect(chart.getAttribute('data-label-position')).toBe('top');
+    expect(chart.getAttribute('data-label-text')).toBe('100%');
+    expect(screen.getByText('恶意对抗型 100%')).toBeTruthy();
+  });
+
+  it('protects horizontal axis readability when semantic persona categories are many', async () => {
+    getAiCallDashboardMock.mockResolvedValue({
+      data: {
+        semanticPersonaTotal: 12,
+        semanticPersonaDistribution: Array.from({ length: 12 }, (_, index) => ({
+          personaId: index + 1,
+          personaName: `画像${index + 1}`,
+          count: 1,
+          percentage: 8.33,
+        })),
+      },
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    const chart = await screen.findByTestId(
+      'semantic-persona-distribution-chart',
+    );
+
+    expect(chart.getAttribute('data-slider-x')).toBe('true');
+    expect(chart.getAttribute('data-x-label-auto-ellipsis')).toBe('true');
+    expect(chart.getAttribute('data-x-label-auto-hide')).toBe('true');
+    expect(chart.getAttribute('data-x-label-auto-rotate')).toBe('true');
   });
 
   it('starts AI outbound with all-scope confirmation and an empty filter', async () => {

@@ -826,6 +826,7 @@ const FloatingProcessPanel: React.FC<FloatingProcessPanelProps> = ({
   const hasUnread = hasControlledUnread
     ? Boolean(hasUnreadProp)
     : internalHasUnread;
+  const showCollapsedUnreadDot = hasUnread && !expanded;
   const contentLayoutKey = `${loading ? 'loading' : 'ready'}:${items.length}:${itemsSignature}:${emptyText}`;
   const detailItems = detailItem ? buildDetailItems(detailItem) : [];
 
@@ -895,6 +896,7 @@ const FloatingProcessPanel: React.FC<FloatingProcessPanelProps> = ({
 
     const handlePointerDownOutside = (event: PointerEvent) => {
       if (dragStateRef.current) return;
+      if (detailItem) return;
 
       const shell = shellRef.current;
       const target = event.target;
@@ -908,7 +910,7 @@ const FloatingProcessPanel: React.FC<FloatingProcessPanelProps> = ({
     return () => {
       document.removeEventListener('pointerdown', handlePointerDownOutside);
     };
-  }, [expanded]);
+  }, [detailItem, expanded]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -1268,7 +1270,7 @@ const FloatingProcessPanel: React.FC<FloatingProcessPanelProps> = ({
                   style={isDockedCollapsed ? dockedBadgeStyle : badgeStyle}
                 >
                   <RobotOutlined />
-                  {hasUnread ? (
+                  {showCollapsedUnreadDot ? (
                     <span
                       aria-hidden
                       className={

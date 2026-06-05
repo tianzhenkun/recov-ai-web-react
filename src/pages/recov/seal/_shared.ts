@@ -187,6 +187,7 @@ export const defaultLawyerForm = (): LawyerModalState => ({
   sealName: '',
   lawyerUsername: '',
   lawyerPassword: '',
+  accountIdentity: '律师用户',
 });
 
 /**

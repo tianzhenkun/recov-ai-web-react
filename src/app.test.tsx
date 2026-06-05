@@ -1,8 +1,15 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { createElement } from 'react';
 
 const mockCallOrder: string[] = [];
 const mockFloatingProcessPanelProps: any[] = [];
+const mockSseListeners: any[] = [];
 
 const mockHistory = {
   location: {
@@ -50,7 +57,10 @@ jest.mock('@/adapters/ruoyi/message', () => ({
 }));
 
 jest.mock('@/adapters/ruoyi/sse', () => ({
-  subscribeSseMessage: jest.fn(() => jest.fn()),
+  subscribeSseMessage: jest.fn((listener) => {
+    mockSseListeners.push(listener);
+    return jest.fn();
+  }),
 }));
 
 jest.mock('@/components', () => ({
@@ -71,6 +81,15 @@ jest.mock('@/components', () => ({
           onClick: () => props.onExpandedChange?.(true),
         },
         '展开流程信息面板',
+      ),
+      React.createElement(
+        'button',
+        {
+          'data-testid': 'mock-flow-process-panel-collapse',
+          type: 'button',
+          onClick: () => props.onExpandedChange?.(false),
+        },
+        '收起流程信息面板',
       ),
       React.createElement(
         'button',
@@ -178,9 +197,10 @@ describe('layout floating process panel read state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFloatingProcessPanelProps.length = 0;
+    mockSseListeners.length = 0;
   });
 
-  it('marks visible flow events read after the floating panel is opened', async () => {
+  it('keeps unread dot on first open and marks visible events read after collapsing the floating panel', async () => {
     const flowEventService = require('@/services/ruoyi/flowEvent');
     flowEventService.getFlowEventUnreadCount.mockResolvedValue({ data: 1 });
     flowEventService.normalizeFlowEventUnreadCount
@@ -218,8 +238,53 @@ describe('layout floating process panel read state', () => {
         pageSize: 10,
       });
     });
+    expect(flowEventService.markAllFlowEventsRead).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockFloatingProcessPanelProps.at(-1)?.hasUnread).toBe(true);
+    });
+
+    fireEvent.click(screen.getByTestId('mock-flow-process-panel-collapse'));
+
     await waitFor(() => {
       expect(flowEventService.markAllFlowEventsRead).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('shows the unread dot immediately after a flow-event SSE signal while unread count refresh is pending', async () => {
+    const flowEventService = require('@/services/ruoyi/flowEvent');
+    flowEventService.getFlowEventUnreadCount
+      .mockResolvedValueOnce({ data: 0 })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    flowEventService.normalizeFlowEventUnreadCount.mockReturnValue(0);
+
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {},
+      },
+      setInitialState: jest.fn(),
+    });
+
+    render(config.childrenRender(createElement('div')));
+
+    await waitFor(() => {
+      expect(mockSseListeners).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(mockFloatingProcessPanelProps.at(-1)?.hasUnread).toBe(false);
+    });
+
+    await act(async () => {
+      mockSseListeners[0]({
+        data: { type: 'recov.flow_event.changed' },
+        event: 'message',
+        type: 'recov.flow_event.changed',
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockFloatingProcessPanelProps.at(-1)?.hasUnread).toBe(true);
     });
   });
 

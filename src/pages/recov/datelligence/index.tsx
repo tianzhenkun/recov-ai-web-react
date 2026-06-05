@@ -60,6 +60,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile, UploadProps } from 'antd/es/upload';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import PdfPreview from '@/components/PdfPreview';
 import TableActions, { type TableActionItem } from '@/components/TableActions';
 import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import MetricIcon, {
@@ -87,6 +88,14 @@ import {
   normalizePersonaId,
   resolveDebtRecordActionKeys,
 } from '@/pages/recov/datelligence/actionRules';
+import {
+  DATELLIGENCE_LIST_POLLING_INTERVAL,
+  shouldPollDatelligenceList,
+} from '@/pages/recov/datelligence/listPolling';
+import {
+  resolveDebtListStatusDisplay,
+  resolveDebtRawStatusDisplay,
+} from '@/pages/recov/datelligence/statusDisplay';
 import FlowTraceDrawer from '@/pages/recov/flow/components/FlowTraceDrawer';
 import {
   buildCommunicationDetail,
@@ -236,10 +245,11 @@ type AttachmentFileKind =
   | 'text'
   | 'unknown';
 
-type AttachmentPreviewType = 'image' | 'embed';
+type AttachmentPreviewType = 'image' | 'pdf' | 'embed';
 
 type AttachmentPreviewState = {
   open: boolean;
+  ossId?: number | string;
   fileUrl: string;
   fileName: string;
   previewType?: AttachmentPreviewType;
@@ -670,62 +680,30 @@ const getDebtorAgeText = (data?: DebtRecordDetail | null) => {
   return `${ageValue} 岁`;
 };
 
-const currentStatusTagColors: Record<string, string> = {
-  未开始: 'default',
-  发起中: 'processing',
-  已发起: 'processing',
-  待触发: 'warning',
-  执行中: 'processing',
-  已完成: 'success',
-  节点失败: 'error',
-  发起失败: 'error',
-  人工终止: 'warning',
-  已还款终止: 'success',
-  条件不满足终止: 'default',
-  未知状态: 'default',
-};
-
-const currentStatusDisplayLabels: Record<string, string> = {
-  节点失败: '流程异常',
-};
-
-const getCurrentStatusDisplayText = (status: unknown) => {
-  const text = String(status ?? '').trim();
-  if (!text) return '-';
-  return currentStatusDisplayLabels[text] || text;
-};
-
-const currentStatusTagColor = (status: unknown) => {
-  const text = String(status ?? '').trim();
-  if (!text) return undefined;
-  if (currentStatusTagColors[text]) return currentStatusTagColors[text];
-  if (/(完成|成功|已结清|已缴清)/.test(text)) return 'success';
-  if (/(失败|异常|逾期|拒绝)/.test(text)) return 'error';
-  if (/(进行|处理中|外呼中|执行中|发起中|已发起)/.test(text))
-    return 'processing';
-  if (/(暂停|停止|待处理|未开始|待触发|终止)/.test(text)) return 'warning';
-  return 'default';
-};
-
 const renderCurrentStatusTag = (
   status: unknown,
   currentStatusReason?: unknown,
   flowStartErrorMessage?: unknown,
+  options?: { preserveRaw?: boolean },
 ) => {
-  const tag = (
-    <Tag color={currentStatusTagColor(status)}>
-      {getCurrentStatusDisplayText(status)}
-    </Tag>
-  );
+  const display = options?.preserveRaw
+    ? resolveDebtRawStatusDisplay(status)
+    : resolveDebtListStatusDisplay(status);
+  const tag = <Tag color={display.color}>{display.text}</Tag>;
   const statusText = String(status ?? '').trim();
   const errorText =
     getNonEmptyText(currentStatusReason) ||
     (statusText === '发起失败' ? getNonEmptyText(flowStartErrorMessage) : '');
+  const rawStatusText =
+    !options?.preserveRaw && display.rawText && display.rawText !== display.text
+      ? `细分状态：${display.rawText}`
+      : '';
+  const tooltipText = [rawStatusText, errorText].filter(Boolean).join('\n');
 
-  if (errorText) {
+  if (tooltipText) {
     return (
       <Tooltip
-        title={<span style={{ whiteSpace: 'pre-wrap' }}>{errorText}</span>}
+        title={<span style={{ whiteSpace: 'pre-wrap' }}>{tooltipText}</span>}
       >
         {tag}
       </Tooltip>
@@ -1163,7 +1141,6 @@ const DatelligencePage = () => {
   const [pipelineStatus, setPipelineStatus] = useState<
     ImportPipelineStatus | ''
   >('');
-  const [pipelineErrorMessage, setPipelineErrorMessage] = useState('');
   const [pipelineSubTasks, setPipelineSubTasks] = useState<
     ImportPipelineSubTask[]
   >([]);
@@ -1240,61 +1217,67 @@ const DatelligencePage = () => {
     queryRef.current = query;
   }, [query]);
 
-  const fetchDebtors = useCallback(async (params: DebtRecordQuery) => {
-    requestSeqRef.current += 1;
-    const seq = requestSeqRef.current;
-    setLoading(true);
-    setCommunicationAnalysisDebtIds(new Set());
-    try {
-      const res = await getDebtRecordPage(params);
-      if (seq !== requestSeqRef.current) return;
-      const data = res.data ?? {};
-      const page = data.page ?? {};
-      const rows = page.rows ?? [];
-      const inlineAnalysisDebtIds = new Set(
-        rows
-          .filter(hasInlineCommunicationAnalysis)
-          .map((record) => normalizeDebtRecordId(record.id))
-          .filter(Boolean) as string[],
-      );
-
-      setRecordList(rows);
-      setRecordTotal(Number(page.total) || 0);
-      setStats(data.stats ?? {});
-      setCommunicationAnalysisDebtIds(inlineAnalysisDebtIds);
-
-      try {
-        const feedbackRes = await getAiCallDebtFeedbackPage({
-          pageNum: 1,
-          pageSize: ANALYSIS_LOOKUP_PAGE_SIZE,
-          analysisStatus: '2',
-        });
-        if (seq !== requestSeqRef.current) return;
-        const feedbackDebtIds = new Set(inlineAnalysisDebtIds);
-        for (const item of feedbackRes.rows || []) {
-          const debtId = getSemanticAnalysisDebtId(
-            item as Record<string, unknown>,
-          );
-          if (debtId) feedbackDebtIds.add(debtId);
-        }
-        setCommunicationAnalysisDebtIds(feedbackDebtIds);
-      } catch {
-        if (seq === requestSeqRef.current) {
-          setCommunicationAnalysisDebtIds(inlineAnalysisDebtIds);
-        }
-      }
-    } catch {
-      if (seq === requestSeqRef.current) {
-        setRecordList([]);
-        setRecordTotal(0);
+  const fetchDebtors = useCallback(
+    async (params: DebtRecordQuery, options?: { silent?: boolean }) => {
+      requestSeqRef.current += 1;
+      const seq = requestSeqRef.current;
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setLoading(true);
         setCommunicationAnalysisDebtIds(new Set());
       }
-    } finally {
-      if (seq === requestSeqRef.current) {
-        setLoading(false);
+      try {
+        const res = await getDebtRecordPage(params);
+        if (seq !== requestSeqRef.current) return;
+        const data = res.data ?? {};
+        const page = data.page ?? {};
+        const rows = page.rows ?? [];
+        const inlineAnalysisDebtIds = new Set(
+          rows
+            .filter(hasInlineCommunicationAnalysis)
+            .map((record) => normalizeDebtRecordId(record.id))
+            .filter(Boolean) as string[],
+        );
+
+        setRecordList(rows);
+        setRecordTotal(Number(page.total) || 0);
+        setStats(data.stats ?? {});
+        setCommunicationAnalysisDebtIds(inlineAnalysisDebtIds);
+
+        try {
+          const feedbackRes = await getAiCallDebtFeedbackPage({
+            pageNum: 1,
+            pageSize: ANALYSIS_LOOKUP_PAGE_SIZE,
+            analysisStatus: '2',
+          });
+          if (seq !== requestSeqRef.current) return;
+          const feedbackDebtIds = new Set(inlineAnalysisDebtIds);
+          for (const item of feedbackRes.rows || []) {
+            const debtId = getSemanticAnalysisDebtId(
+              item as Record<string, unknown>,
+            );
+            if (debtId) feedbackDebtIds.add(debtId);
+          }
+          setCommunicationAnalysisDebtIds(feedbackDebtIds);
+        } catch {
+          if (seq === requestSeqRef.current) {
+            setCommunicationAnalysisDebtIds(inlineAnalysisDebtIds);
+          }
+        }
+      } catch {
+        if (seq === requestSeqRef.current && !silent) {
+          setRecordList([]);
+          setRecordTotal(0);
+          setCommunicationAnalysisDebtIds(new Set());
+        }
+      } finally {
+        if (seq === requestSeqRef.current && !silent) {
+          setLoading(false);
+        }
       }
-    }
-  }, []);
+    },
+    [],
+  );
 
   const loadFilterOptions = useCallback(async () => {
     setFilterLoading(true);
@@ -1449,6 +1432,37 @@ const DatelligencePage = () => {
     void fetchDebtors(query);
   }, [fetchDebtors, loadFilterOptions, query]);
 
+  useEffect(() => {
+    const isPageVisible = () =>
+      typeof document === 'undefined' || document.visibilityState !== 'hidden';
+
+    const refreshListByPolling = () => {
+      if (
+        !shouldPollDatelligenceList({
+          pageVisible: isPageVisible(),
+          hasPipelinePolling: Boolean(pipelinePollingTimerRef.current),
+          hasOutboundFlowPolling: Boolean(outboundFlowPollingTimerRef.current),
+        })
+      ) {
+        return;
+      }
+
+      void fetchDebtors(queryRef.current, { silent: true });
+    };
+
+    const timer = window.setInterval(
+      refreshListByPolling,
+      DATELLIGENCE_LIST_POLLING_INTERVAL,
+    );
+
+    document.addEventListener('visibilitychange', refreshListByPolling);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshListByPolling);
+    };
+  }, [fetchDebtors]);
+
   useEffect(
     () => () => {
       stopPipelinePolling();
@@ -1492,7 +1506,7 @@ const DatelligencePage = () => {
       },
       {
         key: 'avgOverdueDays',
-        title: '平均账期',
+        title: '加权平均账期',
         value: formatStatValue(stats.avgOverdueDays, 'count', '天'),
         hint: '按金额加权统计',
         icon: <FieldTimeOutlined />,
@@ -1859,7 +1873,6 @@ const DatelligencePage = () => {
     });
     setPipelinePhase('');
     setPipelineStatus('');
-    setPipelineErrorMessage('');
     setPipelineSubTasks([]);
     setPipelineTiming({ startedAt: 0, finishedAt: 0 });
     if (parseState.failed) {
@@ -1928,7 +1941,6 @@ const DatelligencePage = () => {
       }
       setPipelineStatus(data.status || '');
       setPipelinePhase(data.phase || '');
-      setPipelineErrorMessage(data.errorMessage || '');
       setPipelineSubTasks(data.subTasks ?? []);
       setPipelineTiming({
         startedAt,
@@ -2078,7 +2090,6 @@ const DatelligencePage = () => {
         setPipelineTaskId('');
         setPipelineStatus('');
         setPipelinePhase('');
-        setPipelineErrorMessage('查询导入进度失败，请刷新页面重试');
         setPipelineSubTasks([]);
         setPipelineTiming({ startedAt: 0, finishedAt: 0 });
         setAssetParseUnmatchedSummary({ taskId: '', total: 0 });
@@ -2128,7 +2139,6 @@ const DatelligencePage = () => {
       setPipelineTaskId(normalizedTaskId);
       setPipelineStatus(options?.initialStatus || 'importing');
       setPipelinePhase(options?.initialPhase || '等待导入');
-      setPipelineErrorMessage('');
       setPipelineSubTasks([]);
       setRetryingPipelineTask(false);
       retryingPipelineTaskRef.current = false;
@@ -2231,7 +2241,6 @@ const DatelligencePage = () => {
           setPipelineTaskId('');
           setPipelineStatus('');
           setPipelinePhase('');
-          setPipelineErrorMessage('');
           setPipelineSubTasks([]);
         }
       } catch {
@@ -2989,7 +2998,12 @@ const DatelligencePage = () => {
         dataIndex: 'overdueDays',
         width: 120,
         align: 'center',
-        render: (value) => `${toNumber(value)} 天`,
+        render: (value) =>
+          toNumber(value) > 0 ? (
+            <Tag color="red">{toNumber(value)} 天</Tag>
+          ) : (
+            '-'
+          ),
       },
       {
         title: '创建时间',
@@ -3036,7 +3050,7 @@ const DatelligencePage = () => {
             },
             'flow-trace': {
               key: 'flow-trace',
-              label: isException ? '处理异常' : '查看进度',
+              label: isException ? '处理异常' : '查看流程',
               icon: getFlowActionIcon(isException),
               onClick: () => openFlowTrace(record),
             },
@@ -3120,9 +3134,11 @@ const DatelligencePage = () => {
 
     setAttachmentPreview({
       open: true,
+      ossId: record.ossId,
       fileUrl,
       fileName: getAttachmentName(record),
-      previewType: kind === 'image' ? 'image' : 'embed',
+      previewType:
+        kind === 'image' ? 'image' : kind === 'pdf' ? 'pdf' : 'embed',
       loading: kind === 'image',
       errorMessage: undefined,
     });
@@ -3420,7 +3436,6 @@ const DatelligencePage = () => {
   const hasAssetParseUnmatched = assetParseUnmatchedCount > 0;
   const hasTaskDetailFooter =
     canRetryPipelineFailures || canIgnorePipelineFailures;
-  const hasPipelineRootErrorDetail = Boolean(pipelineErrorMessage);
   const renderPipelineTaskCard = (task: ImportPipelineSubTask) => {
     const status = resolvePipelineTaskStatus(task);
     const current = Number(task.current) || 0;
@@ -4026,18 +4041,6 @@ const DatelligencePage = () => {
               </div>
             )}
 
-            {hasPipelineRootErrorDetail && (
-              <Alert
-                showIcon
-                type="error"
-                message="错误明细"
-                description={renderImportFailureMessage(pipelineErrorMessage, {
-                  maxHeight: 180,
-                  tone: 'danger',
-                })}
-              />
-            )}
-
             {!pipelineSubTasks.length &&
               (parseState.failed || personaState.failed) && (
                 <Space wrap>
@@ -4136,6 +4139,14 @@ const DatelligencePage = () => {
               {renderDetailSection('业主信息', [
                 { label: '业主姓名', content: toText(detailData.debtorName) },
                 { label: '电话号码', content: toText(detailData.debtorPhone) },
+                {
+                  label: '紧急联系人',
+                  content: toText(detailData.emergencyContact),
+                },
+                {
+                  label: '紧急联系人电话',
+                  content: toText(detailData.emergencyContactPhone),
+                },
                 { label: '业主邮箱', content: toText(detailData.debtorEmail) },
                 { label: '身份证号码', content: toText(detailData.debtIdCard) },
                 { label: '性别', content: getDebtorGenderText(detailData) },
@@ -4271,6 +4282,13 @@ const DatelligencePage = () => {
                 />
               </Spin>
             </Space>
+          ) : attachmentPreview.previewType === 'pdf' ? (
+            <PdfPreview
+              fileName={attachmentPreview.fileName}
+              height="70vh"
+              ossId={attachmentPreview.ossId}
+              url={attachmentPreview.fileUrl}
+            />
           ) : (
             <object
               data={attachmentPreview.fileUrl}
@@ -4503,6 +4521,7 @@ const DatelligencePage = () => {
                   flowStartFailureRecord.currentStatus,
                   flowStartFailureRecord.currentStatusReason,
                   flowStartFailureRecord.flowStartErrorMessage,
+                  { preserveRaw: true },
                 ),
               },
               {

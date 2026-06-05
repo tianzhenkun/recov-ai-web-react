@@ -1,17 +1,21 @@
 import {
+  BarChartOutlined,
   MessageOutlined,
   PhoneOutlined,
   ReloadOutlined,
   RightOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
+import { Column } from '@ant-design/plots';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
   Button,
+  Empty,
   Flex,
   Modal,
   message,
   Pagination,
+  Skeleton,
   Space,
   Tooltip,
   Typography,
@@ -65,11 +69,40 @@ import {
 const { Text } = Typography;
 
 const FLOW_START_POLLING_INTERVAL = 2000;
+const SEMANTIC_PERSONA_CHART_HEIGHT = 300;
+const SEMANTIC_PERSONA_COLUMN_WIDTH = 18;
+const SEMANTIC_PERSONA_AXIS_SLIDER_THRESHOLD = 10;
+
+const personaDistributionColors = [
+  '#3B82F6',
+  '#14B8A6',
+  '#F97316',
+  '#8B5CF6',
+  '#22C55E',
+  '#F43F5E',
+  '#6366F1',
+  '#06B6D4',
+  '#A855F7',
+  '#64748B',
+  '#94A3B8',
+];
 
 const toNumber = (value: unknown) => {
   if (value === null || value === undefined || value === '') return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const isPercentTick = (value: unknown) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 100;
+};
+
+const formatPercentTick = (value: unknown) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric)
+    ? `${Number(numeric.toFixed(2)).toLocaleString('zh-CN')}%`
+    : '';
 };
 
 const IntelligentOutboundPage = () => {
@@ -109,6 +142,23 @@ const IntelligentOutboundPage = () => {
 
   const overview = useMemo(() => buildOutboundOverview(dashboard), [dashboard]);
 
+  const semanticPersonaDistribution = useMemo(
+    () =>
+      (dashboard.semanticPersonaDistribution || [])
+        .map((item, index) => ({
+          personaId: String(item.personaId ?? item.personaName ?? index),
+          personaName: String(item.personaName || '未命名画像'),
+          count: toNumber(item.count),
+          percentage: Number(toNumber(item.percentage).toFixed(2)),
+          color:
+            personaDistributionColors[index % personaDistributionColors.length],
+        }))
+        .filter((item) => item.count > 0),
+    [dashboard.semanticPersonaDistribution],
+  );
+
+  const enableSemanticPersonaAxisSlider =
+    semanticPersonaDistribution.length > SEMANTIC_PERSONA_AXIS_SLIDER_THRESHOLD;
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true);
     try {
@@ -527,6 +577,102 @@ const IntelligentOutboundPage = () => {
             ) : null}
           </ProCard>
         </div>
+
+        <ProCard
+          title={
+            <Space>
+              <BarChartOutlined />
+              语义画像分布
+            </Space>
+          }
+          styles={{
+            body: {
+              padding: 16,
+            },
+          }}
+        >
+          {dashboardLoading && semanticPersonaDistribution.length === 0 ? (
+            <Skeleton.Node
+              active
+              style={{ width: '100%', height: SEMANTIC_PERSONA_CHART_HEIGHT }}
+            />
+          ) : semanticPersonaDistribution.length > 0 ? (
+            <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+              <Column
+                height={SEMANTIC_PERSONA_CHART_HEIGHT}
+                data={semanticPersonaDistribution as any}
+                xField="personaName"
+                yField="percentage"
+                axis={{
+                  x: {
+                    title: false,
+                    labelAutoEllipsis: enableSemanticPersonaAxisSlider,
+                    labelAutoHide: enableSemanticPersonaAxisSlider,
+                    labelAutoRotate: enableSemanticPersonaAxisSlider,
+                  },
+                  y: {
+                    title: false,
+                    gridLineDash: null,
+                    labelFormatter: formatPercentTick,
+                    tickFilter: isPercentTick,
+                  },
+                }}
+                scale={{
+                  x: { paddingInner: 0.8, paddingOuter: 0.32 },
+                  y: { domain: [0, 100], nice: true, tickCount: 6 },
+                }}
+                slider={{
+                  x: enableSemanticPersonaAxisSlider,
+                }}
+                tooltip={{
+                  title: 'personaName',
+                  items: [
+                    { channel: 'y', name: '数量' },
+                    {
+                      field: 'percentage',
+                      name: '占比',
+                      valueFormatter: (value: number) => `${value}%`,
+                    },
+                  ],
+                }}
+                style={{
+                  columnWidthRatio: 0.2,
+                  fill: (datum: { color?: string }) =>
+                    datum.color || token.colorPrimary,
+                  maxWidth: SEMANTIC_PERSONA_COLUMN_WIDTH,
+                  minWidth: SEMANTIC_PERSONA_COLUMN_WIDTH,
+                  radiusTopLeft: 4,
+                  radiusTopRight: 4,
+                }}
+                label={{
+                  position: 'top',
+                  text: (datum: { percentage?: number }) =>
+                    `${datum.percentage ?? 0}%`,
+                  style: {
+                    fill: token.colorTextSecondary,
+                    fontSize: 12,
+                    fontWeight: 600,
+                  },
+                }}
+              />
+              <Space wrap size={[18, 10]}>
+                {semanticPersonaDistribution.map((item) => (
+                  <Space key={`${item.personaId}-${item.personaName}`} size={6}>
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <Text type="secondary">
+                      {item.personaName} {item.percentage}%
+                    </Text>
+                  </Space>
+                ))}
+              </Space>
+            </Space>
+          ) : (
+            <Empty description="暂无语义画像数据" />
+          )}
+        </ProCard>
       </Flex>
 
       <FeedbackAllDrawer

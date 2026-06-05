@@ -3,6 +3,15 @@
   flex-basis: 132px;
 }
 
+.instrument-list-toolbar-filter-group,
+.instrument-list-toolbar-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+}
+
 .instrument-workspace {
   display: flex;
   flex-direction: column;
@@ -60,13 +69,51 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
+  min-width: 0;
   color: #8a94a6;
   font-size: 12px;
   line-height: 1.5;
 }
 
+.instrument-workspace-meta-item {
+  display: inline-flex;
+  max-width: min(24vw, 260px);
+  min-width: 0;
+  align-items: center;
+  vertical-align: top;
+}
+
+.instrument-workspace-meta-label {
+  flex: 0 0 auto;
+}
+
+.instrument-workspace-meta-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .instrument-workspace-actions {
   flex: 0 0 auto;
+}
+
+.instrument-type-cell {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.instrument-type-cell-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.instrument-type-cell .ant-tag {
+  flex: 0 0 auto;
+  margin-inline-end: 0;
 }
 
 .instrument-workspace-shell {
@@ -170,6 +217,23 @@
   min-width: 0;
 }
 
+.instrument-standing-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.instrument-standing-title {
+  min-width: 0;
+}
+
+.instrument-standing-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .instrument-standing-item-sub {
   display: -webkit-box;
   overflow: hidden;
@@ -177,6 +241,11 @@
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.instrument-standing-applicability {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .instrument-doc-item {
@@ -239,15 +308,17 @@
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  background: #f3f4f6;
+  background: #eef1f5;
 }
 
 .instrument-doc-stage {
+  display: flex;
+  justify-content: center;
   flex: 1;
   min-height: 0;
-  padding: 0;
+  padding: 24px 32px 36px;
   overflow: auto;
-  background: #f3f4f6;
+  background: #eef1f5;
 }
 
 .instrument-editor-panel {
@@ -272,7 +343,15 @@
   height: 100%;
   min-height: 640px;
   border: 0;
-  background: #f3f4f6;
+  background: #eef1f5;
+}
+
+.instrument-doc-stage .instrument-preview-frame {
+  width: min(880px, 100%);
+  margin: 0 auto;
+  border: 1px solid #d8dee8;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
 }
 
 .instrument-doc-main > .ant-spin-nested-loading,

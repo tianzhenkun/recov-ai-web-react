@@ -151,7 +151,7 @@ describe('RuoYi menu transform', () => {
     expect(menuData[0].redirect).toBeUndefined();
   });
 
-  it('groups template menus without changing their original paths', () => {
+  it('does not append template example menus to business navigation', () => {
     const defaultMenuData = [
       { path: '/user/login', name: 'login' },
       { path: '/', name: 'root' },
@@ -167,21 +167,7 @@ describe('RuoYi menu transform', () => {
 
     const layoutMenuData = buildLayoutMenuData([], defaultMenuData);
 
-    expect(layoutMenuData).toHaveLength(1);
-    expect(layoutMenuData[0]).toMatchObject({
-      name: '模板示例',
-    });
-    expect(layoutMenuData[0].path).toBeUndefined();
-    expect(layoutMenuData[0].children).toEqual([
-      expect.objectContaining({
-        path: '/dashboard',
-        children: [
-          expect.objectContaining({
-            path: '/dashboard/analysis',
-          }),
-        ],
-      }),
-    ]);
+    expect(layoutMenuData).toEqual([]);
   });
 
   it('only resolves configured workspace names from directory menus', () => {
