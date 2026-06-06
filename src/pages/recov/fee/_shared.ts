@@ -5,6 +5,8 @@ import type {
   OverduePeriodRow,
 } from '@/services/ruoyi/fee';
 
+export { formatFeeTierDisplay } from '@/pages/recov/components/FeeTierOptions';
+
 export const PAGE_TITLE = '当前费率配置表';
 
 export const AMOUNT_RANGES: {
@@ -54,30 +56,6 @@ export const getFeeRate = (
 
 export const formatFeeRate = (value: number): string =>
   `${Number(value || 0).toFixed(2)}%`;
-
-const FEE_TIER_DISPLAY_MAP: Record<string, string> = {
-  TIER_1: '一线城市',
-  TIER_2: '二线城市',
-  TIER_3: '三线及以下城市',
-  OTHER: '其他城市',
-  一级: '一线城市',
-  二级: '二线城市',
-  三级: '三线及以下城市',
-  其他: '其他城市',
-};
-
-export const formatFeeTierDisplay = (
-  feeTier?: string,
-  feeTierName?: string,
-): string => {
-  const tierKey = String(feeTier || '').toUpperCase();
-  if (FEE_TIER_DISPLAY_MAP[tierKey]) {
-    return FEE_TIER_DISPLAY_MAP[tierKey];
-  }
-
-  const name = feeTierName || feeTier || '-';
-  return FEE_TIER_DISPLAY_MAP[name] ?? name;
-};
 
 export const formatOverduePeriodDisplay = (periodName?: string): string => {
   if (periodName === '涉及诉讼未结') return '涉及司法诉讼';

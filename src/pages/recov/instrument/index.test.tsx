@@ -157,6 +157,63 @@ describe('/instrument-list presentation conventions', () => {
     expect(styles).toContain('width: min(880px, 100%);');
   });
 
+  it('keeps document editing inside the workspace instead of list rows', () => {
+    const columnsStart = source.indexOf('const groupColumns: any[] = [');
+    const columnsEnd = source.indexOf('];', columnsStart);
+    const columnsSource = source.slice(columnsStart, columnsEnd);
+    const actionColumnStart = columnsSource.indexOf("title: '操作'");
+    const actionColumnSource = columnsSource.slice(actionColumnStart);
+    const editorStart = source.indexOf('const openDocumentEditor = async');
+    const editorEnd = source.indexOf(
+      'const openAddSupplemental =',
+      editorStart,
+    );
+    const editorSource = source.slice(editorStart, editorEnd);
+    const actionBarStart = source.indexOf('const workspaceActionBar =');
+    const actionBarEnd = source.indexOf('\n  return (', actionBarStart);
+    const actionBarSource = source.slice(actionBarStart, actionBarEnd);
+
+    expect(actionColumnSource).not.toContain("key: 'edit'");
+    expect(actionColumnSource).not.toContain("label: '编辑文书'");
+    expect(actionColumnSource).not.toContain('openGroupEditor(record)');
+    expect(editorSource).toContain("setWorkspaceMode('edit')");
+    expect(editorSource).toContain("setEditMode('edit')");
+    expect(editorSource).toContain('setEditingRecord(record)');
+    expect(editorSource).toContain('setEditorValue(getEditableDocumentHtml');
+    expect(source).toContain('const canEditSelectedDocument =');
+    expect(source).toContain('!selectedDocumentIsCollectionLetter');
+    expect(source).toContain("activeCategory === '催收函件'");
+    expect(source).toContain('isDeliveryGroup(selectedDocumentGroupCode)');
+    expect(actionBarSource).toContain('title="编辑文书"');
+    expect(actionBarSource).toContain('{canEditSelectedDocument ? (');
+    expect(actionBarSource).toContain('void openDocumentEditor(');
+    expect(actionBarSource).toContain('selectedDocumentDetail');
+  });
+
+  it('keeps list row actions focused on document and delivery detail', () => {
+    const columnsStart = source.indexOf('const groupColumns: any[] = [');
+    const columnsEnd = source.indexOf('];', columnsStart);
+    const columnsSource = source.slice(columnsStart, columnsEnd);
+    const actionColumnStart = columnsSource.indexOf("title: '操作'");
+    const actionColumnSource = columnsSource.slice(actionColumnStart);
+
+    expect(actionColumnSource).toContain("label: '查看文书'");
+    expect(actionColumnSource).not.toContain("key: 'add'");
+    expect(actionColumnSource).not.toContain("label: '新增补充文书'");
+    expect(actionColumnSource).not.toContain('openAddSupplemental(record)');
+    expect(actionColumnSource).not.toContain("key: 'run'");
+    expect(actionColumnSource).not.toContain("label: '生成盖章'");
+    expect(actionColumnSource).not.toContain(
+      "submitAction('run', 'group', record)",
+    );
+    expect(actionColumnSource).not.toContain(
+      'canShowInstrumentGroupFlowDetail(record)',
+    );
+    expect(actionColumnSource).not.toContain("'处理异常'");
+    expect(actionColumnSource).not.toContain("'查看进度'");
+    expect(actionColumnSource).not.toContain('openFlowDetail(record)');
+  });
+
   it('truncates long document header metadata instead of expanding the toolbar', () => {
     expect(source).toContain('workspaceMetaItems');
     expect(source).toContain('className="instrument-workspace-meta-item"');
@@ -256,8 +313,6 @@ describe('/instrument-list presentation conventions', () => {
 
     expect(source).toContain('const canRunSelected =');
     expect(source).toContain('!selectedDocumentIsSealed');
-    expect(source).toContain('const isInstrumentGroupSealed =');
-    expect(source).toContain('!isInstrumentGroupSealed(record)');
     expect(actionBarSource).toContain('{canRunSelected ? (');
     expect(actionBarSource).toContain('生成盖章');
     expect(actionBarSource).not.toContain('title="送达详情"');
@@ -284,6 +339,27 @@ describe('/instrument-list presentation conventions', () => {
     expect(titleSource).not.toContain('<Tag>V');
     expect(actionBarSource).not.toContain('title="修改文书"');
     expect(actionBarSource).not.toContain('title="删除文书"');
+  });
+
+  it('hides the technical seal blocker status in the document workspace', () => {
+    const headerStart = source.indexOf(
+      'className="instrument-workspace-title-wrap"',
+    );
+    const headerEnd = source.indexOf(
+      'className="instrument-workspace-meta"',
+      headerStart,
+    );
+    const headerSource = source.slice(headerStart, headerEnd);
+    const navStart = source.indexOf('workspaceDocuments.map((item) => {');
+    const navEnd = source.indexOf('{item.errorMessage ? (', navStart);
+    const navSource = source.slice(navStart, navEnd);
+
+    expect(source).toContain('shouldShowWorkspaceDocumentStatusTag');
+    expect(headerSource).toContain('shouldShowWorkspaceDocumentStatusTag(');
+    expect(headerSource).toContain('selectedDocumentStatusCode');
+    expect(navSource).toContain('shouldShowWorkspaceDocumentStatusTag(');
+    expect(navSource).toContain('item.status');
+    expect(source).toContain('item.errorMessage');
   });
 
   it('keeps edited documents on draft preview until the regenerated seal file is ready', () => {
@@ -345,7 +421,9 @@ describe('/instrument-list presentation conventions', () => {
       defaultTemplateEnd,
     );
 
-    expect(defaultTemplateSource).toContain('buildSealPlaceholdersHtml');
+    expect(defaultTemplateSource).toContain(
+      'buildSealPlaceholderParagraphHtml',
+    );
     expect(source).toContain('data-seal-placeholder="seal_group"');
     expect(source).toContain('data-seal-codes');
     expect(source).not.toContain('data-seal-id');
@@ -355,6 +433,30 @@ describe('/instrument-list presentation conventions', () => {
     expect(defaultTemplateSource).not.toContain('{{debtorName}}');
     expect(defaultTemplateSource).not.toContain('{{debtNumber}}');
     expect(defaultTemplateSource).not.toContain('<h2');
+  });
+
+  it('updates one backend seal placeholder instead of appending duplicate blocks', () => {
+    const sealHelperStart = source.indexOf('const ensureSealPlaceholderBlock');
+    const sealHelperEnd = source.indexOf(
+      'const buildDefaultSupplementalHtml',
+      sealHelperStart,
+    );
+    const sealHelperSource = source.slice(sealHelperStart, sealHelperEnd);
+
+    expect(source).toContain('SEAL_PLACEHOLDER_ELEMENT_REGEXP');
+    expect(source).toContain('EMPTY_SEAL_PLACEHOLDER_BLOCK_REGEXP');
+    expect(source).toContain('stripAdditionalSealPlaceholders');
+    expect(
+      sealHelperSource.indexOf('SEAL_PLACEHOLDER_ELEMENT_REGEXP.test(html)'),
+    ).toBeLessThan(
+      sealHelperSource.indexOf('SEAL_PLACEHOLDER_BLOCK_REGEXP.test(html)'),
+    );
+    expect(sealHelperSource).toContain(
+      'SEAL_PLACEHOLDER_ELEMENT_REGEXP.test(html)',
+    );
+    expect(sealHelperSource).toContain(
+      'replace(SEAL_PLACEHOLDER_ELEMENT_REGEXP, nextPlaceholderHtml)',
+    );
   });
 
   it('persists concrete seal ids in supplemental template json', () => {
@@ -383,6 +485,26 @@ describe('/instrument-list presentation conventions', () => {
     expect(source).toContain('record.displayGroupCode');
     expect(source).toContain('record.primaryTaskId');
     expect(source).not.toContain('history.push(`/delivery?');
+  });
+
+  it('keeps delivery detail focused on recipient contact and status', () => {
+    const drawerStart = source.indexOf('title="送达详情"');
+    const drawerEnd = source.indexOf('</Drawer>', drawerStart);
+    const drawerSource = source.slice(drawerStart, drawerEnd);
+    const columnsStart = source.indexOf('const groupColumns: any[] = [');
+    const columnsEnd = source.indexOf('];', columnsStart);
+    const columnsSource = source.slice(columnsStart, columnsEnd);
+
+    expect(drawerSource).toContain('label="电话"');
+    expect(drawerSource).toContain('deliveryDetail.debtorPhone');
+    expect(drawerSource).toContain('label="邮件"');
+    expect(drawerSource).toContain('deliveryDetail.debtorEmail');
+    expect(drawerSource).not.toContain('label="送达文件"');
+    expect(drawerSource).not.toContain('label="发送主题"');
+    expect(drawerSource).not.toContain('label="发送内容"');
+    expect(columnsSource).not.toContain('debtorPhone');
+    expect(columnsSource).not.toContain("title: '电话'");
+    expect(columnsSource).not.toContain("title: '手机号'");
   });
 
   it('passes a return marker when jumping to plaintiff standing maintenance', () => {

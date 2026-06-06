@@ -45,7 +45,7 @@ const FeedbackFeed = ({
   onItemClick,
 }: FeedbackFeedProps) => {
   const { token } = theme.useToken();
-  const feedRowCount = Math.max(items.length, 1);
+  const feedRowCount = Math.max(items.length, pageSize, 1);
 
   const sentimentMeta: Record<FeedbackSentiment, SentimentMeta> = {
     negative: {
@@ -119,7 +119,6 @@ const FeedbackFeed = ({
         const meta = sentimentMeta[item.sentiment];
         const visibleTags = item.semanticTags.slice(0, MAX_VISIBLE_TAGS);
         const hiddenTags = item.semanticTags.slice(MAX_VISIBLE_TAGS);
-        const feedbackRecordCount = item.feedbackRecordCount || 0;
         return (
           <button
             key={item.id}
@@ -165,21 +164,6 @@ const FeedbackFeed = ({
                     来自 {item.project}
                   </Text>
                 </Tooltip>
-                {feedbackRecordCount > 1 ? (
-                  <Tooltip title={`共 ${feedbackRecordCount} 次反馈`}>
-                    <Text
-                      type="secondary"
-                      style={{
-                        ...singleLineEllipsisStyle,
-                        flex: '0 1 auto',
-                        fontSize: 12,
-                        maxWidth: 92,
-                      }}
-                    >
-                      共 {feedbackRecordCount} 次反馈
-                    </Text>
-                  </Tooltip>
-                ) : null}
               </div>
               <Tooltip title={item.summary}>
                 <Text
@@ -199,7 +183,23 @@ const FeedbackFeed = ({
                   “{item.summary}”
                 </Text>
               </Tooltip>
-              <div className="mt-auto flex min-w-0 shrink-0 overflow-hidden">
+              <div
+                aria-hidden={visibleTags.length > 0}
+                className="mt-auto flex min-w-0 shrink-0 overflow-hidden"
+                data-testid={
+                  visibleTags.length > 0
+                    ? 'feedback-semantic-tags-placeholder'
+                    : undefined
+                }
+                style={
+                  visibleTags.length > 0
+                    ? {
+                        pointerEvents: 'none',
+                        visibility: 'hidden',
+                      }
+                    : undefined
+                }
+              >
                 {visibleTags.length > 0 ? (
                   <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
                     {visibleTags.map((tag) => (
@@ -258,7 +258,7 @@ const FeedbackFeed = ({
                 {item.feedbackType}
               </Tag>
               {item.startedAt ? (
-                <div className="flex max-w-[136px] shrink-0 items-center gap-1 overflow-hidden">
+                <div className="flex min-w-max shrink-0 items-center gap-1">
                   <ClockCircleOutlined
                     className="shrink-0"
                     style={{ color: token.colorTextTertiary }}

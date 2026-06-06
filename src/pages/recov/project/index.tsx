@@ -6,12 +6,14 @@ import {
 } from '@ant-design/icons';
 import {
   Button,
+  Flex,
   Form,
   Input,
   InputNumber,
   Modal,
   message,
   Select,
+  type SelectProps,
   Space,
   Table,
   Tag,
@@ -21,9 +23,10 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
 import {
-  RECOV_FILTER_CONTROL_STYLE,
-  renderRecovSingleLineText,
-} from '@/pages/recov/components/RecovFilterControls';
+  FEE_TIER_OPTIONS,
+  formatFeeTierDisplay,
+} from '@/pages/recov/components/FeeTierOptions';
+import { renderRecovSingleLineText } from '@/pages/recov/components/RecovFilterControls';
 import {
   RecovListPage,
   RecovListStack,
@@ -42,23 +45,17 @@ import {
   updateProject,
 } from '@/services/ruoyi/project';
 
-const FEE_TIER_OPTIONS: { label: string; value: FeeTier }[] = [
-  { label: '一级', value: 'TIER_1' },
-  { label: '二级', value: 'TIER_2' },
-  { label: '三级', value: 'TIER_3' },
-  { label: '其他', value: 'TIER_OTHER' },
-];
-
 const STATUS_OPTIONS: { label: string; value: ProjectStatus }[] = [
   { label: '启用', value: 1 },
   { label: '停用', value: 0 },
 ];
 
-type QueryValues = {
-  projectName?: string;
-  feeTier?: FeeTier;
-  status?: ProjectStatus;
-};
+const feeTierSelectProps = {
+  options: FEE_TIER_OPTIONS,
+  popupMatchSelectWidth: 220,
+  listHeight: 160,
+  getPopupContainer: () => document.body,
+} satisfies SelectProps<FeeTier>;
 
 type ProjectFormValues = {
   projectName: string;
@@ -90,9 +87,7 @@ const normalizeProjectPayload = (
 });
 
 const getFeeTierName = (record: RecovProjectItem) =>
-  record.feeTierName ||
-  FEE_TIER_OPTIONS.find((item) => item.value === record.feeTier)?.label ||
-  record.feeTier;
+  formatFeeTierDisplay(record.feeTier, record.feeTierName);
 
 const getStatusTag = (status?: ProjectStatus) =>
   status === 0 ? <Tag>停用</Tag> : <Tag color="success">启用</Tag>;
@@ -101,7 +96,6 @@ const ProjectMaintenancePage = () => {
   const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
-  const [queryForm] = Form.useForm<QueryValues>();
   const [projectForm] = Form.useForm<ProjectFormValues>();
   const [batchForm] = Form.useForm<BatchFormValues>();
 
@@ -136,15 +130,6 @@ const ProjectMaintenancePage = () => {
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
-
-  const openAddModal = () => {
-    projectForm.setFieldsValue({
-      status: 1,
-      sortOrder: 0,
-      feeTier: 'TIER_1',
-    });
-    setModalState({ open: true, mode: 'add' });
-  };
 
   const openEditModal = (record: RecovProjectItem) => {
     projectForm.setFieldsValue({
@@ -256,22 +241,6 @@ const ProjectMaintenancePage = () => {
     });
   };
 
-  const handleSearch = (values: QueryValues) => {
-    setQuery((prev) => ({
-      ...prev,
-      ...values,
-      pageNum: 1,
-    }));
-  };
-
-  const handleReset = () => {
-    queryForm.resetFields();
-    setQuery({
-      pageNum: 1,
-      pageSize: query.pageSize,
-    });
-  };
-
   const handleTableChange = (pagination: TablePaginationConfig) => {
     setQuery((prev) => ({
       ...prev,
@@ -361,63 +330,26 @@ const ProjectMaintenancePage = () => {
       {messageContextHolder}
       {modalContextHolder}
       <RecovListStack>
-        <RecovTableCard>
-          <Form form={queryForm} layout="inline" onFinish={handleSearch}>
-            <div className="flex w-full flex-wrap items-center justify-between gap-3">
-              <Space size={8} wrap>
-                <Form.Item name="projectName">
-                  <Input
-                    allowClear
-                    placeholder="项目名称"
-                    style={RECOV_FILTER_CONTROL_STYLE}
-                  />
-                </Form.Item>
-                <Form.Item name="feeTier">
-                  <Select
-                    allowClear
-                    placeholder="计费层级"
-                    options={FEE_TIER_OPTIONS}
-                    style={RECOV_FILTER_CONTROL_STYLE}
-                  />
-                </Form.Item>
-                <Form.Item name="status">
-                  <Select
-                    allowClear
-                    placeholder="状态"
-                    options={STATUS_OPTIONS}
-                    style={RECOV_FILTER_CONTROL_STYLE}
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Space size={8}>
-                    <Button type="primary" htmlType="submit">
-                      查询
-                    </Button>
-                    <Button onClick={handleReset}>重置</Button>
-                  </Space>
-                </Form.Item>
-              </Space>
-              <Space size={8} wrap>
-                <Button icon={<ReloadOutlined />} onClick={loadProjects}>
-                  刷新
-                </Button>
-                <Button icon={<PlusOutlined />} onClick={openBatchModal}>
-                  批量新增
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={openAddModal}
-                >
-                  新增
-                </Button>
-              </Space>
-            </div>
-          </Form>
+        <RecovTableCard className="recov-toolbar-card">
+          <div className="flex w-full justify-end">
+            <Space size={8} wrap>
+              <Button icon={<ReloadOutlined />} onClick={loadProjects}>
+                刷新
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openBatchModal}
+              >
+                批量新增
+              </Button>
+            </Space>
+          </div>
         </RecovTableCard>
 
         <RecovTableCard>
           <Table<RecovProjectItem>
+            className="recov-stable-pagination-table"
             rowKey={(record) => String(record.id)}
             loading={loading}
             dataSource={rows}
@@ -469,7 +401,7 @@ const ProjectMaintenancePage = () => {
             name="feeTier"
             rules={[{ required: true, message: '请选择计费层级' }]}
           >
-            <Select options={FEE_TIER_OPTIONS} />
+            <Select {...feeTierSelectProps} />
           </Form.Item>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Form.Item label="状态" name="status">
@@ -509,11 +441,11 @@ const ProjectMaintenancePage = () => {
         >
           <Form.List name="items">
             {(fields, { add, remove }) => (
-              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Flex vertical gap={8} style={{ width: '100%' }}>
                 {fields.map((field) => (
                   <div
                     key={field.key}
-                    className="grid grid-cols-[minmax(0,1fr)_160px_96px_40px] items-start gap-2"
+                    className="grid grid-cols-[minmax(0,1fr)_160px_40px] items-start gap-2"
                   >
                     <Form.Item
                       {...field}
@@ -534,15 +466,7 @@ const ProjectMaintenancePage = () => {
                       name={[field.name, 'feeTier']}
                       rules={[{ required: true, message: '请选择计费层级' }]}
                     >
-                      <Select options={FEE_TIER_OPTIONS} />
-                    </Form.Item>
-                    <Form.Item {...field} name={[field.name, 'sortOrder']}>
-                      <InputNumber
-                        min={0}
-                        precision={0}
-                        placeholder="排序"
-                        style={{ width: '100%' }}
-                      />
+                      <Select {...feeTierSelectProps} />
                     </Form.Item>
                     <Button
                       aria-label="删除行"
@@ -566,7 +490,7 @@ const ProjectMaintenancePage = () => {
                 >
                   新增一行
                 </Button>
-              </Space>
+              </Flex>
             )}
           </Form.List>
         </Form>

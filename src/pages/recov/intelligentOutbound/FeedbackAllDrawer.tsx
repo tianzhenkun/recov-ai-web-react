@@ -3,7 +3,6 @@ import {
   Button,
   Drawer,
   Empty,
-  Space,
   Table,
   Tag,
   Tooltip,
@@ -11,7 +10,7 @@ import {
   theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FeedbackItem } from './_shared';
 import { formatDuration, toDebtFeedbackItem } from './_shared';
 import { getAiCallDebtFeedbackPage } from './service';
@@ -19,7 +18,6 @@ import { getAiCallDebtFeedbackPage } from './service';
 const { Paragraph, Text } = Typography;
 
 const DEFAULT_PAGE_SIZE = 10;
-const MAX_VISIBLE_TAGS = 3;
 
 type FeedbackAllDrawerProps = {
   open: boolean;
@@ -160,54 +158,6 @@ const FeedbackAllDrawer = ({
         render: (value: number) => <Text>{Number(value || 0)} 次</Text>,
       },
       {
-        key: 'semanticTags',
-        dataIndex: 'semanticTags',
-        title: '标签',
-        width: 210,
-        ellipsis: true,
-        render: (tags: string[]) => {
-          const visibleTags = (tags || []).slice(0, MAX_VISIBLE_TAGS);
-          const hiddenTags = (tags || []).slice(MAX_VISIBLE_TAGS);
-          if (visibleTags.length === 0) return <Text type="secondary">-</Text>;
-          return (
-            <Space size={[4, 4]} wrap>
-              {visibleTags.map((tag) => (
-                <Tooltip key={tag} title={tag}>
-                  <Tag
-                    style={{
-                      maxWidth: 88,
-                      marginInlineEnd: 0,
-                      color: token.colorTextSecondary,
-                      backgroundColor: token.colorFillQuaternary,
-                      borderColor: token.colorBorderSecondary,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {tag}
-                  </Tag>
-                </Tooltip>
-              ))}
-              {hiddenTags.length > 0 ? (
-                <Tooltip title={hiddenTags.join('、')}>
-                  <Tag
-                    style={{
-                      marginInlineEnd: 0,
-                      color: token.colorTextSecondary,
-                      backgroundColor: token.colorFillQuaternary,
-                      borderColor: token.colorBorderSecondary,
-                    }}
-                  >
-                    +{hiddenTags.length}
-                  </Tag>
-                </Tooltip>
-              ) : null}
-            </Space>
-          );
-        },
-      },
-      {
         key: 'startTime',
         dataIndex: 'startTime',
         title: '开始时间',
@@ -264,7 +214,6 @@ const FeedbackAllDrawer = ({
       token.colorError,
       token.colorErrorBg,
       token.colorErrorBorder,
-      token.colorFillQuaternary,
       token.colorPrimary,
       token.colorPrimaryBg,
       token.colorPrimaryBorder,
@@ -301,7 +250,7 @@ const FeedbackAllDrawer = ({
         dataSource={items}
         columns={columns}
         tableLayout="fixed"
-        scroll={{ x: 1420 }}
+        scroll={{ x: 1210 }}
         locale={{ emptyText: <Empty description="暂无用户反馈" /> }}
         onRow={(record) => ({
           onClick: () => onItemClick(record),

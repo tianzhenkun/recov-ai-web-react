@@ -864,6 +864,30 @@ const isPipelineTerminal = (data?: ImportPipelineProgressResult | null) =>
 const isPipelineProcessing = (data?: ImportPipelineProgressResult | null) =>
   Boolean(data?.status && PIPELINE_PROCESSING_STATUSES.has(data.status));
 
+const hasRunningPipelineSubTaskInPayload = (
+  data?: ImportPipelineProgressResult | null,
+) =>
+  Boolean(
+    data?.subTasks?.some(
+      (task) => task.status === 'pending' || task.status === 'processing',
+    ),
+  );
+
+const normalizePipelinePayloadForRunningSubTasks = (
+  data: ImportPipelineProgressResult,
+): ImportPipelineProgressResult => {
+  if (!hasRunningPipelineSubTaskInPayload(data) || isPipelineProcessing(data)) {
+    return data;
+  }
+  return {
+    ...data,
+    status: 'processing',
+    phase: '处理中',
+    errorMessage: null,
+    finishedAt: null,
+  };
+};
+
 const getAssetParseUnmatchedCount = (task?: ImportPipelineSubTask | null) => {
   if (!task) return undefined;
   const candidates = [
@@ -2059,11 +2083,12 @@ const DatelligencePage = () => {
           ? ensurePipelineProgressTaskId(res.data, normalizedTaskId)
           : undefined;
         if (!data) return;
-        applyPipelineProgress(data);
-        if (isPipelineTerminal(data)) {
+        const normalizedData = normalizePipelinePayloadForRunningSubTasks(data);
+        applyPipelineProgress(normalizedData);
+        if (isPipelineTerminal(normalizedData)) {
           stopPipelinePolling();
           if (!options?.silent) {
-            notifyPipelineTerminal(data);
+            notifyPipelineTerminal(normalizedData);
           }
         }
       } catch {
@@ -2703,21 +2728,22 @@ const DatelligencePage = () => {
       const data = res.data;
       if (!data) return;
 
-      applyPipelineProgress(data);
-      if (isPipelineProcessing(data) && data.taskId) {
-        startPipelinePolling(data.taskId, {
-          initialStatus: data.status,
-          initialPhase: data.phase || '处理中',
+      const normalizedData = normalizePipelinePayloadForRunningSubTasks(data);
+      applyPipelineProgress(normalizedData);
+      if (isPipelineProcessing(normalizedData) && normalizedData.taskId) {
+        startPipelinePolling(normalizedData.taskId, {
+          initialStatus: normalizedData.status,
+          initialPhase: normalizedData.phase || '处理中',
         });
         return;
       }
 
-      if (isPipelineTerminal(data)) {
+      if (isPipelineTerminal(normalizedData)) {
         stopPipelinePolling();
-        if (data.status === 'partial_failed') {
+        if (normalizedData.status === 'partial_failed') {
           messageApi.warning('重试后仍存在失败记录，请查看明细');
         } else {
-          notifyPipelineTerminal(data);
+          notifyPipelineTerminal(normalizedData);
         }
       }
     } finally {

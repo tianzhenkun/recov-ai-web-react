@@ -944,12 +944,6 @@ const DeliveryPage = () => {
         render: renderRecovSingleLineText,
       },
       {
-        title: '电话',
-        dataIndex: 'debtorPhone',
-        width: 130,
-        render: toText,
-      },
-      {
         title: '状态',
         dataIndex: 'taskStatus',
         width: 110,
@@ -1123,7 +1117,7 @@ const DeliveryPage = () => {
             dataSource={rows}
             loading={loading}
             rowKey="taskId"
-            scroll={{ x: 1420 }}
+            scroll={{ x: 1290 }}
             locale={{
               emptyText: <Empty description="暂无送达记录" />,
             }}
@@ -1169,6 +1163,12 @@ const DeliveryPage = () => {
                 </Descriptions.Item>
                 <Descriptions.Item label="业主姓名">
                   {toText(currentRow.debtorName)}
+                </Descriptions.Item>
+                <Descriptions.Item label="电话">
+                  {toText(currentRow.debtorPhone)}
+                </Descriptions.Item>
+                <Descriptions.Item label="邮件">
+                  {toText(currentRow.debtorEmail)}
                 </Descriptions.Item>
                 <Descriptions.Item label="所属城市">
                   {toText(currentRow.city)}

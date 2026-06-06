@@ -108,6 +108,27 @@ describe('/delivery failed task actions', () => {
     expect(projectColumnSource).not.toContain('width: 260');
   });
 
+  it('keeps recipient contact out of the list and inside the detail drawer', () => {
+    const columnsStart = source.indexOf(
+      'const columns = useMemo<ColumnsType<DeliveryTaskItem>>',
+    );
+    const columnsEnd = source.indexOf(
+      'const currentIsExpressDelivery',
+      columnsStart,
+    );
+    const columnsSource = source.slice(columnsStart, columnsEnd);
+    const drawerStart = source.indexOf('title="送达详情"');
+    const drawerEnd = source.indexOf('</Drawer>', drawerStart);
+    const drawerSource = source.slice(drawerStart, drawerEnd);
+
+    expect(columnsSource).not.toContain("title: '电话'");
+    expect(columnsSource).not.toContain("dataIndex: 'debtorPhone'");
+    expect(drawerSource).toContain('label="电话"');
+    expect(drawerSource).toContain('currentRow.debtorPhone');
+    expect(drawerSource).toContain('label="邮件"');
+    expect(drawerSource).toContain('currentRow.debtorEmail');
+  });
+
   it('keeps the action column compact for at most two icon actions', () => {
     const columnsStart = source.indexOf(
       'const columns = useMemo<ColumnsType<DeliveryTaskItem>>',

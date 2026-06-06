@@ -5,11 +5,11 @@ import {
   Modal,
   Skeleton,
   Space,
-  Tag,
   Timeline,
   Typography,
   theme,
 } from 'antd';
+import React from 'react';
 import type { CommunicationLog, OwnerCommunicationDetail } from './_shared';
 import { formatDuration } from './_shared';
 
@@ -153,28 +153,6 @@ export const CommunicationLogContent = ({
               </Text>
               {log.summary}
             </Paragraph>
-          ) : null}
-          {log.keywords.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <Text strong style={sectionTitleStyle}>
-                语义标签：
-              </Text>
-              <Space size={[6, 4]} wrap>
-                {log.keywords.map((keyword) => (
-                  <Tag
-                    key={keyword}
-                    style={{
-                      marginInlineEnd: 0,
-                      color: token.colorTextSecondary,
-                      backgroundColor: token.colorFillQuaternary,
-                      borderColor: token.colorBorderSecondary,
-                    }}
-                  >
-                    {keyword}
-                  </Tag>
-                ))}
-              </Space>
-            </div>
           ) : null}
           {transcriptTurns.length > 0 ? (
             <>
