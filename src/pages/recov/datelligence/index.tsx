@@ -876,7 +876,11 @@ const hasRunningPipelineSubTaskInPayload = (
 const normalizePipelinePayloadForRunningSubTasks = (
   data: ImportPipelineProgressResult,
 ): ImportPipelineProgressResult => {
-  if (!hasRunningPipelineSubTaskInPayload(data) || isPipelineProcessing(data)) {
+  if (
+    isPipelineTerminal(data) ||
+    !hasRunningPipelineSubTaskInPayload(data) ||
+    isPipelineProcessing(data)
+  ) {
     return data;
   }
   return {

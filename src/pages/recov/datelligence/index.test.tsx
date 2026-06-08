@@ -18,6 +18,22 @@ describe('/datelligence import detail drawer presentation', () => {
     expect(source).not.toContain("title: '平均账期'");
   });
 
+  it('does not convert terminal import pipeline payloads back to processing', () => {
+    const normalizerStart = source.indexOf(
+      'const normalizePipelinePayloadForRunningSubTasks =',
+    );
+    const normalizerEnd = source.indexOf(
+      'const getAssetParseUnmatchedCount',
+      normalizerStart,
+    );
+    const normalizerSource = source.slice(normalizerStart, normalizerEnd);
+
+    expect(normalizerSource).toContain('isPipelineTerminal(data)');
+    expect(normalizerSource.indexOf('isPipelineTerminal(data)')).toBeLessThan(
+      normalizerSource.indexOf('hasRunningPipelineSubTaskInPayload(data)'),
+    );
+  });
+
   it('shows emergency contact fields in owner detail modal', () => {
     expect(source).toContain("label: '紧急联系人'");
     expect(source).toContain('detailData.emergencyContact');

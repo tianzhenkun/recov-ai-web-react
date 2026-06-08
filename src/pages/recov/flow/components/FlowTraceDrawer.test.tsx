@@ -316,7 +316,7 @@ describe('FlowTraceDrawer', () => {
     expect(document.querySelector('.ant-timeline-item-head-green')).toBeNull();
   });
 
-  it('renders submitted RPA evidence screenshots in the overview', async () => {
+  it('renders only submitted RPA evidence screenshots in the overview', async () => {
     getFlowExecutionTraceMock.mockResolvedValueOnce({
       data: {
         instanceId: 'instance-1',
@@ -373,7 +373,7 @@ describe('FlowTraceDrawer', () => {
     );
 
     expect(await screen.findByText('RPA执行证据')).toBeTruthy();
-    expect(await screen.findByText('SUCCESS_SUBMITTED')).toBeTruthy();
+    expect(screen.queryByText('SUCCESS_SUBMITTED')).toBeNull();
     expect(screen.getByText('提交成功截图')).toBeTruthy();
     await waitFor(() => {
       expect(listOssByIdsMock).toHaveBeenCalledWith('1001');
@@ -385,7 +385,7 @@ describe('FlowTraceDrawer', () => {
     ).toBeTruthy();
   });
 
-  it('renders RPA failure screenshots in the event tab', async () => {
+  it('renders only RPA failure screenshots in the event tab', async () => {
     getFlowExecutionTraceMock.mockResolvedValueOnce({
       data: {
         instanceId: 'instance-1',
@@ -446,13 +446,13 @@ describe('FlowTraceDrawer', () => {
     expect((await screen.findAllByText('RPA失败现场')).length).toBeGreaterThan(
       0,
     );
-    expect(screen.getAllByText('FAILED').length).toBeGreaterThan(0);
+    expect(screen.queryByText('FAILED')).toBeNull();
     expect(
       document.querySelector('a[href="https://example.test/failure.png"]'),
     ).toBeTruthy();
   });
 
-  it('shows no-screenshot evidence for court selection failures', async () => {
+  it('hides RPA evidence when there are no screenshots', async () => {
     getFlowExecutionTraceMock.mockResolvedValueOnce({
       data: {
         instanceId: 'instance-1',
@@ -498,9 +498,101 @@ describe('FlowTraceDrawer', () => {
       />,
     );
 
-    expect(await screen.findByText('RPA执行证据')).toBeTruthy();
-    expect(screen.getAllByText('暂无RPA截图').length).toBeGreaterThan(0);
+    expect(await screen.findByText('资产编号')).toBeTruthy();
+    expect(screen.queryByText('RPA执行证据')).toBeNull();
+    expect(screen.queryByText('暂无RPA截图')).toBeNull();
     expect(listOssByIdsMock).not.toHaveBeenCalled();
+  });
+
+  it('hides RPA evidence silently when evidence loading fails', async () => {
+    getFlowExecutionTraceMock.mockResolvedValueOnce({
+      data: {
+        instanceId: 'instance-1',
+        debtNumber: 'A-001',
+        debtorName: '张三',
+        city: '深圳市',
+        organization: '星河项目',
+        flowStatus: '3',
+        flowStatusName: '节点失败',
+        currentStepId: 'step-1',
+        currentNodeCode: 'filing_material_submit',
+        canRetryCurrentStep: true,
+        steps: [
+          {
+            stepId: 'step-1',
+            stepIndex: 0,
+            nodeCode: 'filing_material_submit',
+            reached: true,
+            current: true,
+            stepStatus: 'BLOCKED',
+            stepStatusName: '执行失败，流程阻塞',
+            latestResultMessage: 'RPA材料提交失败',
+          },
+        ],
+      },
+    });
+    getFilingMaterialSubmitEvidenceMock.mockRejectedValueOnce(
+      new Error('evidence unavailable'),
+    );
+
+    render(
+      <FlowTraceDrawer
+        open={true}
+        instanceId="instance-1"
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('资产编号')).toBeTruthy();
+    await waitFor(() => {
+      expect(getFilingMaterialSubmitEvidenceMock).toHaveBeenCalled();
+    });
+    expect(screen.queryByText('RPA执行证据')).toBeNull();
+    expect(screen.queryByText('RPA执行证据加载失败，请稍后重试')).toBeNull();
+  });
+
+  it('does not show stale RPA evidence while the filing node retry is waiting for callback', async () => {
+    getFlowExecutionTraceMock.mockResolvedValueOnce({
+      data: {
+        instanceId: 'instance-1',
+        debtNumber: 'A-001',
+        debtorName: '张三',
+        city: '深圳市',
+        organization: '星河项目',
+        flowStatus: '1',
+        flowStatusName: '等待回调',
+        currentStepId: 'step-1',
+        currentNodeCode: 'filing_material_submit',
+        canRetryCurrentStep: false,
+        steps: [
+          {
+            stepId: 'step-1',
+            stepIndex: 0,
+            nodeCode: 'filing_material_submit',
+            reached: true,
+            current: true,
+            stepStatus: 'RUNNING',
+            stepStatusName: '等待节点回调',
+            latestProgressMessage: '业务侧已接收',
+          },
+        ],
+      },
+    });
+
+    render(
+      <FlowTraceDrawer
+        open={true}
+        instanceId="instance-1"
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('资产编号')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('等待回调')).toBeTruthy();
+    });
+    expect(getFilingMaterialSubmitEvidenceMock).not.toHaveBeenCalled();
+    expect(screen.queryByText('RPA执行证据')).toBeNull();
   });
 
   it('does not request RPA evidence before the filing node is reached', async () => {

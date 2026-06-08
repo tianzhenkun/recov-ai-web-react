@@ -128,15 +128,6 @@ const flowStatusColor = (value: unknown) => {
   return 'default';
 };
 
-const filingEvidenceStatusColor = (value: unknown) => {
-  const status = normalizeStatus(value);
-  if (status === '2') return 'success';
-  if (status === '3') return 'error';
-  if (status === '1') return 'processing';
-  if (status === '4') return 'warning';
-  return 'default';
-};
-
 const flowStatusText = (value: unknown, statusName?: string) => {
   const status = normalizeStatus(value);
   if (status === '0') return '待触发';
@@ -342,7 +333,6 @@ const FlowTraceDrawer = ({
   const [loading, setLoading] = useState(false);
   const [filingEvidence, setFilingEvidence] =
     useState<FlowFilingEvidence | null>(null);
-  const [filingEvidenceLoading, setFilingEvidenceLoading] = useState(false);
   const [filingEvidenceOssMap, setFilingEvidenceOssMap] = useState<
     Map<string, OssItem>
   >(new Map());
@@ -372,6 +362,22 @@ const FlowTraceDrawer = ({
       ),
     [flowSteps],
   );
+  const isCurrentFilingMaterialSubmitPending = useMemo(() => {
+    const currentNodeCode = currentStep?.nodeCode ?? trace?.currentNodeCode;
+    if (currentNodeCode !== FILING_MATERIAL_SUBMIT_NODE_CODE) return false;
+    return (
+      isPollingFlowStatus(trace?.flowStatus) ||
+      currentStep?.stepStatus === 'RUNNING' ||
+      currentStep?.stepStatus === 'PENDING_TRIGGER'
+    );
+  }, [
+    currentStep?.nodeCode,
+    currentStep?.stepStatus,
+    trace?.currentNodeCode,
+    trace?.flowStatus,
+  ]);
+  const shouldShowFilingEvidence =
+    hasReachedFilingMaterialSubmit && !isCurrentFilingMaterialSubmitPending;
   const currentIssueMessage = useMemo(
     () =>
       toUserFacingTraceMessage(currentStep?.latestResultMessage) ||
@@ -541,22 +547,18 @@ const FlowTraceDrawer = ({
   );
 
   const loadFilingEvidence = useCallback(async () => {
-    if (!instanceId || !hasReachedFilingMaterialSubmit) {
+    if (!instanceId || !shouldShowFilingEvidence) {
       setFilingEvidence(null);
       setFilingEvidenceOssMap(new Map());
       return;
     }
-    setFilingEvidenceLoading(true);
     try {
       const result = await getFilingMaterialSubmitEvidence(instanceId);
       setFilingEvidence(result.data ?? null);
     } catch {
       setFilingEvidence(null);
-      messageApi.error('RPA执行证据加载失败，请稍后重试');
-    } finally {
-      setFilingEvidenceLoading(false);
     }
-  }, [hasReachedFilingMaterialSubmit, instanceId, messageApi]);
+  }, [instanceId, shouldShowFilingEvidence]);
 
   const loadCourtOptions = useCallback(async () => {
     if (!shouldShowCourtSelector) {
@@ -602,17 +604,17 @@ const FlowTraceDrawer = ({
   }, [instanceId, loadTrace, open, stopPolling]);
 
   useEffect(() => {
-    if (!open || !instanceId || !hasReachedFilingMaterialSubmit) {
+    if (!open || !instanceId || !shouldShowFilingEvidence) {
       setFilingEvidence(null);
       setFilingEvidenceOssMap(new Map());
       return;
     }
     void loadFilingEvidence();
   }, [
-    hasReachedFilingMaterialSubmit,
     instanceId,
     loadFilingEvidence,
     open,
+    shouldShowFilingEvidence,
     trace?.flowStatus,
     trace?.updateTime,
   ]);
@@ -789,80 +791,56 @@ const FlowTraceDrawer = ({
 
   const filingEvidenceScreenshots =
     filingEvidence?.screenshots?.filter((item) => item.ossId) ?? [];
-  const filingEvidenceMessage = toUserFacingTraceMessage(
-    filingEvidence?.message,
-  );
 
   const renderFilingEvidencePanel = () => {
-    if (!hasReachedFilingMaterialSubmit) return null;
+    if (!shouldShowFilingEvidence || filingEvidenceScreenshots.length === 0) {
+      return null;
+    }
     return (
       <div className="rounded border border-[#e5e7eb] bg-white p-3">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Text strong>RPA执行证据</Text>
-          {filingEvidence?.statusName || filingEvidence?.status ? (
-            <Tag color={filingEvidenceStatusColor(filingEvidence?.status)}>
-              {filingEvidence?.statusName || toText(filingEvidence?.status)}
-            </Tag>
-          ) : null}
-          {filingEvidence?.rpaStatus ? (
-            <Tag>{filingEvidence.rpaStatus}</Tag>
-          ) : null}
         </div>
-        {filingEvidenceLoading ? (
-          <Spin size="small" />
-        ) : (
-          <>
-            {filingEvidenceMessage ? (
-              <Paragraph style={{ marginBottom: 8 }}>
-                {filingEvidenceMessage}
-              </Paragraph>
-            ) : null}
-            {filingEvidenceScreenshots.length > 0 ? (
-              <Image.PreviewGroup>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {filingEvidenceScreenshots.map((shot) => {
-                    const ossId = String(shot.ossId);
-                    const oss = filingEvidenceOssMap.get(ossId);
-                    const label = shot.name || oss?.originalName || 'RPA截图';
-                    return (
-                      <div
-                        key={`${ossId}-${shot.type || label}`}
-                        className="min-w-0 rounded border border-[#f1f5f9] p-2"
-                      >
-                        <Text style={{ fontSize: 12 }}>{label}</Text>
-                        {oss?.url ? (
-                          <div className="mt-2 flex flex-col gap-2">
-                            <Image
-                              src={oss.url}
-                              alt={label}
-                              style={{ maxHeight: 180, objectFit: 'contain' }}
-                            />
-                            <a href={oss.url} target="_blank" rel="noreferrer">
-                              <LinkOutlined /> 打开原图
-                            </a>
-                          </div>
-                        ) : (
-                          <Text
-                            type="secondary"
-                            style={{
-                              display: 'block',
-                              marginTop: 8,
-                              fontSize: 12,
-                            }}
-                          >
-                            附件暂不可预览
-                          </Text>
-                        )}
-                      </div>
-                    );
-                  })}
+        <Image.PreviewGroup>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {filingEvidenceScreenshots.map((shot) => {
+              const ossId = String(shot.ossId);
+              const oss = filingEvidenceOssMap.get(ossId);
+              const label = shot.name || oss?.originalName || 'RPA截图';
+              return (
+                <div
+                  key={`${ossId}-${shot.type || label}`}
+                  className="min-w-0 rounded border border-[#f1f5f9] p-2"
+                >
+                  <Text style={{ fontSize: 12 }}>{label}</Text>
+                  {oss?.url ? (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <Image
+                        src={oss.url}
+                        alt={label}
+                        style={{ maxHeight: 180, objectFit: 'contain' }}
+                      />
+                      <a href={oss.url} target="_blank" rel="noreferrer">
+                        <LinkOutlined /> 打开原图
+                      </a>
+                    </div>
+                  ) : (
+                    <Text
+                      type="secondary"
+                      style={{
+                        display: 'block',
+                        marginTop: 8,
+                        fontSize: 12,
+                      }}
+                    >
+                      附件暂不可预览
+                    </Text>
+                  )}
                 </div>
-              </Image.PreviewGroup>
-            ) : (
-              <Text type="secondary">暂无RPA截图</Text>
-            )}
-          </>
-        )}
+              );
+            })}
+          </div>
+        </Image.PreviewGroup>
       </div>
     );
   };
