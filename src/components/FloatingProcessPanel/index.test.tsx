@@ -441,6 +441,9 @@ describe('FloatingProcessPanel', () => {
   });
 
   it('opens a lightweight detail view when clicking a timeline item', () => {
+    const eventTime = '2026-05-30T10:00:00+08:00';
+    const expectedDetailTime = dayjs(eventTime).format('YYYY-MM-DD HH:mm:ss');
+
     render(
       <FloatingProcessPanel
         defaultExpanded
@@ -459,7 +462,7 @@ describe('FloatingProcessPanel', () => {
             iconKind: 'law-letter',
             status: 'warning',
             summary: '律师函发送失败。',
-            time: '2026-05-30T10:00:00+08:00',
+            time: eventTime,
           },
         ]}
         title="流程动态"
@@ -472,8 +475,8 @@ describe('FloatingProcessPanel', () => {
     expect(screen.getByText('事件摘要')).toBeTruthy();
     expect(screen.getAllByText('律师函发送失败。').length).toBeGreaterThan(0);
     expect(screen.getByText('发生时间')).toBeTruthy();
-    expect(screen.getByText('2026-05-30 10:00:00')).toBeTruthy();
-    expect(screen.queryByText(/2026-05-30 10:00:00 ·/)).toBeNull();
+    expect(screen.getByText(expectedDetailTime)).toBeTruthy();
+    expect(screen.queryByText(`${expectedDetailTime} ·`)).toBeNull();
     expect(screen.getByText('失败原因')).toBeTruthy();
     expect(screen.getByText('收件地址缺失')).toBeTruthy();
     expect(screen.getByText('资产编号')).toBeTruthy();
