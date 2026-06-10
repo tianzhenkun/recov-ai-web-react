@@ -944,11 +944,10 @@ const DeliveryPage = () => {
         render: renderRecovSingleLineText,
       },
       {
-        title: '状态',
-        dataIndex: 'taskStatus',
-        width: 110,
-        align: 'center',
-        render: (_, record) => renderDeliveryStatusTag(record),
+        title: '送达内容',
+        dataIndex: 'sceneName',
+        width: 136,
+        render: toText,
       },
       {
         title: '送达方式',
@@ -966,6 +965,13 @@ const DeliveryPage = () => {
             </Tag>
           );
         },
+      },
+      {
+        title: '状态',
+        dataIndex: 'taskStatus',
+        width: 110,
+        align: 'center',
+        render: (_, record) => renderDeliveryStatusTag(record),
       },
       {
         title: '逾期天数',
@@ -1117,7 +1123,7 @@ const DeliveryPage = () => {
             dataSource={rows}
             loading={loading}
             rowKey="taskId"
-            scroll={{ x: 1290 }}
+            scroll={{ x: 1426 }}
             locale={{
               emptyText: <Empty description="暂无送达记录" />,
             }}

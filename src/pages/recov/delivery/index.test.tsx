@@ -42,19 +42,54 @@ describe('/delivery failed task actions', () => {
     expect(source).not.toContain('2xl:grid-cols-6');
   });
 
-  it('places status, delivery method, and overdue days before overdue amount', () => {
+  it('places delivery content and method before status in the list', () => {
+    expect(source.indexOf("title: '送达内容'")).toBeGreaterThan(
+      source.indexOf("dataIndex: 'debtorName'"),
+    );
+    expect(source.indexOf("title: '送达内容'")).toBeLessThan(
+      source.indexOf("title: '送达方式'"),
+    );
+    expect(source.indexOf("title: '送达方式'")).toBeLessThan(
+      source.indexOf("title: '状态'"),
+    );
     expect(source.indexOf("title: '状态'")).toBeLessThan(
       source.indexOf("title: '逾期金额'"),
     );
-    expect(source.indexOf("title: '送达方式'")).toBeLessThan(
-      source.indexOf("title: '逾期金额'"),
-    );
+    expect(source).not.toContain("title: '送达场景'");
+  });
+
+  it('places overdue days before overdue amount', () => {
     expect(source.indexOf("title: '逾期天数'")).toBeGreaterThan(
-      source.indexOf("title: '送达方式'"),
+      source.indexOf("title: '状态'"),
     );
     expect(source.indexOf("title: '逾期天数'")).toBeLessThan(
       source.indexOf("title: '逾期金额'"),
     );
+  });
+
+  it('renders delivery content as plain text instead of a styled tag', () => {
+    const columnsStart = source.indexOf(
+      'const columns = useMemo<ColumnsType<DeliveryTaskItem>>',
+    );
+    const columnsEnd = source.indexOf(
+      'const currentIsExpressDelivery',
+      columnsStart,
+    );
+    const columnsSource = source.slice(columnsStart, columnsEnd);
+    const contentIndex = columnsSource.indexOf("dataIndex: 'sceneName'");
+    const contentColumnStart = columnsSource.lastIndexOf(
+      '      {',
+      contentIndex,
+    );
+    const contentColumnEnd = columnsSource.indexOf('\n      {', contentIndex);
+    const contentColumnSource = columnsSource.slice(
+      contentColumnStart,
+      contentColumnEnd,
+    );
+
+    expect(contentColumnSource).toContain("title: '送达内容'");
+    expect(contentColumnSource).toContain('render: toText');
+    expect(contentColumnSource).not.toContain('<Tag');
   });
 
   it('renders overdue days with the document-list tag style', () => {
