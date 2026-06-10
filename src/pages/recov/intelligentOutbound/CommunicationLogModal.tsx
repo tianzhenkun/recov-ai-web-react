@@ -1,15 +1,22 @@
-import { ClockCircleOutlined, MessageOutlined } from '@ant-design/icons';
+import {
+  ClockCircleOutlined,
+  MessageOutlined,
+  PlayCircleOutlined,
+} from '@ant-design/icons';
 import {
   Button,
   Empty,
   Modal,
+  message,
   Skeleton,
   Space,
   Timeline,
+  Tooltip,
   Typography,
   theme,
 } from 'antd';
 import React from 'react';
+import { listOssByIds, type OssItem } from '@/services/ruoyi/oss';
 import type { CommunicationLog, OwnerCommunicationDetail } from './_shared';
 import { formatDuration } from './_shared';
 
@@ -121,6 +128,12 @@ export const CommunicationLogContent = ({
   skeletonRows = 6,
 }: CommunicationLogContentProps) => {
   const { token } = theme.useToken();
+  const [audioPreview, setAudioPreview] = React.useState<{
+    open: boolean;
+    title?: string;
+    url?: string;
+  }>({ open: false });
+  const [loadingRecordingId, setLoadingRecordingId] = React.useState('');
   const sentimentColor: Record<CommunicationLog['sentiment'], string> = {
     负向: token.colorError,
     正向: token.colorPrimary,
@@ -131,6 +144,33 @@ export const CommunicationLogContent = ({
     marginInlineEnd: 6,
     fontSize: 13,
   } as const;
+  const handlePlayRecording = async (log: CommunicationLog) => {
+    const recordingOssId = firstText(log.recordingOssId);
+    if (!recordingOssId) return;
+
+    setLoadingRecordingId(recordingOssId);
+    try {
+      const response = await listOssByIds(recordingOssId);
+      const ossItems = (response.data || []) as OssItem[];
+      const recordingUrl = firstText(
+        ossItems.find((oss) => firstText(oss.ossId) === recordingOssId)?.url,
+        ossItems[0]?.url,
+      );
+      if (!recordingUrl) {
+        message.warning('录音文件暂不可播放');
+        return;
+      }
+      setAudioPreview({
+        open: true,
+        title: `${log.date || '通话'}录音`,
+        url: recordingUrl,
+      });
+    } catch {
+      message.error('录音文件加载失败');
+    } finally {
+      setLoadingRecordingId('');
+    }
+  };
 
   const timelineItems = (detail?.logs || []).map((log) => {
     const callStatusMeta = statusMeta[log.status || ''] || {
@@ -143,6 +183,7 @@ export const CommunicationLogContent = ({
     const transcriptTurns = getTranscriptTurns(log.transcript);
     const shouldShowSummary =
       log.hasSemanticAnalysis || transcriptTurns.length === 0;
+    const recordingOssId = firstText(log.recordingOssId);
     return {
       color: timelineColor,
       icon: <ClockCircleOutlined style={{ color: timelineColor }} />,
@@ -154,6 +195,18 @@ export const CommunicationLogContent = ({
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {formatDuration(log.durationSeconds)}
               </Text>
+            ) : null}
+            {recordingOssId ? (
+              <Tooltip title="播放录音">
+                <Button
+                  aria-label="播放录音"
+                  type="text"
+                  size="small"
+                  icon={<PlayCircleOutlined />}
+                  loading={loadingRecordingId === recordingOssId}
+                  onClick={() => void handlePlayRecording(log)}
+                />
+              </Tooltip>
             ) : null}
           </Space>
           {shouldShowSummary ? (
@@ -265,6 +318,23 @@ export const CommunicationLogContent = ({
           )}
         </div>
       )}
+      <Modal
+        open={audioPreview.open}
+        title={audioPreview.title || '通话录音'}
+        destroyOnHidden
+        footer={null}
+        onCancel={() => setAudioPreview({ open: false })}
+      >
+        {audioPreview.url ? (
+          // biome-ignore lint/a11y/useMediaCaption: 通话录音暂无字幕文件，保留浏览器原生音频控件。
+          <audio
+            autoPlay
+            controls
+            src={audioPreview.url}
+            style={{ width: '100%' }}
+          />
+        ) : null}
+      </Modal>
     </>
   );
 };

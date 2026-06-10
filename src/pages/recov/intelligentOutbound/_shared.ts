@@ -103,6 +103,7 @@ export type FeedbackItem = {
 
 export type CommunicationLog = {
   id: string;
+  recordingOssId?: string;
   date: string;
   channel: string;
   status?: string;
@@ -547,6 +548,7 @@ const toCommunicationLog = (
   record: AiCallTimelineRecord | AiCallRecordDetail,
 ): CommunicationLog => ({
   id: firstText(record.callRecordId, record.finishedAt, record.startedAt),
+  recordingOssId: firstText(record.recordingOssId),
   date: firstText(record.finishedAt, record.startedAt),
   channel: 'AI 智能外呼',
   status: getRecordStatus(record),

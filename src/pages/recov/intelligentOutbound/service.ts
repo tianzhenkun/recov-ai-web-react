@@ -175,6 +175,7 @@ export type AiCallRecordDetail = AiCallRecord & {
 
 export type AiCallTimelineRecord = {
   callRecordId?: number | string;
+  recordingOssId?: number | string;
   identityName?: string;
   callerName?: string;
   status?: string;

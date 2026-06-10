@@ -1,9 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
-import type { OwnerCommunicationDetail } from './_shared';
+import { listOssByIds } from '@/services/ruoyi/oss';
 import CommunicationLogModal, {
   CommunicationLogContent,
 } from './CommunicationLogModal';
+
+jest.mock('@/services/ruoyi/oss', () => ({
+  listOssByIds: jest.fn(),
+}));
+
+const listOssByIdsMock = listOssByIds as jest.Mock;
 
 const defaultTurns = [
   {
@@ -16,15 +22,14 @@ const defaultTurns = [
   },
 ];
 
-const buildDetail = (
-  turns: Array<Record<string, string>> = defaultTurns,
-): OwnerCommunicationDetail => ({
+const buildDetail = (turns: Array<Record<string, string>> = defaultTurns) => ({
   ownerName: '金阳',
   organization: '海珀澜庭',
   semanticSummary: '用户表示暂不方便处理费用。',
   logs: [
     {
       id: 'log-1',
+      recordingOssId: '123',
       date: '2026-05-27 14:18:52',
       channel: 'AI外呼',
       status: '4',
@@ -32,7 +37,7 @@ const buildDetail = (
       analysisStatus: '2',
       analysisStatusLabel: '已分析',
       hasSemanticAnalysis: true,
-      sentiment: '负向',
+      sentiment: '负向' as const,
       summary: '用户质疑催收方式，暂不愿处理相关费用。',
       keywords: ['隐藏标签A', '隐藏标签B'],
       durationSeconds: 65,
@@ -44,6 +49,10 @@ const buildDetail = (
 });
 
 describe('CommunicationLogContent', () => {
+  beforeEach(() => {
+    listOssByIdsMock.mockReset();
+  });
+
   it('hides semantic keyword tags in communication records', () => {
     render(<CommunicationLogContent detail={buildDetail()} />);
 
@@ -70,6 +79,30 @@ describe('CommunicationLogContent', () => {
     );
 
     expect(screen.getByText('第 7 轮 AI 结尾')).toBeTruthy();
+  });
+
+  it('plays recording when a communication record has recording oss id', async () => {
+    listOssByIdsMock.mockResolvedValue({
+      data: [
+        {
+          ossId: '123',
+          url: 'https://oss.lingchen-ai.com/recov/recordings/demo.wav',
+        },
+      ],
+    });
+
+    render(<CommunicationLogContent detail={buildDetail()} />);
+
+    fireEvent.click(screen.getByLabelText('播放录音'));
+
+    await waitFor(() => {
+      expect(listOssByIdsMock).toHaveBeenCalledWith('123');
+    });
+    await waitFor(() => {
+      expect(document.querySelector('audio')?.getAttribute('src')).toBe(
+        'https://oss.lingchen-ai.com/recov/recordings/demo.wav',
+      );
+    });
   });
 
   it('keeps the modal body scrollable for long communication records', () => {
