@@ -1,7 +1,8 @@
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { Empty, Modal, message, Spin } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTemplateVariables } from '@/hooks/useTemplateVariables';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type DeliveryExpressExcelField,
   type DeliveryStrategyRow,
@@ -378,7 +379,7 @@ const DeliveryStrategyPage = () => {
   };
 
   return (
-    <PageContainer breadcrumbRender={false} title="全域送达策略">
+    <RecovPage breadcrumbRender={false} title="全域送达策略">
       {messageContextHolder}
       {modalContextHolder}
 
@@ -426,7 +427,7 @@ const DeliveryStrategyPage = () => {
         onSaved={handleFlowSaved}
         messageApi={messageApi}
       />
-    </PageContainer>
+    </RecovPage>
   );
 };
 

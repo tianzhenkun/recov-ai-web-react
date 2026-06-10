@@ -138,6 +138,52 @@ canvas {
   display: block;
 }
 
+.ant-pro-page-container {
+  --recov-page-content-top-gap: 24px;
+
+  .ant-pro-page-container-warp,
+  .ant-page-header,
+  .ant-page-header-breadcrumb,
+  .ant-page-header-heading {
+    display: none;
+  }
+
+  .ant-pro-page-container-children-container {
+    padding-block-start: var(--recov-page-content-top-gap);
+  }
+}
+
+.recov-page-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.recov-page-toolbar-extra {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+@media (max-width: 575px) {
+  .ant-pro-page-container {
+    --recov-page-content-top-gap: 16px;
+  }
+
+  .recov-page-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recov-page-toolbar-extra {
+    justify-content: flex-start;
+  }
+}
+
 ul,
 ol {
   list-style: none;
@@ -149,10 +195,6 @@ ol {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-}
-
-.recov-list-page.ant-pro-page-container > .ant-pro-page-container-warp {
-  flex: 0 0 auto;
 }
 
 .recov-list-page.ant-pro-page-container > .ant-pro-grid-content {
@@ -267,15 +309,6 @@ ol {
 .recov-list-page .recov-stats-strip .ant-pro-card-body > div,
 .recov-list-page .recov-stats-strip .ant-pro-card-body > button {
   min-height: 58px !important;
-}
-
-.recov-list-page .ant-page-header-heading {
-  padding-block-start: 4px !important;
-}
-
-.recov-list-page .ant-page-header-heading-title {
-  font-size: 20px;
-  line-height: 1.35;
 }
 
 .recov-table-card.ant-pro-card {

@@ -1,5 +1,5 @@
 import { ArrowRightOutlined, EditOutlined } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import {
   Button,
@@ -25,6 +25,7 @@ import {
 import TemplateEditor from '@/components/TemplateEditor';
 import type { TemplateEditorFeatures } from '@/components/TemplateEditor/types';
 import { useTemplateVariables } from '@/hooks/useTemplateVariables';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type CallConfigVO,
   type FlowTemplateVO,
@@ -653,7 +654,7 @@ const CollectionStrategyPage = () => {
   };
 
   return (
-    <PageContainer breadcrumbRender={false} title="催收策略配置">
+    <RecovPage breadcrumbRender={false} title="催收策略配置">
       {messageContextHolder}
       <Modal
         destroyOnHidden
@@ -862,7 +863,7 @@ const CollectionStrategyPage = () => {
           </div>
         </Spin>
       </div>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

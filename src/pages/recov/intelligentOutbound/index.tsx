@@ -7,7 +7,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import { Column } from '@ant-design/plots';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import {
   Button,
   Empty,
@@ -28,6 +28,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   getCurrentAssetPackagePipelineProgress,
   getDebtRecordPage,
@@ -468,7 +469,7 @@ const IntelligentOutboundPage = () => {
   }
 
   return (
-    <PageContainer
+    <RecovPage
       breadcrumbRender={false}
       title={PAGE_TITLE}
       extra={
@@ -708,7 +709,7 @@ const IntelligentOutboundPage = () => {
         detail={logDetail}
         onClose={handleCloseLogModal}
       />
-    </PageContainer>
+    </RecovPage>
   );
 };
 

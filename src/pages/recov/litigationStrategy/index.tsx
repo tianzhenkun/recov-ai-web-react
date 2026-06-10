@@ -1,6 +1,7 @@
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { message, Tabs } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type AutoCollectionConfigVo,
   getAutoCollectionConfig,
@@ -154,7 +155,7 @@ const LitigationStrategyPage = () => {
   }, [autoForm, messageApi]);
 
   return (
-    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
+    <RecovPage breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
 
       <ProCard>
@@ -201,7 +202,7 @@ const LitigationStrategyPage = () => {
           ]}
         />
       </ProCard>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

@@ -8,6 +8,7 @@ export type InstrumentTaskGroupItem = {
   flowId?: number | string;
   debtorName?: string;
   debtNumber?: string;
+  debtAmount?: number | string;
   overdueAmount?: number | string;
   overdueDays?: number | string;
   debtIdCard?: string;

@@ -5,7 +5,6 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { PageContainer } from '@ant-design/pro-components';
 import {
   Button,
   Empty,
@@ -27,6 +26,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import { listOssByIds, type OssItem } from '@/services/ruoyi/oss';
 import { formatDuration } from './_shared';
 import { AgentWebRtcStatusBar } from './AgentWebRtcStatusBar';
@@ -987,7 +987,7 @@ const LiveMonitorDetailView = ({
   );
 
   return (
-    <PageContainer breadcrumbRender={false} title={null}>
+    <RecovPage breadcrumbRender={false} title={null}>
       {messageContextHolder}
       <div className="flex flex-col gap-3">
         <div className="rounded border border-solid border-gray-200 bg-white px-4 py-3">
@@ -1071,7 +1071,7 @@ const LiveMonitorDetailView = ({
           </Modal>
         </div>
       </div>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

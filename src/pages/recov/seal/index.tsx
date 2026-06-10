@@ -1,8 +1,9 @@
 import { PlusOutlined } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { Button, Empty, Modal, message, Spin, Tabs } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import { listOssByIds } from '@/services/ruoyi/oss';
 import {
   deleteFilingAccount,
@@ -267,7 +268,7 @@ const SmartSealConfigPage = () => {
   );
 
   return (
-    <PageContainer breadcrumbRender={false} title="智能盖章配置">
+    <RecovPage breadcrumbRender={false} title="智能盖章配置">
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
@@ -346,7 +347,7 @@ const SmartSealConfigPage = () => {
         onSaved={handleLawyerSaved}
         messageApi={messageApi}
       />
-    </PageContainer>
+    </RecovPage>
   );
 };
 

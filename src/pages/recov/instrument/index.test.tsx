@@ -75,6 +75,7 @@ describe('/instrument-list presentation conventions', () => {
       "dataIndex: 'displayGroupName'",
     );
     const statusIndex = columnsSource.indexOf("dataIndex: 'status'");
+    const debtAmountIndex = columnsSource.indexOf("dataIndex: 'debtAmount'");
     const overdueAmountIndex = columnsSource.indexOf(
       "dataIndex: 'overdueAmount'",
     );
@@ -91,8 +92,13 @@ describe('/instrument-list presentation conventions', () => {
     expect(debtorNameIndex).toBeGreaterThan(organizationIndex);
     expect(groupNameIndex).toBeGreaterThan(debtorNameIndex);
     expect(statusIndex).toBeGreaterThan(groupNameIndex);
-    expect(overdueAmountIndex).toBeGreaterThan(statusIndex);
+    expect(debtAmountIndex).toBeGreaterThan(statusIndex);
+    expect(overdueAmountIndex).toBeGreaterThan(debtAmountIndex);
     expect(columnsSource).toContain("'函件类型'");
+    expect(getColumnSource('debtAmount')).toContain("title: '逾期金额'");
+    expect(getColumnSource('overdueAmount')).toContain(
+      "title: '违约（滞纳）金'",
+    );
     expect(columnsSource).not.toContain("title: '文书分组'");
     expect(columnsSource).not.toContain("title: '文书进度'");
     expect(getColumnSource('city')).toContain(

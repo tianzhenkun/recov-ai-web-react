@@ -1,4 +1,4 @@
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import {
   Badge,
   Button,
@@ -14,6 +14,7 @@ import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   getTimeConfig,
   type SaveTimeConfigDTO,
@@ -176,7 +177,7 @@ const RuntimeSettingsPage = () => {
   };
 
   return (
-    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
+    <RecovPage breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
 
       <ProCard
@@ -262,7 +263,7 @@ const RuntimeSettingsPage = () => {
           ) : null}
         </Spin>
       </ProCard>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

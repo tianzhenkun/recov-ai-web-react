@@ -6,7 +6,7 @@ import {
   PlusOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import XMarkdown from '@ant-design/x-markdown';
 import {
   Button,
@@ -25,6 +25,7 @@ import {
 import type { UploadProps } from 'antd/es/upload';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MarkdownEditor from '@/components/MarkdownEditor';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   addPersona,
   deletePersonas,
@@ -328,7 +329,7 @@ const PersonaPage = () => {
   );
 
   return (
-    <PageContainer
+    <RecovPage
       breadcrumbRender={false}
       title="目标群体画像管理"
       extra={pageActions}
@@ -503,7 +504,7 @@ const PersonaPage = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

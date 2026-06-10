@@ -6,7 +6,7 @@ import {
   ReloadOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import {
   Button,
@@ -23,6 +23,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type RuoyiDictOption, useRuoyiDict } from '@/hooks/useRuoyiDict';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type CreateFlowTemplateDTO,
   createFlowTemplate,
@@ -661,7 +662,7 @@ const CollectionStrategyFlowEditor = () => {
   );
 
   return (
-    <PageContainer title="流程编排" onBack={exitEditor}>
+    <RecovPage title="流程编排" onBack={exitEditor}>
       {messageContextHolder}
       {modalContextHolder}
       <Drawer
@@ -934,7 +935,7 @@ const CollectionStrategyFlowEditor = () => {
           </ProCard>
         </div>
       </Spin>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

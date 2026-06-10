@@ -1,9 +1,10 @@
 import { EditOutlined } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { Modal, message, Segmented, Table, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type AmountRangeType,
   batchUpdateFeeRates,
@@ -229,7 +230,7 @@ const FeeConfigPage = () => {
   }, [currentAmountRangeType, token.colorPrimary]);
 
   return (
-    <PageContainer breadcrumbRender={false} title={PAGE_TITLE}>
+    <RecovPage breadcrumbRender={false} title={PAGE_TITLE}>
       {messageContextHolder}
       {modalContextHolder}
 
@@ -281,7 +282,7 @@ const FeeConfigPage = () => {
         }}
         onSave={handleSaveRule}
       />
-    </PageContainer>
+    </RecovPage>
   );
 };
 

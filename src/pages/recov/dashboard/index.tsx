@@ -8,7 +8,7 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { Column, Line } from '@ant-design/plots';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import {
   Col,
   Empty,
@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import MetricIcon, {
   type MetricTone,
 } from '@/pages/recov/components/MetricIcon';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type DashboardIndicator,
   type DashboardOverview,
@@ -315,7 +316,7 @@ const DashboardPage = () => {
   );
 
   return (
-    <PageContainer title="首页">
+    <RecovPage title="首页">
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div
           style={{
@@ -513,7 +514,7 @@ const DashboardPage = () => {
           )}
         </ProCard>
       </Space>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

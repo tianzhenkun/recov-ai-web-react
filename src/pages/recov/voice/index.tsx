@@ -1,4 +1,4 @@
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import {
   Button,
   Empty,
@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRuoyiDict } from '@/hooks/useRuoyiDict';
+import { RecovPage } from '@/pages/recov/components/RecovListLayout';
 import {
   type ConcurrencyConfigVo,
   getConcurrencyConfig,
@@ -284,7 +285,7 @@ const VoiceEngineConfigPage = () => {
   };
 
   return (
-    <PageContainer breadcrumbRender={false} title="语音引擎配置">
+    <RecovPage breadcrumbRender={false} title="语音引擎配置">
       {messageContextHolder}
       {modalContextHolder}
       <div className="flex flex-col gap-4 pb-4">
@@ -402,7 +403,7 @@ const VoiceEngineConfigPage = () => {
           </Spin>
         </ProCard>
       </div>
-    </PageContainer>
+    </RecovPage>
   );
 };
 

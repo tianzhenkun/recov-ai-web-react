@@ -16,7 +16,7 @@ import {
   SyncOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { PageContainer, ProCard } from '@ant-design/pro-components';
+import { ProCard } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
 import {
   Alert,
@@ -59,6 +59,7 @@ import {
   renderRecovSingleLineText,
 } from '@/pages/recov/components/RecovFilterControls';
 import {
+  RecovPage,
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
@@ -1789,6 +1790,13 @@ const InstrumentListPage = () => {
     },
     {
       title: '逾期金额',
+      dataIndex: 'debtAmount',
+      width: 140,
+      align: 'right',
+      render: formatAmount,
+    },
+    {
+      title: '违约（滞纳）金',
       dataIndex: 'overdueAmount',
       width: 140,
       align: 'right',
@@ -2140,7 +2148,7 @@ const InstrumentListPage = () => {
     );
 
   return (
-    <PageContainer
+    <RecovPage
       className={groupVisible ? undefined : 'recov-list-page'}
       title={groupVisible ? null : '智能法律文书管理'}
     >
@@ -2688,7 +2696,7 @@ const InstrumentListPage = () => {
                 loading={loading}
                 columns={groupColumns}
                 dataSource={tableData}
-                scroll={{ x: 1420 }}
+                scroll={{ x: 1560 }}
                 rowSelection={{
                   selectedRowKeys: selectedGroupKeys,
                   onChange: (keys) => {
@@ -2898,7 +2906,7 @@ const InstrumentListPage = () => {
           <Empty description="暂无详情" />
         )}
       </Drawer>
-    </PageContainer>
+    </RecovPage>
   );
 };
 
