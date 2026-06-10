@@ -45,6 +45,8 @@ export type AiCallAnalysis = {
 export type AiCallRecord = {
   callRecordId?: number | string;
   debtId?: number | string;
+  gatewayCallId?: string;
+  recordingOssId?: number | string;
   identityName?: string;
   callerName?: string;
   debtNumber?: number | string;

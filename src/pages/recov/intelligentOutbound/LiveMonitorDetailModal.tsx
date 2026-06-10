@@ -1,4 +1,8 @@
-import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  EyeOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 import {
   Button,
   Empty,
@@ -18,6 +22,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { listOssByIds, type OssItem } from '@/services/ruoyi/oss';
 import { formatDuration } from './_shared';
 import { type AiCallRecord, getAiCallRecordPage } from './service';
 
@@ -87,6 +92,26 @@ const toDisplayDurationSeconds = (record: AiCallRecord, nowMs: number) => {
   return Math.floor((nowMs - startedAt) / 1000);
 };
 
+const loadRecordingUrlMap = async (records: AiCallRecord[]) => {
+  const ossIds = Array.from(
+    new Set(
+      records.map((record) => firstText(record.recordingOssId)).filter(Boolean),
+    ),
+  );
+  if (!ossIds.length) return {};
+
+  const response = await listOssByIds(ossIds.join(','));
+  const result: Record<string, string> = {};
+  ((response.data || []) as OssItem[]).forEach((oss) => {
+    const ossId = firstText(oss.ossId);
+    const url = firstText(oss.url);
+    if (ossId && url) {
+      result[ossId] = url;
+    }
+  });
+  return result;
+};
+
 const renderSingleLine = (
   value: unknown,
   options?: { strong?: boolean; secondary?: boolean },
@@ -116,6 +141,14 @@ const LiveMonitorDetailModal = ({
   const [items, setItems] = useState<AiCallRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [recordingUrls, setRecordingUrls] = useState<Record<string, string>>(
+    {},
+  );
+  const [audioPreview, setAudioPreview] = useState<{
+    open: boolean;
+    title?: string;
+    url?: string;
+  }>({ open: false });
   const [page, setPage] = useState({
     pageNum: 1,
     pageSize: DEFAULT_PAGE_SIZE,
@@ -136,12 +169,26 @@ const LiveMonitorDetailModal = ({
           ...(tabKey === 'ongoing' ? { status: '1' } : range),
         });
         if (seq !== loadSeqRef.current) return;
-        setItems(res.rows || []);
+        const rows = res.rows || [];
+        setItems(rows);
         setTotal(Number(res.total || 0));
+        setRecordingUrls({});
+        void loadRecordingUrlMap(rows)
+          .then((nextRecordingUrls) => {
+            if (seq === loadSeqRef.current) {
+              setRecordingUrls(nextRecordingUrls);
+            }
+          })
+          .catch(() => {
+            if (seq === loadSeqRef.current) {
+              setRecordingUrls({});
+            }
+          });
       } catch {
         if (seq !== loadSeqRef.current) return;
         setItems([]);
         setTotal(0);
+        setRecordingUrls({});
       } finally {
         if (seq === loadSeqRef.current) {
           setLoading(false);
@@ -158,6 +205,8 @@ const LiveMonitorDetailModal = ({
     setPage({ pageNum: 1, pageSize: DEFAULT_PAGE_SIZE });
     setItems([]);
     setTotal(0);
+    setRecordingUrls({});
+    setAudioPreview({ open: false });
   }, [open]);
 
   useEffect(() => {
@@ -273,6 +322,45 @@ const LiveMonitorDetailModal = ({
           );
         },
       },
+      {
+        key: 'recording',
+        dataIndex: 'recordingOssId',
+        title: '录音',
+        width: 96,
+        render: (_, record) => {
+          const recordingOssId = firstText(record.recordingOssId);
+          const url = recordingOssId ? recordingUrls[recordingOssId] : '';
+          const disabled = !url;
+          return (
+            <Tooltip
+              title={
+                recordingOssId
+                  ? disabled
+                    ? '录音文件加载中'
+                    : '播放录音'
+                  : '暂无录音'
+              }
+            >
+              <Button
+                aria-label="播放录音"
+                disabled={disabled}
+                icon={<PlayCircleOutlined />}
+                size="small"
+                type="text"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (!url) return;
+                  setAudioPreview({
+                    open: true,
+                    title: `${firstText(record.debtorName, '通话')}录音`,
+                    url,
+                  });
+                }}
+              />
+            </Tooltip>
+          );
+        },
+      },
     ];
 
     if (activeKey === 'completed') {
@@ -303,6 +391,7 @@ const LiveMonitorDetailModal = ({
     activeKey,
     nowMs,
     onRecordSemanticClick,
+    recordingUrls,
     token.colorBorderSecondary,
     token.colorFillQuaternary,
     token.colorPrimary,
@@ -321,7 +410,7 @@ const LiveMonitorDetailModal = ({
       dataSource={items}
       columns={columns}
       tableLayout="fixed"
-      scroll={{ x: activeKey === 'completed' ? 1120 : 1000 }}
+      scroll={{ x: activeKey === 'completed' ? 1220 : 1100 }}
       locale={{
         emptyText: (
           <Empty
@@ -387,6 +476,19 @@ const LiveMonitorDetailModal = ({
         ]}
       />
       {table}
+      <Modal
+        destroyOnHidden
+        footer={null}
+        open={audioPreview.open}
+        title={audioPreview.title || '通话录音'}
+        width={520}
+        onCancel={() => setAudioPreview({ open: false })}
+      >
+        {audioPreview.url ? (
+          // biome-ignore lint/a11y/useMediaCaption: 通话录音暂无字幕文件，保留浏览器原生音频控件。
+          <audio autoPlay className="w-full" controls src={audioPreview.url} />
+        ) : null}
+      </Modal>
     </Modal>
   );
 };

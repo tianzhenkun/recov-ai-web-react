@@ -66,6 +66,8 @@ const firstText = (...values: unknown[]) => {
 
 const getTranscriptTurns = (transcript?: Record<string, unknown>) => {
   if (!transcript || !Array.isArray(transcript.turns)) return [];
+  const keyCounts = new Map<string, number>();
+
   return transcript.turns
     .map((turn) => {
       if (!turn || typeof turn !== 'object') return null;
@@ -78,7 +80,21 @@ const getTranscriptTurns = (transcript?: Record<string, unknown>) => {
       );
       const content = firstText(source.text, source.content, source.message);
       if (!content) return null;
+      const baseKey =
+        firstText(
+          source.id,
+          source.turnId,
+          source.messageId,
+          source.seq,
+          source.sequence,
+          source.timestamp,
+          source.startTime,
+        ) || `${speaker || '对话'}-${content}`;
+      const usedCount = keyCounts.get(baseKey) || 0;
+      keyCounts.set(baseKey, usedCount + 1);
+
       return {
+        key: usedCount > 0 ? `${baseKey}-${usedCount + 1}` : baseKey,
         speaker: speaker || '对话',
         content,
         role:
@@ -90,6 +106,7 @@ const getTranscriptTurns = (transcript?: Record<string, unknown>) => {
       };
     })
     .filter(Boolean) as Array<{
+    key: string;
     speaker: string;
     content: string;
     role: 'assistant' | 'user' | 'unknown';
@@ -128,8 +145,8 @@ export const CommunicationLogContent = ({
       log.hasSemanticAnalysis || transcriptTurns.length === 0;
     return {
       color: timelineColor,
-      dot: <ClockCircleOutlined style={{ color: timelineColor }} />,
-      children: (
+      icon: <ClockCircleOutlined style={{ color: timelineColor }} />,
+      content: (
         <div className="flex flex-col gap-2 pb-2">
           <Space size={8} align="center" wrap>
             <Text strong>{log.date || '未记录时间'}</Text>
@@ -167,9 +184,9 @@ export const CommunicationLogContent = ({
                 }}
               >
                 <div className="flex flex-col gap-2">
-                  {transcriptTurns.slice(0, 6).map((turn) => (
+                  {transcriptTurns.map((turn) => (
                     <div
-                      key={`${turn.speaker}-${turn.content}`}
+                      key={`${log.id}-${turn.key}`}
                       className={`flex ${
                         turn.role === 'user' ? 'justify-end' : 'justify-start'
                       }`}
@@ -267,6 +284,12 @@ const CommunicationLogModal = ({
       width={760}
       destroyOnHidden
       onCancel={onClose}
+      styles={{
+        body: {
+          maxHeight: 'calc(90vh - 128px)',
+          overflowY: 'auto',
+        },
+      }}
       footer={
         <Button type="primary" onClick={onClose}>
           关闭
