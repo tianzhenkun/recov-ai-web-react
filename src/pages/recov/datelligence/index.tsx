@@ -2821,6 +2821,8 @@ const DatelligencePage = () => {
       content: (
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+            <Text type="secondary">资产编号</Text>
+            <Text>{filter.debtNumber || '全部'}</Text>
             <Text type="secondary">所属城市</Text>
             <Text>{filter.city || '全部'}</Text>
             <Text type="secondary">所属项目</Text>
@@ -2828,7 +2830,7 @@ const DatelligencePage = () => {
           </div>
           <Text type={hasEmptyFilter ? 'danger' : 'secondary'}>
             {hasEmptyFilter
-              ? '未设置城市或项目筛选，将按当前权限范围发起催收流程。'
+              ? '未设置任何筛选条件，将按当前权限范围发起催收流程。'
               : '将对当前筛选条件发起催收流程。已发起或正在发起的债务会自动跳过。'}
           </Text>
           {outboundStartNotice ? (

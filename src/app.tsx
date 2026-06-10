@@ -768,6 +768,7 @@ export const layout: RunTimeLayoutConfig = ({
   };
 
   return {
+    siderWidth: defaultSettings.siderWidth,
     menuItemRender: (item, dom) => {
       if (item.path) {
         if (isExternalPath(item.path)) {

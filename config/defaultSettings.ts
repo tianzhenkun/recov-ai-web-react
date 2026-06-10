@@ -11,6 +11,7 @@ const Settings: ProLayoutProps & {
   colorPrimary: '#722ED1',
   layout: 'mix',
   contentWidth: 'Fluid',
+  siderWidth: 196,
   fixedHeader: false,
   fixSiderbar: true,
   colorWeak: false,
