@@ -385,6 +385,74 @@ describe('FlowTraceDrawer', () => {
     ).toBeTruthy();
   });
 
+  it('shows a local loading panel while RPA evidence is loading', async () => {
+    getFlowExecutionTraceMock.mockResolvedValueOnce({
+      data: {
+        instanceId: 'instance-1',
+        debtNumber: 'A-001',
+        debtorName: '张三',
+        city: '深圳市',
+        organization: '星河项目',
+        flowStatus: '2',
+        flowStatusName: '已完成',
+        currentStepId: 'step-1',
+        currentNodeCode: 'filing_material_submit',
+        canRetryCurrentStep: false,
+        steps: [
+          {
+            stepId: 'step-1',
+            stepIndex: 0,
+            nodeCode: 'filing_material_submit',
+            reached: true,
+            stepStatus: 'DONE',
+            stepStatusName: '执行成功',
+          },
+        ],
+      },
+    });
+
+    let resolveEvidence: (value: {
+      data: {
+        nodeCode: string;
+        nodeType: string;
+        status: string;
+        statusName: string;
+        screenshots: never[];
+      };
+    }) => void = () => {};
+    getFilingMaterialSubmitEvidenceMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveEvidence = resolve;
+      }),
+    );
+
+    render(
+      <FlowTraceDrawer
+        open={true}
+        instanceId="instance-1"
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('资产编号')).toBeTruthy();
+    expect(await screen.findByText('RPA执行证据')).toBeTruthy();
+    expect(screen.getByText('正在加载RPA执行证据')).toBeTruthy();
+
+    resolveEvidence({
+      data: {
+        nodeCode: 'filing_material_submit',
+        nodeType: 'material_submit',
+        status: '2',
+        statusName: '已完成',
+        screenshots: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('正在加载RPA执行证据')).toBeNull();
+    });
+  });
+
   it('renders only RPA failure screenshots in the event tab', async () => {
     getFlowExecutionTraceMock.mockResolvedValueOnce({
       data: {

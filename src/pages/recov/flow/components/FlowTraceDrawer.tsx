@@ -14,6 +14,7 @@ import {
   Modal,
   message,
   Select,
+  Skeleton,
   Space,
   Spin,
   Tabs,
@@ -336,6 +337,9 @@ const FlowTraceDrawer = ({
   const [filingEvidenceOssMap, setFilingEvidenceOssMap] = useState<
     Map<string, OssItem>
   >(new Map());
+  const [filingEvidenceLoading, setFilingEvidenceLoading] = useState(false);
+  const [filingEvidenceOssLoading, setFilingEvidenceOssLoading] =
+    useState(false);
   const [retrying, setRetrying] = useState(false);
   const [courtLoading, setCourtLoading] = useState(false);
   const [courtSaving, setCourtSaving] = useState(false);
@@ -343,6 +347,7 @@ const FlowTraceDrawer = ({
   const [selectedCourtKey, setSelectedCourtKey] = useState<string>();
   const pollingTimerRef = useRef<number | null>(null);
   const requestSeqRef = useRef(0);
+  const filingEvidenceSeqRef = useRef(0);
 
   const currentStep = useMemo(() => currentStepOf(trace), [trace]);
   const retryStepId = currentStep?.stepId ?? trace?.currentStepId;
@@ -547,16 +552,28 @@ const FlowTraceDrawer = ({
   );
 
   const loadFilingEvidence = useCallback(async () => {
+    filingEvidenceSeqRef.current += 1;
+    const seq = filingEvidenceSeqRef.current;
     if (!instanceId || !shouldShowFilingEvidence) {
+      setFilingEvidenceLoading(false);
       setFilingEvidence(null);
       setFilingEvidenceOssMap(new Map());
       return;
     }
+    setFilingEvidenceLoading(true);
     try {
       const result = await getFilingMaterialSubmitEvidence(instanceId);
-      setFilingEvidence(result.data ?? null);
+      if (seq === filingEvidenceSeqRef.current) {
+        setFilingEvidence(result.data ?? null);
+      }
     } catch {
-      setFilingEvidence(null);
+      if (seq === filingEvidenceSeqRef.current) {
+        setFilingEvidence(null);
+      }
+    } finally {
+      if (seq === filingEvidenceSeqRef.current) {
+        setFilingEvidenceLoading(false);
+      }
     }
   }, [instanceId, shouldShowFilingEvidence]);
 
@@ -623,6 +640,7 @@ const FlowTraceDrawer = ({
     const screenshots =
       filingEvidence?.screenshots?.filter((item) => item.ossId) ?? [];
     if (!open || !screenshots.length) {
+      setFilingEvidenceOssLoading(false);
       setFilingEvidenceOssMap(new Map());
       return;
     }
@@ -630,14 +648,19 @@ const FlowTraceDrawer = ({
       .map((item) => item.ossId)
       .filter((id): id is number | string => id !== undefined && id !== null);
     if (!ossIds.length) {
+      setFilingEvidenceOssLoading(false);
       setFilingEvidenceOssMap(new Map());
       return;
     }
+    let cancelled = false;
+    setFilingEvidenceOssLoading(true);
+    setFilingEvidenceOssMap(new Map());
     void (async () => {
       try {
         const response = await listOssByIds(
           Array.from(new Set(ossIds.map(String))).join(','),
         );
+        if (cancelled) return;
         const rows = Array.isArray(response.data) ? response.data : [];
         setFilingEvidenceOssMap(
           new Map(
@@ -647,9 +670,18 @@ const FlowTraceDrawer = ({
           ),
         );
       } catch {
-        setFilingEvidenceOssMap(new Map());
+        if (!cancelled) {
+          setFilingEvidenceOssMap(new Map());
+        }
+      } finally {
+        if (!cancelled) {
+          setFilingEvidenceOssLoading(false);
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [filingEvidence?.screenshots, open]);
 
   useEffect(() => {
@@ -791,8 +823,38 @@ const FlowTraceDrawer = ({
 
   const filingEvidenceScreenshots =
     filingEvidence?.screenshots?.filter((item) => item.ossId) ?? [];
+  const isFilingEvidencePanelLoading =
+    shouldShowFilingEvidence &&
+    (filingEvidenceLoading || filingEvidenceOssLoading);
+
+  const renderFilingEvidenceLoadingPanel = () => (
+    <div
+      className="rounded border border-[#e5e7eb] bg-white p-3"
+      aria-busy={true}
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Text strong>RPA执行证据</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          正在加载RPA执行证据
+        </Text>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0 rounded border border-[#f1f5f9] p-2">
+          <Skeleton
+            active
+            title={{ width: '45%' }}
+            paragraph={{ rows: 1, width: '70%' }}
+          />
+          <div className="mt-2 h-[140px] rounded bg-[#f8fafc]" />
+        </div>
+      </div>
+    </div>
+  );
 
   const renderFilingEvidencePanel = () => {
+    if (isFilingEvidencePanelLoading) {
+      return renderFilingEvidenceLoadingPanel();
+    }
     if (!shouldShowFilingEvidence || filingEvidenceScreenshots.length === 0) {
       return null;
     }
@@ -818,6 +880,11 @@ const FlowTraceDrawer = ({
                       <Image
                         src={oss.url}
                         alt={label}
+                        placeholder={
+                          <div className="flex h-[140px] items-center justify-center rounded bg-[#f8fafc]">
+                            <Spin size="small" />
+                          </div>
+                        }
                         style={{ maxHeight: 180, objectFit: 'contain' }}
                       />
                       <a href={oss.url} target="_blank" rel="noreferrer">
