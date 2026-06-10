@@ -6,7 +6,7 @@ import LiveMonitorCard from './LiveMonitorCard';
 const stats = {
   ongoingCalls: 0,
   finishedToday: 0,
-  totalTalkMinutesToday: 0,
+  totalTalkSecondsToday: 0,
 };
 
 describe('LiveMonitorCard', () => {
@@ -60,5 +60,28 @@ describe('LiveMonitorCard', () => {
     expect(strip?.textContent).toContain('今日已完成');
     expect(strip?.textContent).toContain('今日累计通话时长');
     expect(strip?.parentElement).toBe(panel);
+  });
+
+  it('renders today talk duration as natural time text instead of decimal minutes', () => {
+    render(
+      <LiveMonitorCard
+        stats={{
+          ...stats,
+          totalTalkSecondsToday: 98,
+        }}
+        onDetailClick={jest.fn()}
+      />,
+    );
+
+    const panel = screen
+      .getByText('正在通话')
+      .closest('.live-monitor-metrics-panel');
+    const stripText = panel?.querySelector(
+      '.live-monitor-secondary-strip',
+    )?.textContent;
+
+    expect(stripText).toContain('今日累计通话时长');
+    expect(stripText).toContain('1 分 38 秒');
+    expect(stripText).not.toContain('1.63');
   });
 });

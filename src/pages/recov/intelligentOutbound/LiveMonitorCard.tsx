@@ -2,7 +2,7 @@ import { EyeOutlined } from '@ant-design/icons';
 import { Button, Skeleton, Space, Tooltip, Typography, theme } from 'antd';
 import React from 'react';
 import type { LiveMonitorStats } from './_shared';
-import { formatCompactCount, formatCount } from './_shared';
+import { formatCompactCount, formatCount, formatDuration } from './_shared';
 import './LiveMonitorCard.css';
 
 const { Text } = Typography;
@@ -17,7 +17,8 @@ type LiveMonitorCardProps = {
 type MonitorStat = {
   label: string;
   raw: number;
-  unit: string;
+  unit?: string;
+  format?: 'count' | 'duration';
 };
 
 const LiveMonitorCard = ({
@@ -46,8 +47,8 @@ const LiveMonitorCard = ({
     },
     {
       label: '今日累计通话时长',
-      raw: stats.totalTalkMinutesToday,
-      unit: '分钟',
+      raw: stats.totalTalkSecondsToday,
+      format: 'duration',
     },
   ];
 
@@ -55,8 +56,14 @@ const LiveMonitorCard = ({
     stat: MonitorStat,
     options?: { large?: boolean; secondary?: boolean },
   ) => {
-    const compact = formatCompactCount(stat.raw);
-    const full = formatCount(stat.raw);
+    const compact =
+      stat.format === 'duration'
+        ? formatDuration(stat.raw)
+        : formatCompactCount(stat.raw);
+    const full =
+      stat.format === 'duration'
+        ? `${formatCount(Math.round(stat.raw))} 秒`
+        : `${formatCount(stat.raw)}${stat.unit ?? ''}`;
     const hasTooltip = compact !== full;
     const valueFontSize = options?.large ? 34 : options?.secondary ? 20 : 22;
     const unitFontSize = options?.large ? 16 : 13;
@@ -77,25 +84,23 @@ const LiveMonitorCard = ({
         >
           {compact}
         </Text>
-        <Text
-          style={{
-            color: token.colorTextSecondary,
-            cursor: 'inherit',
-            fontSize: unitFontSize,
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {stat.unit}
-        </Text>
+        {stat.unit ? (
+          <Text
+            style={{
+              color: token.colorTextSecondary,
+              cursor: 'inherit',
+              fontSize: unitFontSize,
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {stat.unit}
+          </Text>
+        ) : null}
       </span>
     );
 
-    return hasTooltip ? (
-      <Tooltip title={`${full} ${stat.unit}`}>{content}</Tooltip>
-    ) : (
-      content
-    );
+    return hasTooltip ? <Tooltip title={full}>{content}</Tooltip> : content;
   };
 
   return (

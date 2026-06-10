@@ -73,7 +73,7 @@ export type OutboundMetric = {
 export type LiveMonitorStats = {
   ongoingCalls: number;
   finishedToday: number;
-  totalTalkMinutesToday: number;
+  totalTalkSecondsToday: number;
 };
 
 export type DigitalIdentity = {
@@ -155,10 +155,6 @@ const compactFormatter = new Intl.NumberFormat('zh-CN', {
   maximumFractionDigits: 2,
 });
 
-const secondsToHours = (value: unknown) => toNumber(value) / 3600;
-
-const secondsToMinutes = (value: unknown) => toNumber(value) / 60;
-
 export const formatCount = (value: unknown): string =>
   numberFormatter.format(toNumber(value));
 
@@ -177,8 +173,17 @@ export const formatCompactCount = (value: unknown): string => {
 
 export const formatDuration = (seconds: unknown): string => {
   const totalSeconds = Math.max(0, Math.round(toNumber(seconds)));
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const restSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    const parts = [`${hours} 小时`];
+    if (minutes > 0) parts.push(`${minutes} 分`);
+    if (restSeconds > 0) parts.push(`${restSeconds} 秒`);
+    return parts.join(' ');
+  }
+
   if (minutes <= 0) return `${restSeconds} 秒`;
   if (restSeconds <= 0) return `${minutes} 分钟`;
   return `${minutes} 分 ${restSeconds} 秒`;
@@ -204,6 +209,15 @@ export type MetricDisplay = {
 };
 
 export const buildMetricDisplay = (metric: OutboundMetric): MetricDisplay => {
+  if (metric.format === 'duration') {
+    const primary = formatDuration(metric.value);
+    const full = `${formatCount(Math.round(toNumber(metric.value)))} 秒`;
+    return {
+      primary,
+      tooltip: primary === full ? undefined : full,
+    };
+  }
+
   if (metric.format === 'currency') {
     const compact = formatCompactCurrencyAmount(metric.value);
     const full = formatAmount(metric.value);
@@ -239,9 +253,8 @@ export const buildOutboundOverview = (
       {
         key: 'totalTalkHours',
         label: '累计通话时长',
-        value: secondsToHours(data.totalCallDurationSeconds),
+        value: toNumber(data.totalCallDurationSeconds),
         format: 'duration',
-        unit: '小时',
       },
       {
         key: 'currentRepayment',
@@ -261,7 +274,7 @@ export const buildOutboundOverview = (
     liveStats: {
       ongoingCalls: toNumber(data.activeCallCount),
       finishedToday: toNumber(data.todayCompletedCount),
-      totalTalkMinutesToday: secondsToMinutes(data.todayCallDurationSeconds),
+      totalTalkSecondsToday: toNumber(data.todayCallDurationSeconds),
     },
   };
 };

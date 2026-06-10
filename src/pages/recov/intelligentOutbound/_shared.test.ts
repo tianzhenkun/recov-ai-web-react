@@ -1,4 +1,7 @@
 import {
+  buildMetricDisplay,
+  buildOutboundOverview,
+  formatDuration,
   resolveOutboundStartDisabledReason,
   resolveOutboundStartNotice,
 } from './_shared';
@@ -72,5 +75,24 @@ describe('intelligent outbound shared helpers', () => {
         pipelineStatus: 'partial_failed',
       }),
     ).toBe('');
+  });
+
+  it('formats call duration with natural time text instead of decimal hours', () => {
+    const overview = buildOutboundOverview({
+      totalCallDurationSeconds: 98,
+      todayCallDurationSeconds: 98,
+    });
+
+    const totalDurationMetric = overview.metrics.find(
+      (metric) => metric.key === 'totalTalkHours',
+    );
+
+    expect(totalDurationMetric).toBeTruthy();
+    expect(buildMetricDisplay(totalDurationMetric!).primary).toBe('1 分 38 秒');
+    expect(overview.liveStats.totalTalkSecondsToday).toBe(98);
+  });
+
+  it('supports hour-level natural duration text', () => {
+    expect(formatDuration(3725)).toBe('1 小时 2 分 5 秒');
   });
 });
