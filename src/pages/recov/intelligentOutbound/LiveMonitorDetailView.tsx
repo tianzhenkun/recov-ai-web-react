@@ -38,6 +38,7 @@ import {
   getAiCallAgentWebRtcConfig,
   getAiCallRecordPage,
   getGatewayCalls,
+  hangupGatewayCall,
 } from './service';
 import { useWebRtcAgent } from './useWebRtcAgent';
 
@@ -597,6 +598,72 @@ const LiveMonitorDetailView = ({
   const tableTotal = activeKey === 'ongoing' ? total + mockItems.length : total;
   const shouldPausePolling =
     activeKey !== 'ongoing' || agent.busy || hasActiveHumanHandoff(tableItems);
+  const currentAgentExtension = firstText(
+    webRtcConfig?.agentExtension,
+    agent.agentExtension,
+  );
+  const activeHumanHandoffRecord = useMemo(() => {
+    const activeRecords = tableItems.filter(
+      (record) =>
+        firstText(record.handoffState) === 'human_active' &&
+        Boolean(firstText(record.gatewayCallId)),
+    );
+    return (
+      activeRecords.find((record) => {
+        const recordAgentExtension = firstText(
+          record.handoffAgentExtension,
+          record.handoffClaimedBy,
+        );
+        return (
+          currentAgentExtension &&
+          recordAgentExtension === currentAgentExtension
+        );
+      }) || activeRecords[0]
+    );
+  }, [currentAgentExtension, tableItems]);
+
+  const handleAgentHangup = useCallback(async () => {
+    const gatewayCallId = firstText(activeHumanHandoffRecord?.gatewayCallId);
+    agent.hangup();
+    if (!gatewayCallId) return;
+
+    if (gatewayCallId === MOCK_GATEWAY_CALL_ID) {
+      setMockItems((records) =>
+        records.map((record) =>
+          firstText(record.gatewayCallId) === MOCK_GATEWAY_CALL_ID
+            ? {
+                ...record,
+                status: '4',
+                finishedAt: formatDateTime(new Date()),
+                handoffState: 'completed',
+                handoffCanClaim: false,
+              }
+            : record,
+        ),
+      );
+      messageApi.success('已模拟挂断人工通话');
+      return;
+    }
+
+    try {
+      await hangupGatewayCall({
+        gatewayCallId,
+        reason: 'agent_hangup',
+      });
+      messageApi.success('已挂断人工通话');
+      await loadList(activeKey, page.pageNum, page.pageSize);
+    } catch {
+      messageApi.warning('坐席已挂断，外呼结束请求失败，请刷新确认状态');
+    }
+  }, [
+    activeHumanHandoffRecord?.gatewayCallId,
+    activeKey,
+    agent.hangup,
+    loadList,
+    messageApi,
+    page.pageNum,
+    page.pageSize,
+  ]);
 
   useEffect(() => {
     if (shouldPausePolling) return undefined;
@@ -945,7 +1012,7 @@ const LiveMonitorDetailView = ({
           </div>
         </div>
 
-        <AgentWebRtcStatusBar agent={agent} />
+        <AgentWebRtcStatusBar agent={agent} onHangup={handleAgentHangup} />
 
         <div className="rounded border border-solid border-gray-200 bg-white px-4 pb-4 pt-2">
           <Tabs

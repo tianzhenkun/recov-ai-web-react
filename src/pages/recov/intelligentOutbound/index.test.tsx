@@ -23,6 +23,7 @@ import {
   getAiCallDebtTimeline,
   getAiCallRecordPage,
   getGatewayCalls,
+  hangupGatewayCall,
 } from './service';
 
 let mockJsSipEventHandlers: Record<string, (...args: unknown[]) => void> = {};
@@ -72,6 +73,7 @@ jest.mock('./service', () => ({
   getAiCallRecordPage: jest.fn(),
   getAiCallDebtTimeline: jest.fn(),
   getGatewayCalls: jest.fn(),
+  hangupGatewayCall: jest.fn(),
 }));
 
 jest.mock('@ant-design/plots', () => {
@@ -191,6 +193,7 @@ const getAiCallDebtFeedbackPageMock = getAiCallDebtFeedbackPage as jest.Mock;
 const getAiCallRecordPageMock = getAiCallRecordPage as jest.Mock;
 const getAiCallDebtTimelineMock = getAiCallDebtTimeline as jest.Mock;
 const getGatewayCallsMock = getGatewayCalls as jest.Mock;
+const hangupGatewayCallMock = hangupGatewayCall as jest.Mock;
 const startFlowBatchMock = startFlowBatch as jest.Mock;
 const listOssByIdsMock = listOssByIds as jest.Mock;
 
@@ -230,6 +233,10 @@ describe('IntelligentOutboundPage', () => {
     });
     getGatewayCallsMock.mockResolvedValue({
       calls: [],
+    });
+    hangupGatewayCallMock.mockResolvedValue({
+      status: 'accepted',
+      call: {},
     });
     getAiCallAgentWebRtcConfigMock.mockResolvedValue({
       agentExtension: '1001',
@@ -841,7 +848,7 @@ describe('IntelligentOutboundPage', () => {
     ).toBeNull();
   });
 
-  it('submits handoff claim through Java service', async () => {
+  it('submits handoff claim through the service helper', async () => {
     getAiCallRecordPageMock.mockResolvedValue({
       rows: [
         {
@@ -871,6 +878,67 @@ describe('IntelligentOutboundPage', () => {
         gatewayCallId: 'gateway-101',
         agentExtension: '1001',
         timeoutSeconds: 20,
+      });
+    });
+  });
+
+  it('hangs up the active gateway call after terminating the WebRTC session', async () => {
+    getAiCallRecordPageMock.mockResolvedValue({
+      rows: [
+        {
+          callRecordId: 101,
+          status: '1',
+          gatewayCallId: 'gateway-101',
+          handoffState: 'human_active',
+          handoffCanClaim: false,
+        },
+      ],
+      total: 1,
+    });
+    const sessionAnswer = jest.fn();
+    const sessionTerminate = jest.fn();
+    const sessionOn = jest.fn();
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'poweroff 上线' }),
+    );
+    await flushPromises();
+    await waitFor(() => {
+      expect(mockJsSipStart).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      mockJsSipEventHandlers.registered?.();
+    });
+    act(() => {
+      mockJsSipEventHandlers.newRTCSession?.({
+        session: {
+          answer: sessionAnswer,
+          terminate: sessionTerminate,
+          on: sessionOn,
+          connection: {
+            addEventListener: jest.fn(),
+          },
+        },
+      });
+    });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'phone 接听来电' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'audio 挂断' }));
+
+    expect(sessionTerminate).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(hangupGatewayCallMock).toHaveBeenCalledWith({
+        gatewayCallId: 'gateway-101',
+        reason: 'agent_hangup',
       });
     });
   });

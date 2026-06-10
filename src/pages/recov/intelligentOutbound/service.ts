@@ -60,12 +60,27 @@ export type AiCallHandoffClaimRequest = {
   timeoutSeconds?: number;
 };
 
+export type AiCallHangupRequest = {
+  gatewayCallId: string;
+  reason?: string;
+};
+
 export type AiCallHandoffClaimResult = {
+  status?: string;
+  call?: GatewayCallRecord;
+  error?: string;
   callRecordId?: number | string;
   gatewayCallId?: string;
   handoffState?: AiCallHandoffState;
   agentExtension?: string;
   claimedBy?: string;
+  message?: string;
+};
+
+export type AiCallHangupResult = {
+  status?: string;
+  call?: GatewayCallRecord;
+  error?: string;
   message?: string;
 };
 
@@ -230,11 +245,61 @@ export const getAiCallRecordPage = (params: AiCallRecordPageQuery) =>
     params,
   });
 
-export const claimAiCallHandoff = (data: AiCallHandoffClaimRequest) =>
-  ruoyiRequest<AiCallHandoffClaimResult>(`${BASE}/handoff/claim`, {
-    method: 'post',
-    data,
-  });
+export const claimAiCallHandoff = async (data: AiCallHandoffClaimRequest) => {
+  const response = await fetch(
+    `/voice-api/calls/${encodeURIComponent(data.gatewayCallId)}/handoff/claim`,
+    {
+      method: 'post',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        agent_extension: data.agentExtension,
+        claimed_by: data.agentExtension,
+        timeout_seconds: data.timeoutSeconds ?? 20,
+      }),
+    },
+  );
+  const payload = (await response.json().catch(() => ({}))) as
+    | AiCallHandoffClaimResult
+    | { msg?: string };
+  if (!response.ok) {
+    const message =
+      'error' in payload ? payload.error : 'msg' in payload ? payload.msg : '';
+    throw new Error(
+      message || `handoff claim request failed: ${response.status}`,
+    );
+  }
+  return payload as AiCallHandoffClaimResult;
+};
+
+export const hangupGatewayCall = async (data: AiCallHangupRequest) => {
+  const response = await fetch(
+    `/voice-api/calls/${encodeURIComponent(data.gatewayCallId)}/hangup`,
+    {
+      method: 'post',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        reason: data.reason || 'agent_hangup',
+      }),
+    },
+  );
+  const payload = (await response.json().catch(() => ({}))) as
+    | AiCallHangupResult
+    | { msg?: string };
+  if (!response.ok) {
+    const message =
+      'error' in payload ? payload.error : 'msg' in payload ? payload.msg : '';
+    throw new Error(
+      message || `gateway hangup request failed: ${response.status}`,
+    );
+  }
+  return payload as AiCallHangupResult;
+};
 
 export const getAiCallAgentWebRtcConfig = () =>
   ruoyiRequest<AiCallAgentWebRtcConfig>(`${BASE}/agent/webrtc-config`, {

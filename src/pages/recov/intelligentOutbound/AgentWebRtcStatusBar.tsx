@@ -30,9 +30,13 @@ const statusColor: Record<WebRtcAgentStatus, string> = {
 
 type AgentWebRtcStatusBarProps = {
   agent: UseWebRtcAgentResult;
+  onHangup?: () => void;
 };
 
-export const AgentWebRtcStatusBar = ({ agent }: AgentWebRtcStatusBarProps) => {
+export const AgentWebRtcStatusBar = ({
+  agent,
+  onHangup,
+}: AgentWebRtcStatusBarProps) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -87,7 +91,11 @@ export const AgentWebRtcStatusBar = ({ agent }: AgentWebRtcStatusBarProps) => {
             </>
           ) : null}
           {agent.status === 'talking' ? (
-            <Button danger icon={<AudioOutlined />} onClick={agent.hangup}>
+            <Button
+              danger
+              icon={<AudioOutlined />}
+              onClick={onHangup || agent.hangup}
+            >
               挂断
             </Button>
           ) : null}
