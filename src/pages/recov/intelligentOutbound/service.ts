@@ -39,6 +39,7 @@ export type AiCallHandoffState =
   | 'waiting_agent'
   | 'agent_claimed'
   | 'human_active'
+  | 'completed'
   | 'expired'
   | 'failed';
 
@@ -81,6 +82,9 @@ export type AiCallRecord = {
   debtId?: number | string;
   gatewayCallId?: string;
   recordingOssId?: number | string;
+  recordingUrl?: string;
+  recordingOssUrl?: string;
+  sysOssUrl?: string;
   identityName?: string;
   callerName?: string;
   debtNumber?: number | string;
@@ -95,6 +99,12 @@ export type AiCallRecord = {
   finishedAt?: string | null;
   durationSeconds?: number | string;
   summary?: string;
+  statusLabel?: string;
+  failureReason?: string;
+  errorMessage?: string | null;
+  hangupCause?: string;
+  sipStatus?: number | string;
+  sipReason?: string;
   feedbackType?: string;
   keyPoints?: string[];
   tags?: string[];
@@ -107,6 +117,31 @@ export type AiCallRecord = {
   handoffClaimedBy?: string;
   handoffAgentExtension?: string;
   handoffError?: string;
+};
+
+export type GatewayCallHandoff = {
+  state?: string;
+  requested_at_ms?: number | string;
+  expires_at_ms?: number | string;
+  can_claim?: boolean;
+  last_utterance?: string;
+  claimed_by?: string;
+  agent_extension?: string;
+  error?: string;
+};
+
+export type GatewayCallRecord = {
+  call_id?: string;
+  external_call_id?: string;
+  status?: string;
+  phase?: string;
+  completed_at_ms?: number | string;
+  talk_duration_ms?: number | string;
+  handoff?: GatewayCallHandoff | null;
+};
+
+export type GatewayCallListResponse = {
+  calls?: GatewayCallRecord[];
 };
 
 export type AiCallDebtFeedback = {
@@ -205,6 +240,17 @@ export const getAiCallAgentWebRtcConfig = () =>
     method: 'get',
     skipErrorHandler: true,
   });
+
+export const getGatewayCalls = async () => {
+  const response = await fetch('/voice-api/calls', {
+    method: 'get',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) {
+    throw new Error(`gateway calls request failed: ${response.status}`);
+  }
+  return (await response.json()) as GatewayCallListResponse;
+};
 
 export const getAiCallDebtFeedbackPage = (
   params: AiCallDebtFeedbackPageQuery,

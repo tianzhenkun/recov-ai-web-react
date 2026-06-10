@@ -34,14 +34,17 @@ import {
   type AiCallAgentWebRtcConfig,
   type AiCallRecord,
   claimAiCallHandoff,
+  type GatewayCallRecord,
   getAiCallAgentWebRtcConfig,
   getAiCallRecordPage,
+  getGatewayCalls,
 } from './service';
 import { useWebRtcAgent } from './useWebRtcAgent';
 
 const { Text } = Typography;
 
 const DEFAULT_PAGE_SIZE = 10;
+const LIVE_MONITOR_POLLING_INTERVAL_MS = 1000;
 const MOCK_HANDOFF_QUERY_KEY = 'mockHandoff';
 const MOCK_GATEWAY_CALL_ID = 'mock-gateway-handoff-001';
 
@@ -50,6 +53,11 @@ type MonitorTabKey = 'ongoing' | 'completed';
 type LiveMonitorDetailViewProps = {
   onBack: () => void;
   onRecordSemanticClick: (record: AiCallRecord) => void;
+};
+
+type LoadListOptions = {
+  showLoading?: boolean;
+  preserveOnError?: boolean;
 };
 
 const statusLabels: Record<string, string> = {
@@ -64,8 +72,14 @@ const handoffLabels: Record<string, string> = {
   waiting_agent: '等待人工',
   agent_claimed: '接管中',
   human_active: '已接管',
+  completed: '接管完成',
   expired: '已超时',
   failed: '接管失败',
+};
+
+const tabStatusMap: Record<MonitorTabKey, string> = {
+  ongoing: '1',
+  completed: '4',
 };
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -187,6 +201,140 @@ const canClaimHandoff = (record: AiCallRecord) =>
   record.handoffCanClaim === true &&
   Boolean(firstText(record.gatewayCallId));
 
+const hasActiveHumanHandoff = (records: AiCallRecord[]) =>
+  records.some((record) => firstText(record.handoffState) === 'human_active');
+
+const gatewayTerminalStatuses = new Set([
+  'completed',
+  'failed',
+  'busy',
+  'no_answer',
+  'canceled',
+  'hangup_failed',
+]);
+
+const mapGatewayHandoffState = (
+  state: string,
+): AiCallRecord['handoffState'] => {
+  if (
+    state === 'waiting_agent' ||
+    state === 'human_active' ||
+    state === 'completed'
+  ) {
+    return state;
+  }
+  if (
+    state === 'agent_claimed' ||
+    state === 'agent_ringing' ||
+    state === 'bridging'
+  ) {
+    return 'agent_claimed';
+  }
+  if (state === 'handoff_failed' || state === 'failed') {
+    return 'failed';
+  }
+  return 'none';
+};
+
+const formatGatewayDateTime = (value: unknown) => {
+  const timestamp = Number(value || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return undefined;
+  return formatDateTime(new Date(timestamp));
+};
+
+const buildGatewayCallMap = (calls: GatewayCallRecord[]) => {
+  const map = new Map<string, GatewayCallRecord>();
+  calls.forEach((call) => {
+    const callId = firstText(call.call_id);
+    const externalCallId = firstText(call.external_call_id);
+    if (callId) map.set(callId, call);
+    if (externalCallId) map.set(externalCallId, call);
+  });
+  return map;
+};
+
+const getMatchedGatewayCall = (
+  record: AiCallRecord,
+  gatewayCallMap: Map<string, GatewayCallRecord>,
+) =>
+  gatewayCallMap.get(firstText(record.gatewayCallId)) ||
+  gatewayCallMap.get(firstText(record.callRecordId));
+
+const shouldHideOngoingByGateway = (call: GatewayCallRecord) => {
+  const status = firstText(call.status);
+  const phase = firstText(call.phase);
+  return (
+    gatewayTerminalStatuses.has(status) || gatewayTerminalStatuses.has(phase)
+  );
+};
+
+const mergeGatewayCallState = (
+  records: AiCallRecord[],
+  gatewayCalls: GatewayCallRecord[],
+) => {
+  if (!gatewayCalls.length) return records;
+  const gatewayCallMap = buildGatewayCallMap(gatewayCalls);
+  return records.reduce<AiCallRecord[]>((result, record) => {
+    const gatewayCall = getMatchedGatewayCall(record, gatewayCallMap);
+    if (!gatewayCall) {
+      result.push(record);
+      return result;
+    }
+    if (shouldHideOngoingByGateway(gatewayCall)) {
+      return result;
+    }
+
+    const handoff = gatewayCall.handoff || {};
+    const gatewayHandoffState = mapGatewayHandoffState(
+      firstText(handoff.state),
+    );
+    result.push({
+      ...record,
+      gatewayCallId: firstText(record.gatewayCallId, gatewayCall.call_id),
+      durationSeconds:
+        Number(gatewayCall.talk_duration_ms || 0) > 0
+          ? Math.floor(Number(gatewayCall.talk_duration_ms) / 1000)
+          : record.durationSeconds,
+      handoffState:
+        gatewayHandoffState === 'none'
+          ? record.handoffState
+          : gatewayHandoffState,
+      handoffCanClaim:
+        typeof handoff.can_claim === 'boolean'
+          ? handoff.can_claim
+          : record.handoffCanClaim,
+      handoffLastUtterance: firstText(
+        handoff.last_utterance,
+        record.handoffLastUtterance,
+      ),
+      handoffRequestedAt:
+        formatGatewayDateTime(handoff.requested_at_ms) ||
+        record.handoffRequestedAt,
+      handoffExpiresAt:
+        formatGatewayDateTime(handoff.expires_at_ms) || record.handoffExpiresAt,
+      handoffClaimedBy: firstText(handoff.claimed_by, record.handoffClaimedBy),
+      handoffAgentExtension: firstText(
+        handoff.agent_extension,
+        record.handoffAgentExtension,
+      ),
+      handoffError: firstText(handoff.error, record.handoffError),
+    });
+    return result;
+  }, []);
+};
+
+const enrichOngoingRecordsWithGateway = async (records: AiCallRecord[]) => {
+  try {
+    const gatewayResponse = await getGatewayCalls();
+    return mergeGatewayCallState(records, gatewayResponse.calls || []);
+  } catch {
+    return records;
+  }
+};
+
+const getDirectRecordingUrl = (record: AiCallRecord) =>
+  firstText(record.recordingUrl, record.recordingOssUrl, record.sysOssUrl);
+
 const parseDateTimeMs = (value: unknown) => {
   const text = firstText(value);
   if (!text) return 0;
@@ -207,7 +355,10 @@ const toDisplayDurationSeconds = (record: AiCallRecord, nowMs: number) => {
 const loadRecordingUrlMap = async (records: AiCallRecord[]) => {
   const ossIds = Array.from(
     new Set(
-      records.map((record) => firstText(record.recordingOssId)).filter(Boolean),
+      records
+        .filter((record) => !getDirectRecordingUrl(record))
+        .map((record) => firstText(record.recordingOssId))
+        .filter(Boolean),
     ),
   );
   if (!ossIds.length) return {};
@@ -273,22 +424,37 @@ const LiveMonitorDetailView = ({
   const [claimingCallId, setClaimingCallId] = useState('');
   const agent = useWebRtcAgent(webRtcConfig);
   const loadSeqRef = useRef(0);
+  const loadingRef = useRef(false);
+  const pollingInFlightRef = useRef(false);
   const mockHandoffEnabled = useMemo(() => isMockHandoffEnabled(), []);
 
   const loadList = useCallback(
-    async (tabKey: MonitorTabKey, pageNum: number, pageSize: number) => {
+    async (
+      tabKey: MonitorTabKey,
+      pageNum: number,
+      pageSize: number,
+      options: LoadListOptions = {},
+    ) => {
+      const { showLoading = true, preserveOnError = false } = options;
       const seq = loadSeqRef.current + 1;
       loadSeqRef.current = seq;
-      setLoading(true);
+      if (showLoading) {
+        loadingRef.current = true;
+        setLoading(true);
+      }
       try {
-        const range = tabKey === 'completed' ? getTodayRange() : {};
+        const range = tabKey === 'ongoing' ? {} : getTodayRange();
         const res = await getAiCallRecordPage({
           pageNum,
           pageSize,
-          ...(tabKey === 'ongoing' ? { status: '1' } : range),
+          status: tabStatusMap[tabKey],
+          ...range,
         });
         if (seq !== loadSeqRef.current) return;
-        const rows = res.rows || [];
+        let rows = res.rows || [];
+        if (tabKey === 'ongoing') {
+          rows = await enrichOngoingRecordsWithGateway(rows);
+        }
         setItems(rows);
         setTotal(Number(res.total || 0));
         setRecordingUrls({});
@@ -305,11 +471,14 @@ const LiveMonitorDetailView = ({
           });
       } catch {
         if (seq !== loadSeqRef.current) return;
-        setItems([]);
-        setTotal(0);
-        setRecordingUrls({});
+        if (!preserveOnError) {
+          setItems([]);
+          setTotal(0);
+          setRecordingUrls({});
+        }
       } finally {
-        if (seq === loadSeqRef.current) {
+        if (seq === loadSeqRef.current && showLoading) {
+          loadingRef.current = false;
           setLoading(false);
         }
       }
@@ -426,6 +595,26 @@ const LiveMonitorDetailView = ({
   );
 
   const tableTotal = activeKey === 'ongoing' ? total + mockItems.length : total;
+  const shouldPausePolling =
+    activeKey !== 'ongoing' || agent.busy || hasActiveHumanHandoff(tableItems);
+
+  useEffect(() => {
+    if (shouldPausePolling) return undefined;
+    const timer = window.setInterval(() => {
+      if (pollingInFlightRef.current || loadingRef.current) return;
+      pollingInFlightRef.current = true;
+      void loadList(activeKey, page.pageNum, page.pageSize, {
+        showLoading: false,
+        preserveOnError: true,
+      }).finally(() => {
+        pollingInFlightRef.current = false;
+        setNowMs(Date.now());
+      });
+    }, LIVE_MONITOR_POLLING_INTERVAL_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [activeKey, loadList, page.pageNum, page.pageSize, shouldPausePolling]);
 
   const columns = useMemo<ColumnsType<AiCallRecord>>(() => {
     const baseColumns: ColumnsType<AiCallRecord> = [
@@ -433,15 +622,22 @@ const LiveMonitorDetailView = ({
         key: 'debtNumber',
         dataIndex: 'debtNumber',
         title: '业主编号',
-        fixed: 'left',
         width: 110,
         render: (value) => renderSingleLine(value, { strong: true }),
       },
       {
         key: 'debtorName',
         dataIndex: 'debtorName',
-        title: '业主姓名',
+        title: '客户名',
         width: 140,
+        ellipsis: true,
+        render: (value) => renderSingleLine(value),
+      },
+      {
+        key: 'debtorPhone',
+        dataIndex: 'debtorPhone',
+        title: '手机号',
+        width: 130,
         ellipsis: true,
         render: (value) => renderSingleLine(value),
       },
@@ -471,25 +667,32 @@ const LiveMonitorDetailView = ({
         dataIndex: 'status',
         title: '通话状态',
         width: 110,
-        render: (value) => {
-          const status = firstText(value);
+        render: (_, record) => {
+          const status = firstText(record.status);
           const isRunning = status === '1';
+          const isFailed = status === '2' || status === '3';
           return (
             <Tag
               style={{
                 marginInlineEnd: 0,
                 color: isRunning
                   ? token.colorPrimary
-                  : token.colorTextSecondary,
+                  : isFailed
+                    ? token.colorError
+                    : token.colorTextSecondary,
                 backgroundColor: isRunning
                   ? token.colorPrimaryBg
-                  : token.colorFillQuaternary,
+                  : isFailed
+                    ? token.colorErrorBg
+                    : token.colorFillQuaternary,
                 borderColor: isRunning
                   ? token.colorPrimaryBorder
-                  : token.colorBorderSecondary,
+                  : isFailed
+                    ? token.colorErrorBorder
+                    : token.colorBorderSecondary,
               }}
             >
-              {statusLabels[status] || '未知'}
+              {firstText(record.statusLabel, statusLabels[status], '未知')}
             </Tag>
           );
         },
@@ -531,16 +734,18 @@ const LiveMonitorDetailView = ({
         width: 96,
         render: (_, record) => {
           const recordingOssId = firstText(record.recordingOssId);
-          const url = recordingOssId ? recordingUrls[recordingOssId] : '';
+          const url =
+            getDirectRecordingUrl(record) ||
+            (recordingOssId ? recordingUrls[recordingOssId] : '');
           const disabled = !url;
           return (
             <Tooltip
               title={
-                recordingOssId
-                  ? disabled
+                disabled
+                  ? recordingOssId
                     ? '录音文件加载中'
-                    : '播放录音'
-                  : '暂无录音'
+                    : '暂无录音'
+                  : '播放录音'
               }
             >
               <Button
@@ -565,73 +770,76 @@ const LiveMonitorDetailView = ({
       },
     ];
 
+    baseColumns.push({
+      key: 'handoffState',
+      dataIndex: 'handoffState',
+      title: '转人工状态',
+      width: 150,
+      render: (_, record) => {
+        const state = firstText(record.handoffState, 'none');
+        const label = handoffLabels[state] || '未知';
+        const color =
+          state === 'waiting_agent'
+            ? 'warning'
+            : state === 'human_active' || state === 'completed'
+              ? 'success'
+              : state === 'failed' || state === 'expired'
+                ? 'error'
+                : 'default';
+        return (
+          <div className="flex min-w-0 flex-col gap-1">
+            <Tag color={color} style={{ width: 'fit-content' }}>
+              {label}
+            </Tag>
+            {record.handoffLastUtterance ? (
+              <Tooltip title={record.handoffLastUtterance}>
+                <Text type="secondary" className="block max-w-full truncate">
+                  {record.handoffLastUtterance}
+                </Text>
+              </Tooltip>
+            ) : null}
+            {record.handoffError ? (
+              <Tooltip title={record.handoffError}>
+                <Text type="danger" className="block max-w-full truncate">
+                  {record.handoffError}
+                </Text>
+              </Tooltip>
+            ) : null}
+          </div>
+        );
+      },
+    });
+
     if (activeKey === 'ongoing') {
-      baseColumns.push(
-        {
-          key: 'handoffState',
-          dataIndex: 'handoffState',
-          title: '转人工状态',
-          width: 150,
-          render: (_, record) => {
-            const state = firstText(record.handoffState, 'none');
-            const label = handoffLabels[state] || '未知';
-            const color =
-              state === 'waiting_agent'
-                ? 'warning'
-                : state === 'human_active'
-                  ? 'success'
-                  : state === 'failed' || state === 'expired'
-                    ? 'error'
-                    : 'default';
-            return (
-              <div className="flex min-w-0 flex-col gap-1">
-                <Tag color={color} style={{ width: 'fit-content' }}>
-                  {label}
-                </Tag>
-                {record.handoffLastUtterance ? (
-                  <Tooltip title={record.handoffLastUtterance}>
-                    <Text
-                      type="secondary"
-                      className="block max-w-full truncate"
-                    >
-                      {record.handoffLastUtterance}
-                    </Text>
-                  </Tooltip>
-                ) : null}
-              </div>
-            );
-          },
+      baseColumns.push({
+        key: 'handoffAction',
+        title: '操作',
+        fixed: 'right',
+        width: 110,
+        render: (_, record) => {
+          const gatewayCallId = firstText(record.gatewayCallId);
+          const enabled = canClaimHandoff(record);
+          return (
+            <Button
+              autoInsertSpace={false}
+              disabled={!enabled}
+              loading={claimingCallId === gatewayCallId}
+              size="small"
+              type={enabled ? 'primary' : 'default'}
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleClaimHandoff(record);
+              }}
+            >
+              {record.handoffState === 'human_active'
+                ? '已接管'
+                : record.handoffState === 'waiting_agent'
+                  ? '接管'
+                  : '无需接管'}
+            </Button>
+          );
         },
-        {
-          key: 'handoffAction',
-          title: '操作',
-          fixed: 'right',
-          width: 110,
-          render: (_, record) => {
-            const gatewayCallId = firstText(record.gatewayCallId);
-            const enabled = canClaimHandoff(record);
-            return (
-              <Button
-                autoInsertSpace={false}
-                disabled={!enabled}
-                loading={claimingCallId === gatewayCallId}
-                size="small"
-                type={enabled ? 'primary' : 'default'}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleClaimHandoff(record);
-                }}
-              >
-                {record.handoffState === 'human_active'
-                  ? '已接管'
-                  : record.handoffState === 'waiting_agent'
-                    ? '接管'
-                    : '无需接管'}
-              </Button>
-            );
-          },
-        },
-      );
+      });
     }
 
     if (activeKey === 'completed') {
@@ -666,6 +874,9 @@ const LiveMonitorDetailView = ({
     onRecordSemanticClick,
     recordingUrls,
     token.colorBorderSecondary,
+    token.colorError,
+    token.colorErrorBg,
+    token.colorErrorBorder,
     token.colorFillQuaternary,
     token.colorPrimary,
     token.colorPrimaryBg,
@@ -683,7 +894,9 @@ const LiveMonitorDetailView = ({
       dataSource={tableItems}
       columns={columns}
       tableLayout="fixed"
-      scroll={{ x: activeKey === 'completed' ? 1220 : 1360 }}
+      scroll={{
+        x: activeKey === 'ongoing' ? 1460 : 1390,
+      }}
       locale={{
         emptyText: (
           <Empty
@@ -727,7 +940,7 @@ const LiveMonitorDetailView = ({
                 </Text>
                 <Tag color="processing">人工接管</Tag>
               </Space>
-              <Text type="secondary">正在通话与今日完成记录</Text>
+              <Text type="secondary">正在通话、今日完成记录</Text>
             </div>
           </div>
         </div>
@@ -766,7 +979,7 @@ const LiveMonitorDetailView = ({
               },
               {
                 key: 'completed',
-                label: '今日已完成',
+                label: '已完成',
               },
             ]}
           />

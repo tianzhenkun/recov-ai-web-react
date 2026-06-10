@@ -64,4 +64,11 @@ describe('/datelligence import detail drawer presentation', () => {
     expect(overdueDaysColumnSource).toContain('Tag color="red"');
     expect(overdueDaysColumnSource).toContain('toNumber(value) > 0');
   });
+
+  it('does not keep a direct realtime outbound list entry on /datelligence', () => {
+    expect(source).not.toContain(
+      "history.push('/intelligent-outbound?monitor=1')",
+    );
+    expect(source).not.toContain('实时外呼列表');
+  });
 });

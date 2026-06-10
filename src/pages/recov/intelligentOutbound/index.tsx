@@ -120,7 +120,10 @@ const IntelligentOutboundPage = () => {
   });
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackDrawerOpen, setFeedbackDrawerOpen] = useState(false);
-  const [monitorDetailOpen, setMonitorDetailOpen] = useState(false);
+  const [monitorDetailOpen, setMonitorDetailOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('monitor') === '1';
+  });
 
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logDetail, setLogDetail] = useState<OwnerCommunicationDetail | null>(

@@ -13,6 +13,7 @@ import {
   getDebtRecordPage,
 } from '@/services/ruoyi/datelligence';
 import { startFlowBatch } from '@/services/ruoyi/flowBatchStart';
+import { listOssByIds } from '@/services/ruoyi/oss';
 import IntelligentOutboundPage from './index';
 import {
   claimAiCallHandoff,
@@ -21,6 +22,7 @@ import {
   getAiCallDebtFeedbackPage,
   getAiCallDebtTimeline,
   getAiCallRecordPage,
+  getGatewayCalls,
 } from './service';
 
 let mockJsSipEventHandlers: Record<string, (...args: unknown[]) => void> = {};
@@ -58,6 +60,10 @@ jest.mock('@/services/ruoyi/flowBatchStart', () => ({
   startFlowBatch: jest.fn(),
 }));
 
+jest.mock('@/services/ruoyi/oss', () => ({
+  listOssByIds: jest.fn(),
+}));
+
 jest.mock('./service', () => ({
   claimAiCallHandoff: jest.fn(),
   getAiCallAgentWebRtcConfig: jest.fn(),
@@ -65,6 +71,7 @@ jest.mock('./service', () => ({
   getAiCallDebtFeedbackPage: jest.fn(),
   getAiCallRecordPage: jest.fn(),
   getAiCallDebtTimeline: jest.fn(),
+  getGatewayCalls: jest.fn(),
 }));
 
 jest.mock('@ant-design/plots', () => {
@@ -183,7 +190,9 @@ const getAiCallDashboardMock = getAiCallDashboard as jest.Mock;
 const getAiCallDebtFeedbackPageMock = getAiCallDebtFeedbackPage as jest.Mock;
 const getAiCallRecordPageMock = getAiCallRecordPage as jest.Mock;
 const getAiCallDebtTimelineMock = getAiCallDebtTimeline as jest.Mock;
+const getGatewayCallsMock = getGatewayCalls as jest.Mock;
 const startFlowBatchMock = startFlowBatch as jest.Mock;
+const listOssByIdsMock = listOssByIds as jest.Mock;
 
 const flushPromises = async () => {
   await act(async () => {
@@ -219,6 +228,9 @@ describe('IntelligentOutboundPage', () => {
       rows: [],
       total: 0,
     });
+    getGatewayCallsMock.mockResolvedValue({
+      calls: [],
+    });
     getAiCallAgentWebRtcConfigMock.mockResolvedValue({
       agentExtension: '1001',
       wsUrl: 'wss://recov.lingchen-ai.com/sip-ws',
@@ -226,6 +238,7 @@ describe('IntelligentOutboundPage', () => {
       password: 'test',
       viaTransport: 'WS',
     });
+    listOssByIdsMock.mockResolvedValue({ data: [] });
     getAiCallDebtTimelineMock.mockResolvedValue({
       data: {
         debtId: 202,
@@ -509,7 +522,7 @@ describe('IntelligentOutboundPage', () => {
     expect(screen.queryByRole('dialog', { name: '实时外呼明细' })).toBeNull();
     expect(screen.queryByTestId('metrics-row')).toBeNull();
     expect(screen.getByText('正在通话')).toBeTruthy();
-    expect(screen.getByText('今日已完成')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '已完成' })).toBeTruthy();
     expect(screen.getByText('企业客服')).toBeTruthy();
     expect(screen.getByText('数字员工小林')).toBeTruthy();
     expect(screen.getByText('4')).toBeTruthy();
@@ -518,6 +531,106 @@ describe('IntelligentOutboundPage', () => {
 
     expect(await screen.findByTestId('metrics-row')).toBeTruthy();
     expect(screen.queryByText('实时外呼明细')).toBeNull();
+  });
+
+  it('opens live monitor details directly from the monitor query', async () => {
+    window.history.pushState({}, '', '/intelligent-outbound?monitor=1');
+    getAiCallRecordPageMock.mockResolvedValueOnce({
+      rows: [],
+      total: 0,
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    expect(await screen.findByText('实时外呼明细')).toBeTruthy();
+    expect(screen.queryByTestId('metrics-row')).toBeNull();
+    await waitFor(() => {
+      expect(getAiCallRecordPageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pageNum: 1,
+          pageSize: 10,
+          status: '1',
+        }),
+      );
+    });
+  });
+
+  it('shows customer phone, customer name and direct recording playback without call_record in live monitor rows', async () => {
+    getAiCallRecordPageMock.mockResolvedValueOnce({
+      rows: [
+        {
+          callRecordId: '320461068875341824',
+          debtId: '2063868307578079190',
+          debtNumber: 36,
+          debtorName: '刘先生',
+          debtorPhone: '18518968743',
+          identityName: '企业客服',
+          callerName: '数字员工小林',
+          status: '1',
+          startedAt: '2026-06-10 09:00:00',
+          gatewayCallId: 'gateway-320461068875341824',
+          recordingUrl: 'https://oss.example.com/call-320461068875341824.wav',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    expect(await screen.findByText('刘先生')).toBeTruthy();
+    expect(screen.getByText('18518968743')).toBeTruthy();
+    expect(screen.getByText('通话中')).toBeTruthy();
+    expect(screen.queryByText('call_record')).toBeNull();
+    expect(screen.queryByText('320461068875341824')).toBeNull();
+    expect(screen.queryByText('gateway-320461068875341824')).toBeNull();
+
+    const playButton = screen.getByRole('button', { name: '播放录音' });
+    expect((playButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(playButton);
+
+    await waitFor(() => {
+      expect(
+        (document.querySelector('audio[controls]') as HTMLAudioElement)?.src,
+      ).toBe('https://oss.example.com/call-320461068875341824.wav');
+    });
+  });
+
+  it('does not expose failed calls as a live monitor tab', async () => {
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    expect(await screen.findByText('实时外呼明细')).toBeTruthy();
+    expect(screen.getByText('正在通话')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '已完成' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: '今日已完成' })).toBeNull();
+    expect(screen.queryByText('今日失败')).toBeNull();
+    expect(screen.queryByText('正在通话、今日完成与失败记录')).toBeNull();
+
+    await waitFor(() => {
+      expect(getAiCallRecordPageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pageNum: 1,
+          pageSize: 10,
+          status: '1',
+        }),
+      );
+    });
+    expect(getAiCallRecordPageMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: '2',
+      }),
+    );
   });
 
   it('shows claim button for waiting handoff calls', async () => {
@@ -551,6 +664,116 @@ describe('IntelligentOutboundPage', () => {
     expect(await screen.findByText('等待人工')).toBeTruthy();
     expect(screen.getByText('我要找人工客服')).toBeTruthy();
     expect(screen.getByRole('button', { name: '接管' })).toBeTruthy();
+  });
+
+  it('overlays waiting handoff state from the realtime gateway when Java is stale', async () => {
+    getAiCallRecordPageMock.mockResolvedValueOnce({
+      rows: [
+        {
+          callRecordId: '2064565948121137154',
+          debtNumber: 41,
+          debtorName: '刘先生',
+          debtorPhone: '17866726638',
+          status: '1',
+          startedAt: '2026-06-10 12:31:00',
+          gatewayCallId: '8a85422295ab4e9f8b07562a096f5636',
+          handoffState: 'none',
+          handoffCanClaim: false,
+        },
+      ],
+      total: 1,
+    });
+    getGatewayCallsMock.mockResolvedValueOnce({
+      calls: [
+        {
+          call_id: '8a85422295ab4e9f8b07562a096f5636',
+          external_call_id: '2064565948121137154',
+          status: 'waiting_agent',
+          handoff: {
+            state: 'waiting_agent',
+            can_claim: true,
+            last_utterance: '转人工。',
+          },
+        },
+      ],
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    expect(await screen.findByText('等待人工')).toBeTruthy();
+    expect(screen.getByText('转人工。')).toBeTruthy();
+    const claimButton = screen.getByRole('button', { name: '接管' });
+    expect((claimButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('polls ongoing calls every second and pauses after handoff is active', async () => {
+    getAiCallRecordPageMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            callRecordId: 101,
+            status: '1',
+            gatewayCallId: 'gateway-101',
+            handoffState: 'none',
+          },
+        ],
+        total: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            callRecordId: 101,
+            status: '1',
+            gatewayCallId: 'gateway-101',
+            handoffState: 'human_active',
+            handoffCanClaim: false,
+          },
+        ],
+        total: 1,
+      })
+      .mockResolvedValue({
+        rows: [
+          {
+            callRecordId: 101,
+            status: '1',
+            gatewayCallId: 'gateway-101',
+            handoffState: 'human_active',
+            handoffCanClaim: false,
+          },
+        ],
+        total: 1,
+      });
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(getAiCallRecordPageMock).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(
+      () => {
+        expect(getAiCallRecordPageMock).toHaveBeenCalledTimes(2);
+      },
+      { timeout: 1800 },
+    );
+    expect((await screen.findAllByText('已接管')).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 1400));
+    });
+    expect(getAiCallRecordPageMock).toHaveBeenCalledTimes(2);
   });
 
   it('uses bundled JsSIP with default WebRTC config when Java config is unavailable', async () => {
@@ -704,7 +927,7 @@ describe('IntelligentOutboundPage', () => {
     expect(claimAiCallHandoffMock).not.toHaveBeenCalled();
   });
 
-  it('loads today completed calls and opens semantic analysis from the monitor detail', async () => {
+  it('loads status 4 calls from the completed tab and opens semantic analysis', async () => {
     getAiCallRecordPageMock.mockImplementation((params) => {
       if (params?.status === '1') {
         return Promise.resolve({
@@ -739,20 +962,27 @@ describe('IntelligentOutboundPage', () => {
         name: '查看详情',
       }),
     );
-    fireEvent.click(await screen.findByText('今日已完成'));
+    fireEvent.click(await screen.findByRole('tab', { name: '已完成' }));
 
     await waitFor(() => {
-      expect(getAiCallRecordPageMock).toHaveBeenLastCalledWith(
+      expect(getAiCallRecordPageMock).toHaveBeenCalledWith(
         expect.objectContaining({
           pageNum: 1,
           pageSize: 10,
+          status: '4',
           dateStart: expect.any(String),
           dateEnd: expect.any(String),
         }),
       );
     });
+    expect(getAiCallRecordPageMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: '2',
+      }),
+    );
 
     expect(await screen.findByText('企业法务')).toBeTruthy();
+    expect(screen.queryByText('外呼失败')).toBeNull();
     fireEvent.click(
       await screen.findByRole('button', { name: /查看语义分析/ }),
     );
