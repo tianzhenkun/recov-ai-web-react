@@ -54,8 +54,14 @@ const AgentHarness = ({
     <div>
       <div>{agent.status}</div>
       <div>{agent.errorMessage}</div>
+      <div>
+        {agent.remoteStream ? 'remote-audio-ready' : 'remote-audio-empty'}
+      </div>
       <button type="button" onClick={() => void agent.registerAgent()}>
         上线
+      </button>
+      <button type="button" onClick={agent.answerIncoming}>
+        接听
       </button>
     </div>
   );
@@ -193,6 +199,50 @@ describe('useWebRtcAgent', () => {
     });
 
     expect(await screen.findByText('坐席注册失败：403 Forbidden')).toBeTruthy();
+  });
+
+  it('binds remote audio when JsSIP creates peer connection after incoming session', async () => {
+    const sessionEventHandlers: Record<string, (...args: unknown[]) => void> =
+      {};
+    let trackHandler: ((event: RTCTrackEvent) => void) | undefined;
+    const remoteStream = { id: 'remote-stream' } as unknown as MediaStream;
+
+    render(<AgentHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: '上线' }));
+    expect(await screen.findByText('available')).toBeTruthy();
+
+    act(() => {
+      mockJsSipEventHandlers.newRTCSession?.({
+        session: {
+          answer: jest.fn(),
+          terminate: jest.fn(),
+          on: jest.fn(
+            (event: string, handler: (...args: unknown[]) => void) => {
+              sessionEventHandlers[event] = handler;
+            },
+          ),
+        },
+      });
+    });
+
+    expect(screen.getByText('incoming')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '接听' }));
+
+    act(() => {
+      sessionEventHandlers.peerconnection?.({
+        peerconnection: {
+          addEventListener: jest.fn((event: string, handler: unknown) => {
+            if (event === 'track') {
+              trackHandler = handler as (event: RTCTrackEvent) => void;
+            }
+          }),
+        },
+      });
+      trackHandler?.({ streams: [remoteStream] } as unknown as RTCTrackEvent);
+    });
+
+    expect(screen.getByText('remote-audio-ready')).toBeTruthy();
   });
 
   it('times out when SIP registration does not complete', async () => {

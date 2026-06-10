@@ -16,6 +16,14 @@ type JsSipSession = {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
 };
 
+type PeerConnectionEvent = {
+  peerconnection?: RTCPeerConnection;
+};
+
+type LegacyStreamEvent = {
+  stream?: MediaStream;
+};
+
 type JsSipStatic = {
   UA: new (config: Record<string, unknown>) => JsSipUa;
   WebSocketInterface: new (url: string) => unknown;
@@ -183,6 +191,15 @@ const getMediaConstraints = () => ({
   video: false,
 });
 
+const getStreamFromTrackEvent = (event: RTCTrackEvent) => {
+  const [stream] = event.streams || [];
+  if (stream) return stream;
+  if (event.track && typeof MediaStream !== 'undefined') {
+    return new MediaStream([event.track]);
+  }
+  return null;
+};
+
 export const useWebRtcAgent = (
   config?: AiCallAgentWebRtcConfig | null,
 ): UseWebRtcAgentResult => {
@@ -210,6 +227,26 @@ export const useWebRtcAgent = (
 
   const bindSession = useCallback(
     (session: JsSipSession) => {
+      const boundConnections = new WeakSet<RTCPeerConnection>();
+      const bindRemoteAudio = (connection?: RTCPeerConnection | null) => {
+        if (!connection || boundConnections.has(connection)) return;
+        boundConnections.add(connection);
+        connection.addEventListener('track', (event) => {
+          const stream = getStreamFromTrackEvent(event);
+          if (stream) setRemoteStream(stream);
+        });
+        (
+          connection as unknown as {
+            addEventListener?: (
+              event: 'addstream',
+              handler: (event: LegacyStreamEvent) => void,
+            ) => void;
+          }
+        ).addEventListener?.('addstream', (event) => {
+          if (event.stream) setRemoteStream(event.stream);
+        });
+      };
+
       incomingSessionRef.current = session;
       setStatus('incoming');
 
@@ -221,10 +258,10 @@ export const useWebRtcAgent = (
         cleanupSession();
         setStatus(uaRef.current ? 'available' : 'unregistered');
       });
-      session.connection?.addEventListener('track', (event) => {
-        const [stream] = event.streams;
-        if (stream) setRemoteStream(stream);
+      session.on('peerconnection', (event: unknown) => {
+        bindRemoteAudio((event as PeerConnectionEvent)?.peerconnection);
       });
+      bindRemoteAudio(session.connection);
     },
     [cleanupSession],
   );

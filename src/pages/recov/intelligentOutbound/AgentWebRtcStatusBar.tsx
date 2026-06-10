@@ -40,8 +40,12 @@ export const AgentWebRtcStatusBar = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.srcObject = agent.remoteStream;
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.srcObject = agent.remoteStream;
+    if (agent.remoteStream) {
+      void audio.play().catch(() => undefined);
+    }
   }, [agent.remoteStream]);
 
   return (
