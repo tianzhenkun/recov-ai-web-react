@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -14,11 +15,38 @@ import {
 import { startFlowBatch } from '@/services/ruoyi/flowBatchStart';
 import IntelligentOutboundPage from './index';
 import {
+  claimAiCallHandoff,
+  getAiCallAgentWebRtcConfig,
   getAiCallDashboard,
   getAiCallDebtFeedbackPage,
   getAiCallDebtTimeline,
   getAiCallRecordPage,
 } from './service';
+
+let mockJsSipEventHandlers: Record<string, (...args: unknown[]) => void> = {};
+const mockJsSipStart = jest.fn(() => {});
+const mockJsSipStop = jest.fn();
+const mockJsSipOn = jest.fn(
+  (event: string, handler: (...args: unknown[]) => void) => {
+    mockJsSipEventHandlers[event] = handler;
+  },
+);
+const mockJsSipWebSocketInterface = jest.fn();
+
+jest.mock(
+  'jssip',
+  () => ({
+    UA: jest.fn(() => ({
+      on: mockJsSipOn,
+      start: mockJsSipStart,
+      stop: mockJsSipStop,
+    })),
+    WebSocketInterface: function WebSocketInterface(...args: unknown[]) {
+      mockJsSipWebSocketInterface(...args);
+    },
+  }),
+  { virtual: true },
+);
 
 jest.mock('@/services/ruoyi/datelligence', () => ({
   getCurrentAssetPackagePipelineProgress: jest.fn(),
@@ -31,6 +59,8 @@ jest.mock('@/services/ruoyi/flowBatchStart', () => ({
 }));
 
 jest.mock('./service', () => ({
+  claimAiCallHandoff: jest.fn(),
+  getAiCallAgentWebRtcConfig: jest.fn(),
   getAiCallDashboard: jest.fn(),
   getAiCallDebtFeedbackPage: jest.fn(),
   getAiCallRecordPage: jest.fn(),
@@ -147,15 +177,39 @@ jest.mock('./CommunicationLogModal', () => {
 const getDebtRecordPageMock = getDebtRecordPage as jest.Mock;
 const getCurrentAssetPackagePipelineProgressMock =
   getCurrentAssetPackagePipelineProgress as jest.Mock;
+const claimAiCallHandoffMock = claimAiCallHandoff as jest.Mock;
+const getAiCallAgentWebRtcConfigMock = getAiCallAgentWebRtcConfig as jest.Mock;
 const getAiCallDashboardMock = getAiCallDashboard as jest.Mock;
 const getAiCallDebtFeedbackPageMock = getAiCallDebtFeedbackPage as jest.Mock;
 const getAiCallRecordPageMock = getAiCallRecordPage as jest.Mock;
 const getAiCallDebtTimelineMock = getAiCallDebtTimeline as jest.Mock;
 const startFlowBatchMock = startFlowBatch as jest.Mock;
 
+const flushPromises = async () => {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+};
+
 describe('IntelligentOutboundPage', () => {
+  afterEach(() => {
+    cleanup();
+    window.history.replaceState({}, '', '/');
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockJsSipEventHandlers = {};
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: jest.fn().mockResolvedValue({
+          getTracks: () => [],
+        }),
+      },
+    });
+    Reflect.deleteProperty(window, 'JsSIP');
     getAiCallDashboardMock.mockResolvedValue({ data: {} });
     getAiCallDebtFeedbackPageMock.mockResolvedValue({
       rows: [],
@@ -164,6 +218,13 @@ describe('IntelligentOutboundPage', () => {
     getAiCallRecordPageMock.mockResolvedValue({
       rows: [],
       total: 0,
+    });
+    getAiCallAgentWebRtcConfigMock.mockResolvedValue({
+      agentExtension: '1001',
+      wsUrl: 'wss://recov.lingchen-ai.com/sip-ws',
+      sipUri: 'sip:1001@111.229.146.182',
+      password: 'test',
+      viaTransport: 'WS',
     });
     getAiCallDebtTimelineMock.mockResolvedValue({
       data: {
@@ -445,11 +506,202 @@ describe('IntelligentOutboundPage', () => {
     });
 
     expect(await screen.findByText('实时外呼明细')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '实时外呼明细' })).toBeNull();
+    expect(screen.queryByTestId('metrics-row')).toBeNull();
     expect(screen.getByText('正在通话')).toBeTruthy();
     expect(screen.getByText('今日已完成')).toBeTruthy();
     expect(screen.getByText('企业客服')).toBeTruthy();
     expect(screen.getByText('数字员工小林')).toBeTruthy();
     expect(screen.getByText('4')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+
+    expect(await screen.findByTestId('metrics-row')).toBeTruthy();
+    expect(screen.queryByText('实时外呼明细')).toBeNull();
+  });
+
+  it('shows claim button for waiting handoff calls', async () => {
+    getAiCallRecordPageMock.mockResolvedValueOnce({
+      rows: [
+        {
+          callRecordId: 101,
+          debtId: 201,
+          debtNumber: 4,
+          identityName: '企业客服',
+          callerName: '数字员工小林',
+          status: '1',
+          startedAt: '2026-05-31 09:00:00',
+          gatewayCallId: 'gateway-101',
+          handoffState: 'waiting_agent',
+          handoffCanClaim: true,
+          handoffLastUtterance: '我要找人工客服',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    expect(await screen.findByText('等待人工')).toBeTruthy();
+    expect(screen.getByText('我要找人工客服')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '接管' })).toBeTruthy();
+  });
+
+  it('uses bundled JsSIP with default WebRTC config when Java config is unavailable', async () => {
+    getAiCallAgentWebRtcConfigMock.mockRejectedValueOnce(
+      new Error('not ready'),
+    );
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    expect(await screen.findByText('分机 1001')).toBeTruthy();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'poweroff 上线' }),
+    );
+    await flushPromises();
+
+    await waitFor(() => {
+      expect(mockJsSipStart).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      mockJsSipEventHandlers.registered?.();
+    });
+
+    expect(await screen.findByText('可接听')).toBeTruthy();
+    expect(screen.queryByText('未加载 JsSIP')).toBeNull();
+    expect(screen.queryByText('缺少坐席 WebRTC 配置')).toBeNull();
+  });
+
+  it('normalizes legacy ws WebRTC config returned by Java on https pages', async () => {
+    getAiCallAgentWebRtcConfigMock.mockResolvedValueOnce({
+      agentExtension: '1001',
+      wsUrl: 'ws://111.229.146.182:5066',
+      sipUri: 'sip:1001@111.229.146.182',
+      password: 'test',
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'poweroff 上线' }),
+    );
+    await flushPromises();
+
+    await waitFor(() => {
+      expect(mockJsSipStart).toHaveBeenCalledTimes(1);
+    });
+    expect(mockJsSipWebSocketInterface).toHaveBeenCalledWith(
+      'wss://recov.lingchen-ai.com/sip-ws',
+    );
+    expect(
+      screen.queryByText(
+        '当前 HTTPS 页面不能连接 ws:// 坐席地址，请改用 wss://',
+      ),
+    ).toBeNull();
+  });
+
+  it('submits handoff claim through Java service', async () => {
+    getAiCallRecordPageMock.mockResolvedValue({
+      rows: [
+        {
+          callRecordId: 101,
+          status: '1',
+          gatewayCallId: 'gateway-101',
+          handoffState: 'waiting_agent',
+          handoffCanClaim: true,
+        },
+      ],
+      total: 1,
+    });
+    claimAiCallHandoffMock.mockImplementation(() => new Promise(() => {}));
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: '接管' }));
+
+    await waitFor(() => {
+      expect(claimAiCallHandoffMock).toHaveBeenCalledWith({
+        callRecordId: 101,
+        gatewayCallId: 'gateway-101',
+        agentExtension: '1001',
+        timeoutSeconds: 20,
+      });
+    });
+  });
+
+  it('disables claim button when handoff cannot be claimed', async () => {
+    getAiCallRecordPageMock.mockResolvedValueOnce({
+      rows: [
+        {
+          callRecordId: 101,
+          status: '1',
+          gatewayCallId: 'gateway-101',
+          handoffState: 'waiting_agent',
+          handoffCanClaim: false,
+        },
+      ],
+      total: 1,
+    });
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+
+    const claimButton = await screen.findByRole('button', { name: '接管' });
+    expect((claimButton as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('simulates a handoff call locally when mock handoff mode is enabled', async () => {
+    window.history.pushState({}, '', '/intelligent-outbound?mockHandoff=1');
+    claimAiCallHandoffMock.mockResolvedValue({});
+
+    render(<IntelligentOutboundPage />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '查看详情',
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /模拟转人工/ }));
+
+    expect(await screen.findByText('模拟业主')).toBeTruthy();
+    expect(screen.getByText('等待人工')).toBeTruthy();
+    expect(screen.getByText('我想转人工，帮我找一下客服')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '接管' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '已接管' })).toBeTruthy();
+    });
+    expect(screen.getAllByText('已接管').length).toBeGreaterThanOrEqual(1);
+    expect(claimAiCallHandoffMock).not.toHaveBeenCalled();
   });
 
   it('loads today completed calls and opens semantic analysis from the monitor detail', async () => {

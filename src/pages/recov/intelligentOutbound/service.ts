@@ -34,6 +34,40 @@ export type AiCallTranscript = {
   [key: string]: unknown;
 };
 
+export type AiCallHandoffState =
+  | 'none'
+  | 'waiting_agent'
+  | 'agent_claimed'
+  | 'human_active'
+  | 'expired'
+  | 'failed';
+
+export type AiCallAgentWebRtcConfig = {
+  wsUrl?: string;
+  sipUri?: string;
+  password?: string;
+  displayName?: string;
+  agentExtension?: string;
+  viaTransport?: string;
+  iceServers?: RTCIceServer[];
+};
+
+export type AiCallHandoffClaimRequest = {
+  callRecordId?: number | string;
+  gatewayCallId: string;
+  agentExtension: string;
+  timeoutSeconds?: number;
+};
+
+export type AiCallHandoffClaimResult = {
+  callRecordId?: number | string;
+  gatewayCallId?: string;
+  handoffState?: AiCallHandoffState;
+  agentExtension?: string;
+  claimedBy?: string;
+  message?: string;
+};
+
 export type AiCallAnalysis = {
   summary?: string;
   feedbackType?: string;
@@ -65,6 +99,14 @@ export type AiCallRecord = {
   keyPoints?: string[];
   tags?: string[];
   timeHint?: AiCallTimeHint;
+  handoffState?: AiCallHandoffState;
+  handoffCanClaim?: boolean;
+  handoffLastUtterance?: string;
+  handoffRequestedAt?: string;
+  handoffExpiresAt?: string;
+  handoffClaimedBy?: string;
+  handoffAgentExtension?: string;
+  handoffError?: string;
 };
 
 export type AiCallDebtFeedback = {
@@ -150,6 +192,18 @@ export const getAiCallRecordPage = (params: AiCallRecordPageQuery) =>
   ruoyiRequest<AiCallRecord>(`${BASE}/records/page`, {
     method: 'get',
     params,
+  });
+
+export const claimAiCallHandoff = (data: AiCallHandoffClaimRequest) =>
+  ruoyiRequest<AiCallHandoffClaimResult>(`${BASE}/handoff/claim`, {
+    method: 'post',
+    data,
+  });
+
+export const getAiCallAgentWebRtcConfig = () =>
+  ruoyiRequest<AiCallAgentWebRtcConfig>(`${BASE}/agent/webrtc-config`, {
+    method: 'get',
+    skipErrorHandler: true,
   });
 
 export const getAiCallDebtFeedbackPage = (

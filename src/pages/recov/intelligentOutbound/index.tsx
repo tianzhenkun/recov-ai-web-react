@@ -56,7 +56,7 @@ import FeedbackAllDrawer from './FeedbackAllDrawer';
 import FeedbackFeed from './FeedbackFeed';
 import IdentityGrid from './IdentityGrid';
 import LiveMonitorCard from './LiveMonitorCard';
-import LiveMonitorDetailModal from './LiveMonitorDetailModal';
+import LiveMonitorDetailView from './LiveMonitorDetailView';
 import MetricsRow from './MetricsRow';
 import {
   type AiCallDashboard,
@@ -446,6 +446,24 @@ const IntelligentOutboundPage = () => {
     startOutboundFlowPolling,
   ]);
 
+  if (monitorDetailOpen) {
+    return (
+      <>
+        {messageContextHolder}
+        <LiveMonitorDetailView
+          onBack={() => setMonitorDetailOpen(false)}
+          onRecordSemanticClick={handleMonitorRecordSemanticClick}
+        />
+        <CommunicationLogModal
+          open={logModalOpen}
+          loading={logLoading}
+          detail={logDetail}
+          onClose={handleCloseLogModal}
+        />
+      </>
+    );
+  }
+
   return (
     <PageContainer
       breadcrumbRender={false}
@@ -679,12 +697,6 @@ const IntelligentOutboundPage = () => {
         open={feedbackDrawerOpen}
         onClose={() => setFeedbackDrawerOpen(false)}
         onItemClick={handleFeedbackClick}
-      />
-
-      <LiveMonitorDetailModal
-        open={monitorDetailOpen}
-        onClose={() => setMonitorDetailOpen(false)}
-        onRecordSemanticClick={handleMonitorRecordSemanticClick}
       />
 
       <CommunicationLogModal

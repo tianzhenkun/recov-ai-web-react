@@ -58,6 +58,7 @@
     "dayjs": "^1.11.20",
     "highlight.js": "^11.11.1",
     "jsencrypt": "^3.5.4",
+    "jssip": "^3.13.8",
     "markdown-it": "^14.1.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
