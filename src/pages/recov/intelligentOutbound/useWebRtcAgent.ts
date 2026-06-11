@@ -160,6 +160,23 @@ const formatDisconnectedMessage = (event: unknown) => {
   return detail ? `坐席连接已断开：${detail}` : '坐席连接已断开';
 };
 
+const formatSessionFailedMessage = (event: unknown) => {
+  const response = getResponseLike(event);
+  const statusCode = firstText(response?.status_code, response?.statusCode);
+  const reason = firstText(response?.reason_phrase, response?.reasonPhrase);
+  const cause = isRecord(event) ? firstText(event.cause) : '';
+  const detail = firstText(
+    [statusCode, reason].filter(Boolean).join(' '),
+    cause,
+  );
+  return detail ? `坐席通话失败：${detail}` : '坐席通话失败';
+};
+
+const formatAnswerErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : firstText(error);
+  return message ? `坐席接听失败：${message}` : '坐席接听失败';
+};
+
 export type WebRtcAgentStatus =
   | 'unregistered'
   | 'registering'
@@ -175,6 +192,7 @@ export type UseWebRtcAgentResult = {
   busy: boolean;
   remoteStream: MediaStream | null;
   errorMessage: string;
+  diagnosticMessage: string;
   agentExtension: string;
   registerAgent: () => Promise<void>;
   unregisterAgent: () => void;
@@ -210,6 +228,7 @@ export const useWebRtcAgent = (
   const [status, setStatus] = useState<WebRtcAgentStatus>('unregistered');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [diagnosticMessage, setDiagnosticMessage] = useState('');
 
   const agentExtension = String(config?.agentExtension || '');
 
@@ -231,6 +250,35 @@ export const useWebRtcAgent = (
       const bindRemoteAudio = (connection?: RTCPeerConnection | null) => {
         if (!connection || boundConnections.has(connection)) return;
         boundConnections.add(connection);
+        const updateConnectionDiagnostic = () => {
+          const detail = [
+            connection.iceConnectionState
+              ? `ICE ${connection.iceConnectionState}`
+              : '',
+            connection.connectionState
+              ? `连接 ${connection.connectionState}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('，');
+          if (detail) setDiagnosticMessage(`WebRTC ${detail}`);
+          if (
+            connection.iceConnectionState === 'failed' ||
+            connection.connectionState === 'failed'
+          ) {
+            setErrorMessage(
+              'WebRTC 媒体协商失败，请检查浏览器网络、STUN/TURN 或麦克风权限',
+            );
+          }
+        };
+        connection.addEventListener(
+          'iceconnectionstatechange',
+          updateConnectionDiagnostic,
+        );
+        connection.addEventListener(
+          'connectionstatechange',
+          updateConnectionDiagnostic,
+        );
         connection.addEventListener('track', (event) => {
           const stream = getStreamFromTrackEvent(event);
           if (stream) setRemoteStream(stream);
@@ -248,13 +296,28 @@ export const useWebRtcAgent = (
       };
 
       incomingSessionRef.current = session;
+      setErrorMessage('');
+      setDiagnosticMessage('收到坐席来电');
       setStatus('incoming');
 
+      session.on('accepted', () => {
+        setErrorMessage('');
+        setDiagnosticMessage('坐席接听已应答');
+        setStatus('talking');
+      });
+      session.on('confirmed', () => {
+        setErrorMessage('');
+        setDiagnosticMessage('WebRTC 通话已确认');
+        setStatus('talking');
+      });
       session.on('ended', () => {
         cleanupSession();
+        setDiagnosticMessage('坐席通话已结束');
         setStatus(uaRef.current ? 'available' : 'unregistered');
       });
-      session.on('failed', () => {
+      session.on('failed', (event: unknown) => {
+        setErrorMessage(formatSessionFailedMessage(event));
+        setDiagnosticMessage('坐席通话失败');
         cleanupSession();
         setStatus(uaRef.current ? 'available' : 'unregistered');
       });
@@ -318,6 +381,7 @@ export const useWebRtcAgent = (
         if (uaRef.current !== ua) return;
         clearRegistrationTimer();
         setErrorMessage('');
+        setDiagnosticMessage('坐席已注册');
         setStatus('available');
       });
       ua.on('registrationFailed', (event: unknown) => {
@@ -327,6 +391,7 @@ export const useWebRtcAgent = (
         ua.stop();
         setStatus('error');
         setErrorMessage(formatRegistrationFailedMessage(event));
+        setDiagnosticMessage('');
       });
       ua.on('disconnected', (event: unknown) => {
         if (uaRef.current !== ua) return;
@@ -334,6 +399,7 @@ export const useWebRtcAgent = (
         uaRef.current = null;
         setStatus('error');
         setErrorMessage(formatDisconnectedMessage(event));
+        setDiagnosticMessage('');
       });
       ua.on('newRTCSession', (event: unknown) => {
         const session = (event as { session?: JsSipSession }).session;
@@ -356,6 +422,7 @@ export const useWebRtcAgent = (
       ua?.stop();
       setStatus('error');
       setErrorMessage(formatMediaErrorMessage(error));
+      setDiagnosticMessage('');
     }
   }, [
     agentExtension,
@@ -372,26 +439,42 @@ export const useWebRtcAgent = (
     uaRef.current = null;
     ua?.stop();
     setErrorMessage('');
+    setDiagnosticMessage('');
     setStatus('unregistered');
   }, [cleanupSession, clearRegistrationTimer]);
 
   const answerIncoming = useCallback(() => {
     const session = incomingSessionRef.current;
     if (!session) return;
-    session.answer({
-      mediaConstraints: getMediaConstraints(),
-      pcConfig: {
-        iceServers: config?.iceServers || [],
-      },
-    });
-    activeSessionRef.current = session;
-    incomingSessionRef.current = null;
-    setStatus('talking');
-  }, [config?.iceServers]);
+    setErrorMessage('');
+    setDiagnosticMessage('已点击接听，正在建立 WebRTC');
+    try {
+      session.answer({
+        mediaConstraints: getMediaConstraints(),
+        pcConfig: {
+          iceServers: config?.iceServers || [],
+        },
+      });
+      activeSessionRef.current = session;
+      incomingSessionRef.current = null;
+      setStatus('talking');
+    } catch (error) {
+      setErrorMessage(formatAnswerErrorMessage(error));
+      setDiagnosticMessage('坐席接听失败');
+      try {
+        session.terminate();
+      } catch {
+        // Ignore terminate failures after a failed local answer attempt.
+      }
+      cleanupSession();
+      setStatus(uaRef.current ? 'available' : 'unregistered');
+    }
+  }, [cleanupSession, config?.iceServers]);
 
   const rejectIncoming = useCallback(() => {
     incomingSessionRef.current?.terminate();
     cleanupSession();
+    setDiagnosticMessage('已拒接坐席来电');
     setStatus(uaRef.current ? 'available' : 'unregistered');
   }, [cleanupSession]);
 
@@ -399,6 +482,7 @@ export const useWebRtcAgent = (
     activeSessionRef.current?.terminate();
     incomingSessionRef.current?.terminate();
     cleanupSession();
+    setDiagnosticMessage('已挂断坐席通话');
     setStatus(uaRef.current ? 'available' : 'unregistered');
   }, [cleanupSession]);
 
@@ -413,6 +497,7 @@ export const useWebRtcAgent = (
       busy: status === 'talking',
       remoteStream,
       errorMessage,
+      diagnosticMessage,
       agentExtension,
       registerAgent,
       unregisterAgent,
@@ -423,6 +508,7 @@ export const useWebRtcAgent = (
     [
       agentExtension,
       answerIncoming,
+      diagnosticMessage,
       errorMessage,
       hangup,
       registerAgent,

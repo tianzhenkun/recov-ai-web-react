@@ -932,6 +932,13 @@ describe('IntelligentOutboundPage', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'phone 接听来电' }),
     );
+    expect(sessionAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pcConfig: {
+          iceServers: [],
+        },
+      }),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'audio 挂断' }));
 
     expect(sessionTerminate).toHaveBeenCalledTimes(1);

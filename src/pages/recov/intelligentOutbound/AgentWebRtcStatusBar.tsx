@@ -59,6 +59,9 @@ export const AgentWebRtcStatusBar = ({
           {agent.agentExtension ? (
             <Text type="secondary">分机 {agent.agentExtension}</Text>
           ) : null}
+          {agent.diagnosticMessage ? (
+            <Text type="secondary">{agent.diagnosticMessage}</Text>
+          ) : null}
         </Space>
 
         <Space size="small" wrap>

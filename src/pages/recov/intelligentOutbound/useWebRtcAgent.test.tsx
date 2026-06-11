@@ -54,6 +54,7 @@ const AgentHarness = ({
     <div>
       <div>{agent.status}</div>
       <div>{agent.errorMessage}</div>
+      <div>{agent.diagnosticMessage}</div>
       <div>
         {agent.remoteStream ? 'remote-audio-ready' : 'remote-audio-empty'}
       </div>
@@ -243,6 +244,63 @@ describe('useWebRtcAgent', () => {
     });
 
     expect(screen.getByText('remote-audio-ready')).toBeTruthy();
+  });
+
+  it('shows answer failure detail when the browser cannot answer incoming WebRTC call', async () => {
+    render(<AgentHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: '上线' }));
+    expect(await screen.findByText('available')).toBeTruthy();
+
+    act(() => {
+      mockJsSipEventHandlers.newRTCSession?.({
+        session: {
+          answer: jest.fn(() => {
+            throw new Error('Failed to set local description');
+          }),
+          terminate: jest.fn(),
+          on: jest.fn(),
+        },
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '接听' }));
+
+    expect(
+      await screen.findByText('坐席接听失败：Failed to set local description'),
+    ).toBeTruthy();
+    expect(screen.getByText('available')).toBeTruthy();
+  });
+
+  it('shows JsSIP failure detail after an incoming WebRTC session fails', async () => {
+    const sessionEventHandlers: Record<string, (...args: unknown[]) => void> =
+      {};
+
+    render(<AgentHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: '上线' }));
+    expect(await screen.findByText('available')).toBeTruthy();
+
+    act(() => {
+      mockJsSipEventHandlers.newRTCSession?.({
+        session: {
+          answer: jest.fn(),
+          terminate: jest.fn(),
+          on: jest.fn(
+            (event: string, handler: (...args: unknown[]) => void) => {
+              sessionEventHandlers[event] = handler;
+            },
+          ),
+        },
+      });
+    });
+
+    act(() => {
+      sessionEventHandlers.failed?.({ cause: 'NO_ANSWER' });
+    });
+
+    expect(await screen.findByText('坐席通话失败：NO_ANSWER')).toBeTruthy();
+    expect(screen.getByText('available')).toBeTruthy();
   });
 
   it('times out when SIP registration does not complete', async () => {
