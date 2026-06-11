@@ -208,6 +208,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   return (
     <HeaderDropdown
       placement="bottomRight"
+      trigger={['click']}
       menu={{
         selectedKeys: [],
         onClick: onMenuClick,

@@ -5,11 +5,13 @@ import type { ProLayoutProps } from '@ant-design/pro-components';
  */
 const Settings: ProLayoutProps & {
   logo?: string;
+  recovColorTheme?: 'default' | 'layeredDarkNav';
 } = {
   navTheme: 'light',
+  recovColorTheme: 'layeredDarkNav',
   // 酱紫
   colorPrimary: '#722ED1',
-  layout: 'mix',
+  layout: 'side',
   contentWidth: 'Fluid',
   siderWidth: 196,
   fixedHeader: false,

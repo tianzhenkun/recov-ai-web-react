@@ -27,6 +27,7 @@ const mockDynamicTenant = jest.fn();
 const mockGetInfo = jest.fn();
 const mockLoadRuoyiMenuData = jest.fn();
 const mockResolveRuoyiMenuContext = jest.fn();
+const mockSettingDrawerProps: any[] = [];
 
 jest.mock('@umijs/max', () => ({
   history: mockHistory,
@@ -34,7 +35,15 @@ jest.mock('@umijs/max', () => ({
 }));
 
 jest.mock('@ant-design/pro-components', () => ({
-  SettingDrawer: () => null,
+  SettingDrawer: (props: any) => {
+    mockSettingDrawerProps.push(props);
+    const React = require('react');
+    return React.createElement(
+      'div',
+      { 'data-testid': 'mock-setting-drawer' },
+      props.drawerProps?.title,
+    );
+  },
 }));
 
 jest.mock('@/adapters/ruoyi/dynamicTenant', () => ({
@@ -103,10 +112,51 @@ jest.mock('@/components', () => ({
     );
   },
   Footer: () => null,
-  NotificationCenter: () => null,
+  SiderFooterAction: (props: any) => {
+    const React = require('react');
+    return React.createElement(
+      props.href ? 'a' : 'button',
+      {
+        'aria-label': props['aria-label'],
+        className: [
+          'recov-sider-footer-action',
+          props.collapsed ? 'recov-sider-footer-action-collapsed' : undefined,
+          props.className,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        'data-collapsed': String(Boolean(props.collapsed)),
+        href: props.href,
+      },
+      props.label,
+    );
+  },
+  NotificationCenter: (props: any) => {
+    const React = require('react');
+    return React.createElement(
+      'div',
+      {
+        'data-collapsed': String(Boolean(props.collapsed)),
+        'data-testid': 'mock-notification-center',
+        'data-variant': props.variant,
+      },
+      '通知中心',
+    );
+  },
   OfflineBanner: () => null,
   SseBootstrap: () => null,
-  TenantSwitch: () => null,
+  TenantSwitch: (props: any) => {
+    const React = require('react');
+    return React.createElement(
+      'div',
+      {
+        'data-collapsed': String(Boolean(props.collapsed)),
+        'data-testid': 'mock-tenant-switch',
+        'data-variant': props.variant,
+      },
+      '切换租户',
+    );
+  },
 }));
 
 jest.mock('@/services/ruoyi/flowEvent', () => ({
@@ -198,6 +248,7 @@ describe('layout floating process panel read state', () => {
     jest.clearAllMocks();
     mockFloatingProcessPanelProps.length = 0;
     mockSseListeners.length = 0;
+    mockSettingDrawerProps.length = 0;
   });
 
   it('keeps unread dot on first open and marks visible events read after collapsing the floating panel', async () => {
@@ -313,5 +364,202 @@ describe('layout floating process panel read state', () => {
     await waitFor(() => {
       expect(flowEventService.markAllFlowEventsRead).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('layout color theme settings', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSettingDrawerProps.length = 0;
+  });
+
+  it('adds a layered dark navigation theme entry to the preference drawer', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {},
+      },
+      setInitialState: jest.fn(),
+    });
+
+    render(config.childrenRender(createElement('div')));
+
+    expect(screen.getByText('界面主题')).toBeTruthy();
+    expect(screen.getByText('默认浅色')).toBeTruthy();
+    expect(screen.getByText('深色导航')).toBeTruthy();
+  });
+
+  it('applies local tokens for the layered dark navigation theme', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {
+          colorPrimary: '#722ED1',
+          recovColorTheme: 'layeredDarkNav',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    expect(config.className).toContain('recov-layout-theme-layered-dark-nav');
+    expect(config.bgLayoutImgList).toEqual([]);
+    expect(config.token?.bgLayout).toContain('#f7f8fa');
+    expect(config.token?.header?.colorBgHeader).toBeUndefined();
+    expect(config.token?.header?.colorBgMenuItemSelected).toBeUndefined();
+    expect(config.token?.sider?.colorMenuBackground).toBe('#1a1d24');
+    expect(config.token?.sider?.colorTextMenuTitle).toBe('#ffffff');
+    expect(config.token?.sider?.colorBgMenuItemSelected).toBe(
+      'rgba(114, 46, 209, 0.16)',
+    );
+    expect(config.token?.sider?.colorTextMenuSelected).toBe('#ffffff');
+    expect(config.token?.sider?.colorTextCollapsedButtonHover).toBe('#9254de');
+  });
+
+  it('keeps the sider brand header available in side layout', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {
+          layout: 'side',
+          recovColorTheme: 'layeredDarkNav',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    expect(config.menuHeaderRender).not.toBe(false);
+  });
+
+  it('uses a unified side-layout footer instead of mixed links and actions', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { name: '超级管理员', userid: '7' },
+        settings: {
+          layout: 'side',
+          recovColorTheme: 'layeredDarkNav',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    expect(config.links).toBeUndefined();
+    expect(config.actionsRender).toBe(false);
+    expect(config.avatarProps).toBe(false);
+    expect(typeof config.menuFooterRender).toBe('function');
+
+    const { container, rerender } = render(
+      config.menuFooterRender({
+        collapsed: false,
+        layout: 'side',
+      }),
+    );
+
+    expect(container.querySelector('.recov-sider-footer')).toBeTruthy();
+    expect(screen.queryByText('灵宸官网')).toBeNull();
+    expect(screen.getByText('超级管理员')).toBeTruthy();
+    expect(
+      screen.getByTestId('mock-tenant-switch').getAttribute('data-variant'),
+    ).toBe('sider');
+    expect(
+      screen.getByTestId('mock-tenant-switch').getAttribute('data-collapsed'),
+    ).toBe('false');
+    expect(
+      screen
+        .getByTestId('mock-notification-center')
+        .getAttribute('data-variant'),
+    ).toBe('sider');
+    expect(container.textContent).toMatch(/切换租户.*通知中心.*超级管理员/);
+
+    rerender(
+      config.menuFooterRender({
+        collapsed: true,
+        layout: 'side',
+      }),
+    );
+
+    expect(
+      container.querySelector('.recov-sider-footer-collapsed'),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId('mock-tenant-switch').getAttribute('data-collapsed'),
+    ).toBe('true');
+  });
+
+  it('keeps non-side layout controls on the original header and links channels', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {
+          layout: 'mix',
+          recovColorTheme: 'layeredDarkNav',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    const mixSiderActions = config.actionsRender({ layout: 'mix' }) as any[];
+    const headerActions = config.actionsRender({ hasSiderMenu: true }) as any[];
+    const staleSideActions = config.actionsRender({ layout: 'side' }) as any[];
+
+    expect(config.links).toHaveLength(1);
+    expect(config.avatarProps).toBeTruthy();
+    expect(mixSiderActions[0].props.variant).toBe('select');
+    expect(mixSiderActions[1].props.variant).toBe('icon');
+    expect(headerActions[0].props.variant).toBe('select');
+    expect(headerActions[1].props.variant).toBe('icon');
+    expect(staleSideActions).toEqual([]);
+    expect(config.avatarProps.icon).toBeUndefined();
+  });
+
+  it('renders the header user dropdown trigger without the default avatar outside side layout', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { name: '超级管理员', userid: '7' },
+        settings: {
+          layout: 'mix',
+          recovColorTheme: 'layeredDarkNav',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    const defaultAvatar = createElement(
+      'div',
+      { 'data-testid': 'default-avatar-node' },
+      '默认头像节点',
+    );
+
+    render(
+      config.avatarProps.render(config.avatarProps, defaultAvatar, {
+        layout: 'mix',
+      }),
+    );
+
+    expect(screen.getByText('超级管理员')).toBeTruthy();
+    expect(screen.queryByTestId('default-avatar-node')).toBeNull();
+  });
+
+  it('keeps the default layout theme free of layered dark navigation overrides', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {
+          colorPrimary: '#722ED1',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    expect(config.className || '').not.toContain(
+      'recov-layout-theme-layered-dark-nav',
+    );
+    expect(config.token?.sider?.colorMenuBackground).toBeUndefined();
   });
 });

@@ -14,9 +14,15 @@ import {
 } from '@/adapters/ruoyi/menu';
 import { getTenantList, type TenantInfo } from '@/services/ruoyi/auth';
 import { dynamicClear, dynamicTenant } from '@/services/ruoyi/tenant';
+import SiderFooterAction from '../SiderFooterAction';
 import { resolveTenantSwitchNextPath } from './navigation';
 
 type TenantOption = TenantInfo['voList'][number];
+
+type TenantSwitchProps = {
+  collapsed?: boolean;
+  variant?: 'select' | 'sider' | 'icon';
+};
 
 const getUserId = (currentUser?: {
   access?: string;
@@ -31,7 +37,10 @@ const isSuperAdminUser = (currentUser?: {
   rawUser?: { userId?: number | string };
 }) => Number(getUserId(currentUser)) === 1;
 
-const TenantSwitch = () => {
+const TenantSwitch = ({
+  collapsed = false,
+  variant = 'select',
+}: TenantSwitchProps) => {
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const { initialState, setInitialState } = useModel('@@initialState');
@@ -137,7 +146,7 @@ const TenantSwitch = () => {
 
   if (!isSuperAdmin || !tenantEnabled || options.length === 0) return null;
 
-  if (isCompact) {
+  if (variant === 'sider' || variant === 'icon' || isCompact) {
     const menuItems: MenuProps['items'] = [
       {
         disabled: !selectedTenantId,
@@ -150,6 +159,32 @@ const TenantSwitch = () => {
         label: option.label,
       })),
     ];
+
+    if (variant === 'sider') {
+      return (
+        <Dropdown
+          disabled={loading}
+          menu={{
+            items: menuItems,
+            onClick: ({ key }) => {
+              handleTenantChange(key === 'default' ? undefined : key);
+            },
+            selectedKeys: selectedTenantId ? [selectedTenantId] : [],
+          }}
+          placement="bottomRight"
+          trigger={['click']}
+        >
+          <SiderFooterAction
+            aria-label="切换租户"
+            className="recov-tenant-switch-trigger-sider"
+            collapsed={collapsed}
+            disabled={loading}
+            icon={<BankOutlined />}
+            label="切换租户"
+          />
+        </Dropdown>
+      );
+    }
 
     return (
       <Dropdown
@@ -167,6 +202,7 @@ const TenantSwitch = () => {
         <Tooltip title="切换租户">
           <Button
             aria-label="切换租户"
+            className="recov-tenant-switch-trigger"
             icon={<BankOutlined />}
             loading={loading}
             type="text"
@@ -179,6 +215,7 @@ const TenantSwitch = () => {
   return (
     <Select
       allowClear
+      className="recov-tenant-switch-select"
       showSearch={{ optionFilterProp: 'label' }}
       loading={loading}
       disabled={loading}

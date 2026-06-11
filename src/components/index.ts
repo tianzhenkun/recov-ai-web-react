@@ -12,6 +12,7 @@ import NotificationCenter from './NotificationCenter';
 import { DocLink, LangDropdown, VersionDropdown } from './RightContent';
 import { AvatarDropdown } from './RightContent/AvatarDropdown';
 import SafeHtml from './SafeHtml';
+import SiderFooterAction from './SiderFooterAction';
 import SseBootstrap from './SseBootstrap';
 import TenantSwitch from './TenantSwitch';
 
@@ -35,6 +36,7 @@ export {
   LangDropdown,
   NotificationCenter,
   SafeHtml,
+  SiderFooterAction,
   SseBootstrap,
   TenantSwitch,
   VersionDropdown,

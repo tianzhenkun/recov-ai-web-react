@@ -1,7 +1,8 @@
-import { GlobalOutlined } from '@ant-design/icons';
+import { GlobalOutlined, UserOutlined } from '@ant-design/icons';
 import type {
   Settings as LayoutSettings,
   MenuDataItem,
+  ProLayoutProps,
 } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
@@ -44,6 +45,7 @@ import {
   Footer,
   NotificationCenter,
   OfflineBanner,
+  SiderFooterAction,
   SseBootstrap,
   TenantSwitch,
 } from '@/components';
@@ -71,6 +73,141 @@ import { errorConfig } from './requestErrorConfig';
 const loginPath = '/user/login';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
+
+type RecovColorTheme = 'default' | 'layeredDarkNav';
+type RecovLayoutSettings = Partial<LayoutSettings> & {
+  bgLayoutImgList?: ProLayoutProps['bgLayoutImgList'];
+  className?: ProLayoutProps['className'];
+  recovColorTheme?: RecovColorTheme;
+  token?: ProLayoutProps['token'];
+};
+
+const layeredDarkNavTheme = 'layeredDarkNav';
+const layeredDarkNavLayoutClass = 'recov-layout-theme-layered-dark-nav';
+const layeredDarkNavBgColor = '#1a1d24';
+const layeredDarkNavSurfaceColor = '#252934';
+const layeredDarkNavAccentColor = '#9254de';
+const layeredDarkNavAccentHoverBg = 'rgba(114, 46, 209, 0.1)';
+const layeredDarkNavAccentSelectedBg = 'rgba(114, 46, 209, 0.16)';
+
+const layeredDarkNavLayoutToken: NonNullable<ProLayoutProps['token']> = {
+  bgLayout:
+    'linear-gradient(120deg, rgba(226, 232, 240, 0.72) 1px, transparent 1px), linear-gradient(60deg, rgba(226, 232, 240, 0.56) 1px, transparent 1px), #f7f8fa',
+  pageContainer: {
+    colorBgPageContainer: '#f7f8fa',
+    colorBgPageContainerFixed: '#ffffff',
+  },
+  sider: {
+    colorMenuBackground: layeredDarkNavBgColor,
+    colorBgMenuItemActive: layeredDarkNavAccentSelectedBg,
+    colorBgMenuItemHover: layeredDarkNavAccentHoverBg,
+    colorBgMenuItemSelected: layeredDarkNavAccentSelectedBg,
+    colorMenuItemDivider: 'rgba(255, 255, 255, 0.08)',
+    colorTextMenu: '#c9ced8',
+    colorTextMenuActive: '#ffffff',
+    colorTextMenuItemHover: '#ffffff',
+    colorTextMenuSecondary: '#7d8492',
+    colorTextMenuSelected: '#ffffff',
+    colorTextMenuTitle: '#ffffff',
+    colorTextSubMenuSelected: '#ffffff',
+    colorBgCollapsedButton: layeredDarkNavSurfaceColor,
+    colorTextCollapsedButton: '#c9ced8',
+    colorTextCollapsedButtonHover: layeredDarkNavAccentColor,
+  },
+};
+
+const resolveRecovColorTheme = (
+  settings?: RecovLayoutSettings,
+): RecovColorTheme =>
+  settings?.recovColorTheme === layeredDarkNavTheme
+    ? layeredDarkNavTheme
+    : 'default';
+
+const mergeLayeredDarkNavToken = (
+  token?: ProLayoutProps['token'],
+): ProLayoutProps['token'] => ({
+  ...token,
+  ...layeredDarkNavLayoutToken,
+  pageContainer: {
+    ...token?.pageContainer,
+    ...layeredDarkNavLayoutToken.pageContainer,
+  },
+  sider: {
+    ...token?.sider,
+    ...layeredDarkNavLayoutToken.sider,
+  },
+});
+
+const buildRuntimeLayoutSettings = (
+  settings?: RecovLayoutSettings,
+): Partial<LayoutSettings> & Partial<ProLayoutProps> => {
+  const {
+    bgLayoutImgList,
+    className,
+    recovColorTheme: _recovColorTheme,
+    token,
+    ...restSettings
+  } = settings || {};
+  const colorTheme = resolveRecovColorTheme(settings);
+
+  if (colorTheme !== layeredDarkNavTheme) {
+    return {
+      ...restSettings,
+      bgLayoutImgList,
+      className,
+      token,
+    };
+  }
+
+  return {
+    ...restSettings,
+    bgLayoutImgList: [],
+    className: [className, layeredDarkNavLayoutClass].filter(Boolean).join(' '),
+    navTheme: 'light',
+    token: mergeLayeredDarkNavToken(token),
+  };
+};
+
+type RecovSiderFooterProps = {
+  collapsed?: boolean;
+  currentUserName?: React.ReactNode;
+  notificationContextKey: string;
+  notificationEnabled: boolean;
+};
+
+const RecovSiderFooter = ({
+  collapsed = false,
+  currentUserName,
+  notificationContextKey,
+  notificationEnabled,
+}: RecovSiderFooterProps) => (
+  <div
+    className={[
+      'recov-sider-footer',
+      collapsed ? 'recov-sider-footer-collapsed' : undefined,
+    ]
+      .filter(Boolean)
+      .join(' ')}
+  >
+    <div className="recov-sider-footer-group">
+      <TenantSwitch collapsed={collapsed} variant="sider" />
+      <NotificationCenter
+        collapsed={collapsed}
+        contextKey={notificationContextKey}
+        enabled={notificationEnabled}
+        variant="sider"
+      />
+      <AvatarDropdown>
+        <SiderFooterAction
+          aria-label="用户菜单"
+          collapsed={collapsed}
+          icon={<UserOutlined />}
+          label={currentUserName || '用户'}
+        />
+      </AvatarDropdown>
+    </div>
+  </div>
+);
 
 const recovListPagePaths = new Set([
   '/datelligence',
@@ -367,7 +504,7 @@ const restoreDynamicTenantContext = async (currentUser?: RuoyiCurrentUser) => {
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  * */
 export async function getInitialState(): Promise<{
-  settings?: Partial<LayoutSettings>;
+  settings?: RecovLayoutSettings;
   currentUser?: RuoyiCurrentUser;
   loading?: boolean;
   fetchUserInfo?: () => Promise<RuoyiCurrentUser | undefined>;
@@ -423,7 +560,7 @@ export async function getInitialState(): Promise<{
     return {
       fetchUserInfo,
       currentUser,
-      settings: defaultSettings as Partial<LayoutSettings>,
+      settings: defaultSettings as RecovLayoutSettings,
       floatingProcessPanelDefaultMode,
       settingDrawerOpen: false,
       dynamicTenantId,
@@ -435,7 +572,7 @@ export async function getInitialState(): Promise<{
   }
   return {
     fetchUserInfo,
-    settings: defaultSettings as Partial<LayoutSettings>,
+    settings: defaultSettings as RecovLayoutSettings,
     floatingProcessPanelDefaultMode,
     settingDrawerOpen: false,
     dynamicTenantId: getStoredDynamicTenantId(),
@@ -463,6 +600,7 @@ const AppLayoutChildren = ({
   initialState,
   setInitialState,
 }: AppLayoutChildrenProps) => {
+  const recovColorTheme = resolveRecovColorTheme(initialState?.settings);
   const sseConnectionKey = [
     initialState?.currentUser?.userid || 'anonymous',
     initialState?.dynamicTenantId || 'default',
@@ -644,6 +782,25 @@ const AppLayoutChildren = ({
     },
     [loadFlowProcessItemsForViewing, markFlowProcessItemsRead],
   );
+  const handleRecovColorThemeChange = React.useCallback(
+    (nextTheme: RecovColorTheme) => {
+      setInitialState((state) =>
+        state
+          ? {
+              ...state,
+              settings: {
+                ...state.settings,
+                recovColorTheme: nextTheme,
+                ...(nextTheme === layeredDarkNavTheme
+                  ? { navTheme: 'light' as const }
+                  : {}),
+              },
+            }
+          : state,
+      );
+    },
+    [setInitialState],
+  );
 
   return (
     <>
@@ -690,6 +847,27 @@ const AppLayoutChildren = ({
           title: (
             <Space orientation="vertical" size={8} style={{ width: '100%' }}>
               <Typography.Text strong>偏好设置</Typography.Text>
+              <Typography.Text type="secondary">界面主题</Typography.Text>
+              <Radio.Group
+                name="recov-color-theme"
+                optionType="button"
+                options={[
+                  {
+                    label: '默认浅色',
+                    value: 'default',
+                  },
+                  {
+                    label: '深色导航',
+                    value: layeredDarkNavTheme,
+                  },
+                ]}
+                value={recovColorTheme}
+                onChange={(event) => {
+                  handleRecovColorThemeChange(
+                    event.target.value as RecovColorTheme,
+                  );
+                }}
+              />
               <Typography.Text type="secondary">智能体默认展示</Typography.Text>
               <Radio.Group
                 optionType="button"
@@ -736,6 +914,13 @@ export const layout: RunTimeLayoutConfig = ({
 }) => {
   const floatingProcessPanelDefaultMode =
     initialState?.floatingProcessPanelDefaultMode ?? 'normal';
+  const isSideLayout = initialState?.settings?.layout === 'side';
+  const currentUserName = initialState?.currentUser?.name || '用户';
+  const notificationContextKey = [
+    initialState?.currentUser?.userid || 'anonymous',
+    initialState?.dynamicTenantId || 'default',
+    initialState?.tenantSwitchVersion || 0,
+  ].join(':');
   const syncMenuContextFromPath = async (pathname: string) => {
     if (!initialState?.currentUser) return;
 
@@ -828,22 +1013,29 @@ export const layout: RunTimeLayoutConfig = ({
       },
     },
     breadcrumbRender,
-    actionsRender: () => [
-      <TenantSwitch key="tenant" />,
-      <NotificationCenter
-        key="notification"
-        contextKey={[
-          initialState?.currentUser?.userid || 'anonymous',
-          initialState?.dynamicTenantId || 'default',
-          initialState?.tenantSwitchVersion || 0,
-        ].join(':')}
-        enabled={Boolean(initialState?.currentUser)}
-      />,
-      // 使用文档入口暂时隐藏。
-      // <DocLink key="doc" />,
-      // 历史版本入口暂时隐藏。
-      // <VersionDropdown key="version" />,
-    ],
+    actionsRender: isSideLayout
+      ? false
+      : (layoutProps) => {
+          const isSiderActionArea =
+            layoutProps.hasSiderMenu === undefined &&
+            layoutProps.layout === 'side';
+          if (isSiderActionArea) {
+            return [];
+          }
+          return [
+            <TenantSwitch key="tenant" variant="select" />,
+            <NotificationCenter
+              key="notification"
+              contextKey={notificationContextKey}
+              enabled={Boolean(initialState?.currentUser)}
+              variant="icon"
+            />,
+            // 使用文档入口暂时隐藏。
+            // <DocLink key="doc" />,
+            // 历史版本入口暂时隐藏。
+            // <VersionDropdown key="version" />,
+          ];
+        },
     headerTitleRender: (logo, title) => (
       <a
         href="/"
@@ -868,14 +1060,17 @@ export const layout: RunTimeLayoutConfig = ({
         {title}
       </a>
     ),
-    menuHeaderRender: false,
-    avatarProps: {
-      src: initialState?.currentUser?.avatar,
-      title: initialState?.currentUser?.name || '用户',
-      render: (_, avatarChildren) => (
-        <AvatarDropdown>{avatarChildren}</AvatarDropdown>
-      ),
-    },
+    avatarProps: isSideLayout
+      ? false
+      : {
+          src: initialState?.currentUser?.avatar,
+          title: currentUserName,
+          render: () => (
+            <AvatarDropdown>
+              <div>{currentUserName}</div>
+            </AvatarDropdown>
+          ),
+        },
     // waterMarkProps: {
     //   content: initialState?.currentUser?.name,
     // },
@@ -913,17 +1108,28 @@ export const layout: RunTimeLayoutConfig = ({
         width: '331px',
       },
     ],
-    links: [
-      <a
-        href="https://lingchen-ai.com/"
-        key="lingchen-website"
-        rel="noreferrer"
-        target="_blank"
-      >
-        <GlobalOutlined />
-        <span>灵宸官网</span>
-      </a>,
-    ],
+    links: isSideLayout
+      ? undefined
+      : [
+          <a
+            href="https://lingchen-ai.com/"
+            key="lingchen-website"
+            rel="noreferrer"
+            target="_blank"
+          >
+            <GlobalOutlined />
+            <span>灵宸官网</span>
+          </a>,
+        ],
+    menuFooterRender: (siderProps) =>
+      siderProps?.layout === 'side' ? (
+        <RecovSiderFooter
+          collapsed={Boolean(siderProps.collapsed)}
+          currentUserName={currentUserName}
+          notificationContextKey={notificationContextKey}
+          notificationEnabled={Boolean(initialState?.currentUser)}
+        />
+      ) : null,
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
     // so chunk load errors show friendly messages instead of "Something went wrong."
     ErrorBoundary,
@@ -942,7 +1148,7 @@ export const layout: RunTimeLayoutConfig = ({
         </AppLayoutChildren>
       );
     },
-    ...initialState?.settings,
+    ...buildRuntimeLayoutSettings(initialState?.settings),
   };
 };
 

@@ -29,10 +29,13 @@ import {
   readMessage,
 } from '@/services/ruoyi/message';
 import SafeHtml from '../SafeHtml';
+import SiderFooterAction from '../SiderFooterAction';
 
 type NotificationCenterProps = {
+  collapsed?: boolean;
   contextKey?: string;
   enabled?: boolean;
+  variant?: 'icon' | 'sider';
 };
 
 type FilterKey = 'all' | 'unread';
@@ -244,8 +247,10 @@ const formatMessageTime = (value?: string) => {
 };
 
 const NotificationCenter: React.FC<NotificationCenterProps> = ({
+  collapsed = false,
   contextKey,
   enabled = true,
+  variant = 'icon',
 }) => {
   const { styles } = useStyles();
   const { message: messageApi } = App.useApp();
@@ -486,20 +491,36 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const hasMore = messages.length < total;
   const emptyText = activeFilter === 'unread' ? '暂无未读通知' : '暂无通知';
 
-  const renderTrigger = (onClick?: () => void) => (
-    <button
-      aria-label="通知中心"
-      className={styles.triggerWrap}
-      type="button"
-      onClick={onClick}
-    >
-      <Badge count={unreadCount} overflowCount={99} size="small">
-        <span className={styles.triggerIcon}>
-          <BellOutlined />
-        </span>
-      </Badge>
-    </button>
-  );
+  const renderTrigger = (onClick?: () => void) => {
+    if (variant === 'sider') {
+      return (
+        <SiderFooterAction
+          aria-label="通知中心"
+          badgeCount={unreadCount}
+          badgeVariant="dot"
+          collapsed={collapsed}
+          icon={<BellOutlined />}
+          label="通知中心"
+          onClick={onClick}
+        />
+      );
+    }
+
+    return (
+      <button
+        aria-label="通知中心"
+        className={styles.triggerWrap}
+        type="button"
+        onClick={onClick}
+      >
+        <Badge count={unreadCount} overflowCount={99} size="small">
+          <span className={styles.triggerIcon}>
+            <BellOutlined />
+          </span>
+        </Badge>
+      </button>
+    );
+  };
 
   const renderList = (drawerMode = false) => {
     if (loading && messages.length === 0) {
