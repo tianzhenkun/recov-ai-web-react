@@ -1,12 +1,17 @@
 import {
   AudioOutlined,
+  BugOutlined,
   DisconnectOutlined,
   PhoneOutlined,
   PoweroffOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Popover, Space, Tag, Typography } from 'antd';
 import React, { useEffect, useRef } from 'react';
-import type { UseWebRtcAgentResult, WebRtcAgentStatus } from './useWebRtcAgent';
+import type {
+  UseWebRtcAgentResult,
+  WebRtcAgentStatus,
+  WebRtcDiagnosticEvent,
+} from './useWebRtcAgent';
 
 const { Text } = Typography;
 
@@ -26,6 +31,69 @@ const statusColor: Record<WebRtcAgentStatus, string> = {
   incoming: 'warning',
   talking: 'processing',
   error: 'error',
+};
+
+const formatDiagnosticTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString('zh-CN', { hour12: false });
+};
+
+const renderDiagnosticData = (data?: Record<string, string>) => {
+  if (!data) return null;
+  const text = Object.entries(data)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('  ');
+  if (!text) return null;
+  return (
+    <Text type="secondary" className="block break-all text-xs">
+      {text}
+    </Text>
+  );
+};
+
+const DiagnosticPopoverContent = ({
+  events,
+}: {
+  events: WebRtcDiagnosticEvent[];
+}) => {
+  const recentEvents = events.slice(0, 20);
+  return (
+    <div
+      style={{
+        maxHeight: 360,
+        maxWidth: 'calc(100vw - 48px)',
+        overflowY: 'auto',
+        width: 520,
+      }}
+    >
+      {recentEvents.length ? (
+        <Space direction="vertical" size={8} className="w-full">
+          {recentEvents.map((event) => (
+            <div
+              className="border-0 border-b border-solid border-gray-100 pb-2 last:border-b-0 last:pb-0"
+              key={event.id}
+            >
+              <Space size={8} wrap>
+                <Text type="secondary" className="text-xs">
+                  {formatDiagnosticTime(event.at)}
+                </Text>
+                <Text strong className="text-xs">
+                  {event.event}
+                </Text>
+              </Space>
+              {event.detail ? (
+                <Text className="block text-xs">{event.detail}</Text>
+              ) : null}
+              {renderDiagnosticData(event.data)}
+            </div>
+          ))}
+        </Space>
+      ) : (
+        <Text type="secondary">暂无诊断记录</Text>
+      )}
+    </div>
+  );
 };
 
 type AgentWebRtcStatusBarProps = {
@@ -65,6 +133,15 @@ export const AgentWebRtcStatusBar = ({
         </Space>
 
         <Space size="small" wrap>
+          <Popover
+            content={
+              <DiagnosticPopoverContent events={agent.diagnosticEvents} />
+            }
+            title="WebRTC 诊断"
+            trigger="click"
+          >
+            <Button icon={<BugOutlined />}>诊断</Button>
+          </Popover>
           {agent.status === 'unregistered' ? (
             <Button icon={<PoweroffOutlined />} onClick={agent.registerAgent}>
               上线

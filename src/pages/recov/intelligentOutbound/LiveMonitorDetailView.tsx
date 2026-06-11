@@ -525,14 +525,40 @@ const LiveMonitorDetailView = ({
         record.handoffAgentExtension,
       );
       if (!gatewayCallId) {
+        agent.recordDiagnosticEvent(
+          'handoff_claim_blocked',
+          '接管前置检查失败',
+          {
+            callRecordId: record.callRecordId,
+            debtNumber: record.debtNumber,
+            reason: 'missing_gateway_call_id',
+          },
+        );
         messageApi.warning('当前通话缺少网关通话 ID，暂不能接管');
         return;
       }
       if (!agentExtension) {
+        agent.recordDiagnosticEvent(
+          'handoff_claim_blocked',
+          '接管前置检查失败',
+          {
+            callRecordId: record.callRecordId,
+            debtNumber: record.debtNumber,
+            gatewayCallId,
+            reason: 'missing_agent_extension',
+          },
+        );
         messageApi.warning('当前账号未绑定坐席分机，暂不能接管');
         return;
       }
       setClaimingCallId(gatewayCallId);
+      agent.recordDiagnosticEvent('handoff_claim_start', '开始提交接管请求', {
+        agentExtension,
+        callRecordId: record.callRecordId,
+        debtNumber: record.debtNumber,
+        gatewayCallId,
+        handoffState: record.handoffState,
+      });
       try {
         if (gatewayCallId === MOCK_GATEWAY_CALL_ID) {
           setMockItems((records) =>
@@ -548,6 +574,10 @@ const LiveMonitorDetailView = ({
                 : item,
             ),
           );
+          agent.recordDiagnosticEvent('handoff_claim_success', '已模拟接管', {
+            agentExtension,
+            gatewayCallId,
+          });
           messageApi.success('已模拟接管');
           return;
         }
@@ -557,11 +587,26 @@ const LiveMonitorDetailView = ({
           agentExtension,
           timeoutSeconds: 20,
         });
+        agent.recordDiagnosticEvent(
+          'handoff_claim_success',
+          getResponseMessage(result) || '接管请求已提交，请在顶部接听来电',
+          {
+            agentExtension,
+            callRecordId: record.callRecordId,
+            gatewayCallId,
+          },
+        );
         messageApi.success(
           getResponseMessage(result) || '接管请求已提交，请在顶部接听来电',
         );
         await loadList(activeKey, page.pageNum, page.pageSize);
-      } catch {
+      } catch (error) {
+        agent.recordDiagnosticEvent('handoff_claim_failed', '接管请求失败', {
+          agentExtension,
+          callRecordId: record.callRecordId,
+          error: error instanceof Error ? error.message : firstText(error),
+          gatewayCallId,
+        });
         messageApi.error('接管失败，请稍后重试');
       } finally {
         setClaimingCallId('');
@@ -569,6 +614,7 @@ const LiveMonitorDetailView = ({
     },
     [
       activeKey,
+      agent.recordDiagnosticEvent,
       loadList,
       messageApi,
       page.pageNum,
@@ -624,6 +670,10 @@ const LiveMonitorDetailView = ({
 
   const handleAgentHangup = useCallback(async () => {
     const gatewayCallId = firstText(activeHumanHandoffRecord?.gatewayCallId);
+    agent.recordDiagnosticEvent('agent_hangup_start', '坐席点击挂断', {
+      gatewayCallId,
+      handoffState: activeHumanHandoffRecord?.handoffState,
+    });
     agent.hangup();
     if (!gatewayCallId) return;
 
@@ -641,6 +691,13 @@ const LiveMonitorDetailView = ({
             : record,
         ),
       );
+      agent.recordDiagnosticEvent(
+        'agent_hangup_success',
+        '已模拟挂断人工通话',
+        {
+          gatewayCallId,
+        },
+      );
       messageApi.success('已模拟挂断人工通话');
       return;
     }
@@ -650,15 +707,24 @@ const LiveMonitorDetailView = ({
         gatewayCallId,
         reason: 'agent_hangup',
       });
+      agent.recordDiagnosticEvent('agent_hangup_success', '已挂断人工通话', {
+        gatewayCallId,
+      });
       messageApi.success('已挂断人工通话');
       await loadList(activeKey, page.pageNum, page.pageSize);
-    } catch {
+    } catch (error) {
+      agent.recordDiagnosticEvent('agent_hangup_failed', '外呼结束请求失败', {
+        error: error instanceof Error ? error.message : firstText(error),
+        gatewayCallId,
+      });
       messageApi.warning('坐席已挂断，外呼结束请求失败，请刷新确认状态');
     }
   }, [
     activeHumanHandoffRecord?.gatewayCallId,
+    activeHumanHandoffRecord?.handoffState,
     activeKey,
     agent.hangup,
+    agent.recordDiagnosticEvent,
     loadList,
     messageApi,
     page.pageNum,

@@ -53,8 +53,13 @@ const AgentHarness = ({
   return (
     <div>
       <div>{agent.status}</div>
-      <div>{agent.errorMessage}</div>
-      <div>{agent.diagnosticMessage}</div>
+      <div data-testid="error-message">{agent.errorMessage}</div>
+      <div data-testid="diagnostic-message">{agent.diagnosticMessage}</div>
+      <div data-testid="diagnostic-events">
+        {agent.diagnosticEvents
+          .map((event) => [event.event, event.detail].filter(Boolean).join(':'))
+          .join('|')}
+      </div>
       <div>
         {agent.remoteStream ? 'remote-audio-ready' : 'remote-audio-empty'}
       </div>
@@ -118,11 +123,11 @@ describe('useWebRtcAgent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '上线' }));
 
-    expect(
-      await screen.findByText(
+    await waitFor(() => {
+      expect(screen.getByTestId('error-message').textContent).toBe(
         '麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重新上线',
-      ),
-    ).toBeTruthy();
+      );
+    });
     expect(mockJsSipStart).not.toHaveBeenCalled();
   });
 
@@ -154,11 +159,11 @@ describe('useWebRtcAgent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '上线' }));
 
-    expect(
-      await screen.findByText(
+    await waitFor(() => {
+      expect(screen.getByTestId('error-message').textContent).toBe(
         '当前浏览器或页面环境不支持麦克风，请使用 Chrome/Edge 并通过 HTTPS 或 localhost 访问',
-      ),
-    ).toBeTruthy();
+      );
+    });
     expect(mockJsSipStart).not.toHaveBeenCalled();
   });
 
@@ -199,7 +204,11 @@ describe('useWebRtcAgent', () => {
       });
     });
 
-    expect(await screen.findByText('坐席注册失败：403 Forbidden')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId('error-message').textContent).toBe(
+        '坐席注册失败：403 Forbidden',
+      );
+    });
   });
 
   it('binds remote audio when JsSIP creates peer connection after incoming session', async () => {
@@ -246,6 +255,82 @@ describe('useWebRtcAgent', () => {
     expect(screen.getByText('remote-audio-ready')).toBeTruthy();
   });
 
+  it('records WebRTC diagnostic events and writes browser console diagnostics', async () => {
+    const consoleInfoSpy = jest
+      .spyOn(console, 'info')
+      .mockImplementation(() => undefined);
+    const sessionEventHandlers: Record<string, (...args: unknown[]) => void> =
+      {};
+    const answer = jest.fn();
+
+    render(<AgentHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: '上线' }));
+
+    expect(await screen.findByText('available')).toBeTruthy();
+    expect(screen.getByTestId('diagnostic-events').textContent).toContain(
+      'registered:坐席已注册',
+    );
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[intelligent-outbound][webrtc]',
+      expect.objectContaining({
+        event: 'registered',
+        detail: '坐席已注册',
+      }),
+    );
+
+    act(() => {
+      mockJsSipEventHandlers.newRTCSession?.({
+        originator: 'remote',
+        request: {
+          call_id: 'browser-call-id-001',
+        },
+        session: {
+          answer,
+          terminate: jest.fn(),
+          on: jest.fn(
+            (event: string, handler: (...args: unknown[]) => void) => {
+              sessionEventHandlers[event] = handler;
+            },
+          ),
+        },
+      });
+    });
+
+    expect(screen.getByText('incoming')).toBeTruthy();
+    expect(screen.getByTestId('diagnostic-events').textContent).toContain(
+      'incoming_session:收到坐席来电',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '接听' }));
+
+    expect(answer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mediaConstraints: {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+          video: false,
+        },
+        pcConfig: {
+          iceServers: [],
+        },
+      }),
+    );
+    expect(screen.getByTestId('diagnostic-events').textContent).toContain(
+      'answer_click:已点击接听，正在建立 WebRTC',
+    );
+
+    act(() => {
+      sessionEventHandlers.accepted?.({});
+    });
+
+    expect(screen.getByTestId('diagnostic-events').textContent).toContain(
+      'session_accepted:坐席接听已应答',
+    );
+  });
+
   it('shows answer failure detail when the browser cannot answer incoming WebRTC call', async () => {
     render(<AgentHarness />);
 
@@ -266,9 +351,11 @@ describe('useWebRtcAgent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '接听' }));
 
-    expect(
-      await screen.findByText('坐席接听失败：Failed to set local description'),
-    ).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId('error-message').textContent).toBe(
+        '坐席接听失败：Failed to set local description',
+      );
+    });
     expect(screen.getByText('available')).toBeTruthy();
   });
 
@@ -299,7 +386,11 @@ describe('useWebRtcAgent', () => {
       sessionEventHandlers.failed?.({ cause: 'NO_ANSWER' });
     });
 
-    expect(await screen.findByText('坐席通话失败：NO_ANSWER')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId('error-message').textContent).toBe(
+        '坐席通话失败：NO_ANSWER',
+      );
+    });
     expect(screen.getByText('available')).toBeTruthy();
   });
 
@@ -321,11 +412,9 @@ describe('useWebRtcAgent', () => {
       jest.advanceTimersByTime(15_000);
     });
 
-    expect(
-      screen.getByText(
-        '坐席注册超时，请检查 SIP WebSocket 地址、账号密码或网络连接',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByTestId('error-message').textContent).toBe(
+      '坐席注册超时，请检查 SIP WebSocket 地址、账号密码或网络连接',
+    );
     expect(mockJsSipStop).toHaveBeenCalledTimes(1);
   });
 });

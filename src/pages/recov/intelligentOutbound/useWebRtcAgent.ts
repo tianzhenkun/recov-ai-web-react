@@ -53,6 +53,7 @@ const getJsSIP = () => {
 };
 
 const REGISTER_TIMEOUT_MS = 15_000;
+const DIAGNOSTIC_EVENT_LIMIT = 100;
 const REGISTER_TIMEOUT_MESSAGE =
   '坐席注册超时，请检查 SIP WebSocket 地址、账号密码或网络连接';
 const MICROPHONE_UNSUPPORTED_MESSAGE =
@@ -177,6 +178,62 @@ const formatAnswerErrorMessage = (error: unknown) => {
   return message ? `坐席接听失败：${message}` : '坐席接听失败';
 };
 
+export type WebRtcDiagnosticEvent = {
+  id: number;
+  at: string;
+  event: string;
+  detail?: string;
+  data?: Record<string, string>;
+};
+
+const normalizeDiagnosticData = (
+  data?: Record<string, unknown>,
+): Record<string, string> | undefined => {
+  if (!data) return undefined;
+  const normalized = Object.entries(data).reduce<Record<string, string>>(
+    (result, [key, value]) => {
+      const text = firstText(value);
+      if (text) {
+        result[key] = text.length > 300 ? `${text.slice(0, 300)}...` : text;
+      }
+      return result;
+    },
+    {},
+  );
+  return Object.keys(normalized).length ? normalized : undefined;
+};
+
+const readHeader = (source: unknown, name: string) => {
+  if (!isRecord(source) || typeof source.getHeader !== 'function') return '';
+  try {
+    return firstText(
+      (source.getHeader as (headerName: string) => unknown)(name),
+    );
+  } catch {
+    return '';
+  }
+};
+
+const getJsSipEventDiagnostics = (
+  event: unknown,
+): Record<string, string> | undefined => {
+  if (!isRecord(event)) return undefined;
+  const request = isRecord(event.request) ? event.request : undefined;
+  const response = getResponseLike(event);
+  return normalizeDiagnosticData({
+    originator: event.originator,
+    cause: event.cause,
+    callId: firstText(
+      request?.call_id,
+      request?.callId,
+      readHeader(request, 'call-id'),
+      readHeader(request, 'Call-ID'),
+    ),
+    statusCode: firstText(response?.status_code, response?.statusCode),
+    reason: firstText(response?.reason_phrase, response?.reasonPhrase),
+  });
+};
+
 export type WebRtcAgentStatus =
   | 'unregistered'
   | 'registering'
@@ -193,7 +250,13 @@ export type UseWebRtcAgentResult = {
   remoteStream: MediaStream | null;
   errorMessage: string;
   diagnosticMessage: string;
+  diagnosticEvents: WebRtcDiagnosticEvent[];
   agentExtension: string;
+  recordDiagnosticEvent: (
+    event: string,
+    detail?: string,
+    data?: Record<string, unknown>,
+  ) => void;
   registerAgent: () => Promise<void>;
   unregisterAgent: () => void;
   answerIncoming: () => void;
@@ -225,10 +288,14 @@ export const useWebRtcAgent = (
   const incomingSessionRef = useRef<JsSipSession | null>(null);
   const activeSessionRef = useRef<JsSipSession | null>(null);
   const registrationTimerRef = useRef<number | null>(null);
+  const nextDiagnosticEventIdRef = useRef(1);
   const [status, setStatus] = useState<WebRtcAgentStatus>('unregistered');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [diagnosticMessage, setDiagnosticMessage] = useState('');
+  const [diagnosticEvents, setDiagnosticEvents] = useState<
+    WebRtcDiagnosticEvent[]
+  >([]);
 
   const agentExtension = String(config?.agentExtension || '');
 
@@ -244,12 +311,40 @@ export const useWebRtcAgent = (
     setRemoteStream(null);
   }, []);
 
+  const recordDiagnosticEvent = useCallback(
+    (event: string, detail?: string, data?: Record<string, unknown>) => {
+      const normalizedData = normalizeDiagnosticData(data);
+      const entry: WebRtcDiagnosticEvent = {
+        id: nextDiagnosticEventIdRef.current,
+        at: new Date().toISOString(),
+        event,
+        ...(detail ? { detail } : {}),
+        ...(normalizedData ? { data: normalizedData } : {}),
+      };
+      nextDiagnosticEventIdRef.current += 1;
+      setDiagnosticEvents((current) =>
+        [entry, ...current].slice(0, DIAGNOSTIC_EVENT_LIMIT),
+      );
+      console.info('[intelligent-outbound][webrtc]', entry);
+    },
+    [],
+  );
+
+  const updateDiagnosticMessage = useCallback(
+    (event: string, detail: string, data?: Record<string, unknown>) => {
+      setDiagnosticMessage(detail);
+      recordDiagnosticEvent(event, detail, data);
+    },
+    [recordDiagnosticEvent],
+  );
+
   const bindSession = useCallback(
-    (session: JsSipSession) => {
+    (session: JsSipSession, event?: unknown) => {
       const boundConnections = new WeakSet<RTCPeerConnection>();
       const bindRemoteAudio = (connection?: RTCPeerConnection | null) => {
         if (!connection || boundConnections.has(connection)) return;
         boundConnections.add(connection);
+        recordDiagnosticEvent('peerconnection_bound', '已绑定 PeerConnection');
         const updateConnectionDiagnostic = () => {
           const detail = [
             connection.iceConnectionState
@@ -261,7 +356,9 @@ export const useWebRtcAgent = (
           ]
             .filter(Boolean)
             .join('，');
-          if (detail) setDiagnosticMessage(`WebRTC ${detail}`);
+          if (detail) {
+            updateDiagnosticMessage('peerconnection_state', `WebRTC ${detail}`);
+          }
           if (
             connection.iceConnectionState === 'failed' ||
             connection.connectionState === 'failed'
@@ -281,7 +378,13 @@ export const useWebRtcAgent = (
         );
         connection.addEventListener('track', (event) => {
           const stream = getStreamFromTrackEvent(event);
-          if (stream) setRemoteStream(stream);
+          if (stream) {
+            recordDiagnosticEvent('remote_track', '收到远端音频轨道', {
+              trackKind: event.track?.kind,
+              streamCount: event.streams?.length,
+            });
+            setRemoteStream(stream);
+          }
         });
         (
           connection as unknown as {
@@ -291,60 +394,88 @@ export const useWebRtcAgent = (
             ) => void;
           }
         ).addEventListener?.('addstream', (event) => {
-          if (event.stream) setRemoteStream(event.stream);
+          if (event.stream) {
+            recordDiagnosticEvent('remote_stream', '收到远端音频流');
+            setRemoteStream(event.stream);
+          }
         });
       };
 
       incomingSessionRef.current = session;
       setErrorMessage('');
-      setDiagnosticMessage('收到坐席来电');
+      updateDiagnosticMessage(
+        'incoming_session',
+        '收到坐席来电',
+        getJsSipEventDiagnostics(event),
+      );
       setStatus('incoming');
 
-      session.on('accepted', () => {
+      session.on('accepted', (event: unknown) => {
         setErrorMessage('');
-        setDiagnosticMessage('坐席接听已应答');
+        updateDiagnosticMessage(
+          'session_accepted',
+          '坐席接听已应答',
+          getJsSipEventDiagnostics(event),
+        );
         setStatus('talking');
       });
-      session.on('confirmed', () => {
+      session.on('confirmed', (event: unknown) => {
         setErrorMessage('');
-        setDiagnosticMessage('WebRTC 通话已确认');
+        updateDiagnosticMessage(
+          'session_confirmed',
+          'WebRTC 通话已确认',
+          getJsSipEventDiagnostics(event),
+        );
         setStatus('talking');
       });
-      session.on('ended', () => {
+      session.on('ended', (event: unknown) => {
         cleanupSession();
-        setDiagnosticMessage('坐席通话已结束');
+        updateDiagnosticMessage(
+          'session_ended',
+          '坐席通话已结束',
+          getJsSipEventDiagnostics(event),
+        );
         setStatus(uaRef.current ? 'available' : 'unregistered');
       });
       session.on('failed', (event: unknown) => {
-        setErrorMessage(formatSessionFailedMessage(event));
-        setDiagnosticMessage('坐席通话失败');
+        const message = formatSessionFailedMessage(event);
+        setErrorMessage(message);
+        updateDiagnosticMessage(
+          'session_failed',
+          message,
+          getJsSipEventDiagnostics(event),
+        );
         cleanupSession();
         setStatus(uaRef.current ? 'available' : 'unregistered');
       });
       session.on('peerconnection', (event: unknown) => {
+        recordDiagnosticEvent('peerconnection_created', '收到 PeerConnection');
         bindRemoteAudio((event as PeerConnectionEvent)?.peerconnection);
       });
       bindRemoteAudio(session.connection);
     },
-    [cleanupSession],
+    [cleanupSession, recordDiagnosticEvent, updateDiagnosticMessage],
   );
 
   const registerAgent = useCallback(async () => {
     if (!config?.wsUrl || !config.sipUri || !config.password) {
       setStatus('error');
       setErrorMessage('缺少坐席 WebRTC 配置');
+      updateDiagnosticMessage('config_missing', '缺少坐席 WebRTC 配置');
       return;
     }
     const preflightError = getWebRtcPreflightError(config);
     if (preflightError) {
       setStatus('error');
       setErrorMessage(preflightError);
+      updateDiagnosticMessage('preflight_failed', preflightError);
       return;
     }
     const jsSIP = getJsSIP();
     if (!jsSIP?.UA || !jsSIP.WebSocketInterface) {
       setStatus('error');
       setErrorMessage('未加载 JsSIP');
+      updateDiagnosticMessage('jssip_missing', '未加载 JsSIP');
       return;
     }
 
@@ -355,6 +486,12 @@ export const useWebRtcAgent = (
     previousUa?.stop();
     setStatus('registering');
     setErrorMessage('');
+    recordDiagnosticEvent('register_start', '开始坐席注册', {
+      agentExtension,
+      sipUri: config.sipUri,
+      viaTransport: config.viaTransport,
+      wsUrl: config.wsUrl,
+    });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(
@@ -381,7 +518,11 @@ export const useWebRtcAgent = (
         if (uaRef.current !== ua) return;
         clearRegistrationTimer();
         setErrorMessage('');
-        setDiagnosticMessage('坐席已注册');
+        updateDiagnosticMessage('registered', '坐席已注册', {
+          agentExtension,
+          sipUri: config.sipUri,
+          wsUrl: config.wsUrl,
+        });
         setStatus('available');
       });
       ua.on('registrationFailed', (event: unknown) => {
@@ -390,20 +531,37 @@ export const useWebRtcAgent = (
         uaRef.current = null;
         ua.stop();
         setStatus('error');
-        setErrorMessage(formatRegistrationFailedMessage(event));
-        setDiagnosticMessage('');
+        const message = formatRegistrationFailedMessage(event);
+        setErrorMessage(message);
+        updateDiagnosticMessage(
+          'registration_failed',
+          message,
+          getJsSipEventDiagnostics(event),
+        );
       });
       ua.on('disconnected', (event: unknown) => {
         if (uaRef.current !== ua) return;
         clearRegistrationTimer();
         uaRef.current = null;
         setStatus('error');
-        setErrorMessage(formatDisconnectedMessage(event));
-        setDiagnosticMessage('');
+        const message = formatDisconnectedMessage(event);
+        setErrorMessage(message);
+        updateDiagnosticMessage('disconnected', message, {
+          code: isRecord(event) ? event.code : undefined,
+          reason: isRecord(event) ? event.reason : undefined,
+        });
       });
       ua.on('newRTCSession', (event: unknown) => {
         const session = (event as { session?: JsSipSession }).session;
-        if (session) bindSession(session);
+        if (session) {
+          bindSession(session, event);
+        } else {
+          recordDiagnosticEvent(
+            'incoming_session_missing',
+            '收到坐席来电事件但缺少 session',
+            getJsSipEventDiagnostics(event),
+          );
+        }
       });
 
       uaRef.current = ua;
@@ -413,6 +571,7 @@ export const useWebRtcAgent = (
         ua.stop();
         setStatus('error');
         setErrorMessage(REGISTER_TIMEOUT_MESSAGE);
+        updateDiagnosticMessage('register_timeout', REGISTER_TIMEOUT_MESSAGE);
       }, REGISTER_TIMEOUT_MS);
       ua.start();
     } catch (error) {
@@ -421,8 +580,12 @@ export const useWebRtcAgent = (
       uaRef.current = null;
       ua?.stop();
       setStatus('error');
-      setErrorMessage(formatMediaErrorMessage(error));
-      setDiagnosticMessage('');
+      const message = formatMediaErrorMessage(error);
+      setErrorMessage(message);
+      updateDiagnosticMessage('register_failed', message, {
+        error: error instanceof Error ? error.message : firstText(error),
+        name: isRecord(error) ? error.name : undefined,
+      });
     }
   }, [
     agentExtension,
@@ -430,6 +593,8 @@ export const useWebRtcAgent = (
     cleanupSession,
     clearRegistrationTimer,
     config,
+    recordDiagnosticEvent,
+    updateDiagnosticMessage,
   ]);
 
   const unregisterAgent = useCallback(() => {
@@ -440,14 +605,20 @@ export const useWebRtcAgent = (
     ua?.stop();
     setErrorMessage('');
     setDiagnosticMessage('');
+    recordDiagnosticEvent('unregister', '坐席已下线');
     setStatus('unregistered');
-  }, [cleanupSession, clearRegistrationTimer]);
+  }, [cleanupSession, clearRegistrationTimer, recordDiagnosticEvent]);
 
   const answerIncoming = useCallback(() => {
     const session = incomingSessionRef.current;
-    if (!session) return;
+    if (!session) {
+      recordDiagnosticEvent('answer_skipped', '当前没有待接听来电');
+      return;
+    }
     setErrorMessage('');
-    setDiagnosticMessage('已点击接听，正在建立 WebRTC');
+    updateDiagnosticMessage('answer_click', '已点击接听，正在建立 WebRTC', {
+      iceServerCount: config?.iceServers?.length || 0,
+    });
     try {
       session.answer({
         mediaConstraints: getMediaConstraints(),
@@ -457,10 +628,14 @@ export const useWebRtcAgent = (
       });
       activeSessionRef.current = session;
       incomingSessionRef.current = null;
+      recordDiagnosticEvent('answer_invoked', '已调用 JsSIP answer');
       setStatus('talking');
     } catch (error) {
-      setErrorMessage(formatAnswerErrorMessage(error));
-      setDiagnosticMessage('坐席接听失败');
+      const message = formatAnswerErrorMessage(error);
+      setErrorMessage(message);
+      updateDiagnosticMessage('answer_failed', message, {
+        error: error instanceof Error ? error.message : firstText(error),
+      });
       try {
         session.terminate();
       } catch {
@@ -469,22 +644,27 @@ export const useWebRtcAgent = (
       cleanupSession();
       setStatus(uaRef.current ? 'available' : 'unregistered');
     }
-  }, [cleanupSession, config?.iceServers]);
+  }, [
+    cleanupSession,
+    config?.iceServers,
+    recordDiagnosticEvent,
+    updateDiagnosticMessage,
+  ]);
 
   const rejectIncoming = useCallback(() => {
     incomingSessionRef.current?.terminate();
     cleanupSession();
-    setDiagnosticMessage('已拒接坐席来电');
+    updateDiagnosticMessage('reject_incoming', '已拒接坐席来电');
     setStatus(uaRef.current ? 'available' : 'unregistered');
-  }, [cleanupSession]);
+  }, [cleanupSession, updateDiagnosticMessage]);
 
   const hangup = useCallback(() => {
     activeSessionRef.current?.terminate();
     incomingSessionRef.current?.terminate();
     cleanupSession();
-    setDiagnosticMessage('已挂断坐席通话');
+    updateDiagnosticMessage('hangup', '已挂断坐席通话');
     setStatus(uaRef.current ? 'available' : 'unregistered');
-  }, [cleanupSession]);
+  }, [cleanupSession, updateDiagnosticMessage]);
 
   useEffect(() => unregisterAgent, [unregisterAgent]);
 
@@ -498,7 +678,9 @@ export const useWebRtcAgent = (
       remoteStream,
       errorMessage,
       diagnosticMessage,
+      diagnosticEvents,
       agentExtension,
+      recordDiagnosticEvent,
       registerAgent,
       unregisterAgent,
       answerIncoming,
@@ -508,9 +690,11 @@ export const useWebRtcAgent = (
     [
       agentExtension,
       answerIncoming,
+      diagnosticEvents,
       diagnosticMessage,
       errorMessage,
       hangup,
+      recordDiagnosticEvent,
       registerAgent,
       rejectIncoming,
       remoteStream,

@@ -849,6 +849,9 @@ describe('IntelligentOutboundPage', () => {
   });
 
   it('submits handoff claim through the service helper', async () => {
+    const consoleInfoSpy = jest
+      .spyOn(console, 'info')
+      .mockImplementation(() => undefined);
     getAiCallRecordPageMock.mockResolvedValue({
       rows: [
         {
@@ -879,10 +882,26 @@ describe('IntelligentOutboundPage', () => {
         agentExtension: '1001',
         timeoutSeconds: 20,
       });
+      expect(consoleInfoSpy).toHaveBeenCalledWith(
+        '[intelligent-outbound][webrtc]',
+        expect.objectContaining({
+          data: expect.objectContaining({
+            agentExtension: '1001',
+            callRecordId: '101',
+            gatewayCallId: 'gateway-101',
+          }),
+          detail: '开始提交接管请求',
+          event: 'handoff_claim_start',
+        }),
+      );
     });
+    consoleInfoSpy.mockRestore();
   });
 
   it('hangs up the active gateway call after terminating the WebRTC session', async () => {
+    const consoleInfoSpy = jest
+      .spyOn(console, 'info')
+      .mockImplementation(() => undefined);
     getAiCallRecordPageMock.mockResolvedValue({
       rows: [
         {
@@ -947,7 +966,18 @@ describe('IntelligentOutboundPage', () => {
         gatewayCallId: 'gateway-101',
         reason: 'agent_hangup',
       });
+      expect(consoleInfoSpy).toHaveBeenCalledWith(
+        '[intelligent-outbound][webrtc]',
+        expect.objectContaining({
+          data: expect.objectContaining({
+            gatewayCallId: 'gateway-101',
+          }),
+          detail: '已挂断人工通话',
+          event: 'agent_hangup_success',
+        }),
+      );
     });
+    consoleInfoSpy.mockRestore();
   });
 
   it('disables claim button when handoff cannot be claimed', async () => {
