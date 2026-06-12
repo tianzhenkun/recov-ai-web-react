@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { render, waitFor } from '@testing-library/react';
+import React, { createRef } from 'react';
+import TemplateEditor, { type TemplateEditorHandle } from './index';
 
 const componentDir = __dirname;
 
@@ -43,6 +46,39 @@ describe('TemplateEditor HTML fidelity conventions', () => {
     expect(styles).toContain('display: inline-flex');
     expect(styles).toContain('align-items: center');
     expect(styles).toContain('justify-content: center');
+  });
+
+  it('exposes the live editor DOM html for business actions that must preserve custom atom nodes', async () => {
+    const editorRef = createRef<TemplateEditorHandle>();
+
+    render(
+      <TemplateEditor
+        ref={editorRef}
+        outputType="html"
+        value='<p>正文</p><p><span data-seal-placeholder="seal_group" data-seal-codes="company_seal" data-width-mm="36" data-height-mm="36"></span></p>'
+      />,
+    );
+
+    await waitFor(() => {
+      expect(editorRef.current?.getDomHtml).toEqual(expect.any(Function));
+    });
+    expect(editorRef.current?.getDomHtml?.()).toContain(
+      'data-seal-placeholder="seal_group"',
+    );
+  });
+
+  it('guards TipTap view access because the editor view may not be mounted during early effects', () => {
+    const source = readSource('index.tsx');
+
+    expect(source).toContain('const isEditorViewAvailable = (');
+    expect(source).toContain('const getEditorDomHtml = (');
+    expect(source).toContain('return instance.view.dom.innerHTML');
+    expect(source).toContain('catch');
+    expect(source).toContain("return ''");
+    expect(source).toContain('if (!isEditorViewAvailable(editor)) return;');
+    expect(source).not.toContain(
+      'const editorDomHtml = instance.view.dom.innerHTML',
+    );
   });
 
   it('renders variables as compact inline markers without distorting document text', () => {

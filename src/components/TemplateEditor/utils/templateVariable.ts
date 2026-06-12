@@ -80,6 +80,15 @@ const normalizeTextOutsideTags = (
 const normalizeCjkVariableTokenSpacingInHtml = (html: string) =>
   normalizeTextOutsideTags(html, normalizeCjkVariableTokenSpacingInText);
 
+const SEAL_PLACEHOLDER_SELECTOR = '[data-seal-placeholder]';
+const SUPPORTED_SEAL_PLACEHOLDER_SELECTOR = 'span[data-seal-placeholder]';
+
+const LEADING_CSS_RULES_RE =
+  /^\s*(?:(?:@[a-z-]+|[.#]?[a-z][\w-]*(?:[.#][\w-]+)?(?:\s*,\s*[.#]?[a-z][\w-]*(?:[.#][\w-]+)?)*)\s*\{[^{}]*\}\s*)+/i;
+
+const stripLeadingCssRulesText = (html: string) =>
+  html.replace(LEADING_CSS_RULES_RE, '');
+
 const SUPPORTED_BLOCK_ALIGNMENTS = new Set([
   'left',
   'center',
@@ -264,17 +273,132 @@ const parseHtmlForEditor = (html: string) => {
     for (const styleElement of parsed.querySelectorAll('style')) {
       styleTexts.push(styleElement.textContent ?? '');
     }
-    container.innerHTML = parsed.body?.innerHTML ?? '';
+    container.innerHTML = stripLeadingCssRulesText(
+      parsed.body?.innerHTML ?? '',
+    );
     return { container, styleTexts };
   }
 
-  container.innerHTML = html;
+  container.innerHTML = stripLeadingCssRulesText(html);
   for (const styleElement of container.querySelectorAll('style')) {
     styleTexts.push(styleElement.textContent ?? '');
     styleElement.remove();
   }
 
   return { container, styleTexts };
+};
+
+const containsSealPlaceholder = (html: string) => {
+  const parsed = parseHtmlForEditor(html);
+  if (!parsed) return /<span\b[^>]*\bdata-seal-placeholder\b/i.test(html);
+  return Boolean(
+    parsed.container.querySelector(SUPPORTED_SEAL_PLACEHOLDER_SELECTOR),
+  );
+};
+
+const removeUnsupportedSealPlaceholders = (html: string) => {
+  const parsed = parseHtmlForEditor(html);
+  if (!parsed) return html;
+
+  parsed.container
+    .querySelectorAll(SEAL_PLACEHOLDER_SELECTOR)
+    .forEach((node) => {
+      if (node.tagName.toLowerCase() !== 'span') {
+        node.remove();
+      }
+    });
+
+  return parsed.container.innerHTML;
+};
+
+const readSealPlaceholderMeta = (element: Element) => ({
+  codes: element.getAttribute('data-seal-codes') ?? '',
+  heightMm: element.getAttribute('data-height-mm') ?? '',
+  placeholder: element.getAttribute('data-seal-placeholder') ?? '',
+  widthMm: element.getAttribute('data-width-mm') ?? '',
+});
+
+const isSameSealPlaceholderMeta = (
+  left: ReturnType<typeof readSealPlaceholderMeta>,
+  right: ReturnType<typeof readSealPlaceholderMeta>,
+) =>
+  left.codes === right.codes &&
+  left.heightMm === right.heightMm &&
+  left.placeholder === right.placeholder &&
+  left.widthMm === right.widthMm;
+
+const extractSealPlaceholderHtml = (html: string) => {
+  const parsed = parseHtmlForEditor(html);
+  if (!parsed) {
+    const matched = html.match(
+      /<span\b[^>]*\bdata-seal-placeholder\b[^>]*><\/span>/i,
+    );
+    return matched?.[0] ?? '';
+  }
+
+  const seal = parsed.container.querySelector<HTMLElement>(
+    SEAL_PLACEHOLDER_SELECTOR,
+  );
+  if (!seal) return '';
+
+  const parent = seal.parentElement;
+  if (
+    parent &&
+    parent.tagName.toLowerCase() === 'p' &&
+    parent.querySelectorAll(SEAL_PLACEHOLDER_SELECTOR).length === 1 &&
+    !parent.textContent?.trim()
+  ) {
+    return parent.outerHTML;
+  }
+
+  return seal.outerHTML;
+};
+
+export const ensureSealPlaceholderHtml = (
+  candidateHtml: string,
+  sourceHtml: string,
+) => {
+  const candidate = removeUnsupportedSealPlaceholders(
+    String(candidateHtml ?? ''),
+  );
+  const sourceSealHtml = extractSealPlaceholderHtml(String(sourceHtml ?? ''));
+  if (!sourceSealHtml) return candidate;
+
+  const sourceParsed = parseHtmlForEditor(String(sourceHtml ?? ''));
+  const sourceSeal = sourceParsed?.container.querySelector(
+    SEAL_PLACEHOLDER_SELECTOR,
+  );
+  const candidateParsed = parseHtmlForEditor(candidate);
+
+  if (!sourceSeal || !candidateParsed) {
+    if (containsSealPlaceholder(candidate)) return candidate;
+    return `${candidate}${sourceSealHtml}`;
+  }
+
+  const sourceMeta = readSealPlaceholderMeta(sourceSeal);
+  const candidateSeals = Array.from(
+    candidateParsed.container.querySelectorAll(
+      SUPPORTED_SEAL_PLACEHOLDER_SELECTOR,
+    ),
+  );
+
+  if (
+    candidateSeals.length === 1 &&
+    isSameSealPlaceholderMeta(
+      readSealPlaceholderMeta(candidateSeals[0]),
+      sourceMeta,
+    )
+  ) {
+    return candidate;
+  }
+
+  candidateParsed.container
+    .querySelectorAll(SEAL_PLACEHOLDER_SELECTOR)
+    .forEach((node) => {
+      node.remove();
+    });
+
+  return `${candidateParsed.container.innerHTML}${sourceSealHtml}`;
 };
 
 const normalizeLegacyBlockAlignmentAttributes = (html: string) => {

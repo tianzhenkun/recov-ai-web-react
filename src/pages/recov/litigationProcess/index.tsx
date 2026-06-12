@@ -17,6 +17,7 @@ import {
 } from './_shared';
 import CaseMonitorTable from './components/CaseMonitorTable';
 import LitigationDetailModal from './components/LitigationDetailModal';
+import LitigationFilingMaterialsDrawer from './components/LitigationFilingMaterialsDrawer';
 import NodeRail from './components/NodeRail';
 import OverviewCards from './components/OverviewCards';
 import {
@@ -55,6 +56,8 @@ const LitigationProcessPage = () => {
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<DisplayRow | null>(null);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [materialsRow, setMaterialsRow] = useState<DisplayRow | null>(null);
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceInstanceId, setTraceInstanceId] = useState<string | undefined>();
 
@@ -186,6 +189,11 @@ const LitigationProcessPage = () => {
     setDetailOpen(true);
   };
 
+  const handleViewMaterials = (row: DisplayRow) => {
+    setMaterialsRow(row);
+    setMaterialsOpen(true);
+  };
+
   const handleViewFlow = (row: DisplayRow) => {
     const flowId =
       row.flowId === null || row.flowId === undefined
@@ -199,6 +207,11 @@ const LitigationProcessPage = () => {
   const handleCloseDetail = () => {
     setDetailOpen(false);
     setDetailRow(null);
+  };
+
+  const handleCloseMaterials = () => {
+    setMaterialsOpen(false);
+    setMaterialsRow(null);
   };
 
   const tableLoading = listLoading || overviewLoading;
@@ -229,6 +242,7 @@ const LitigationProcessPage = () => {
           onFilterReset={handleFilterReset}
           onPageChange={handlePageChange}
           onViewDetail={handleViewDetail}
+          onViewMaterials={handleViewMaterials}
           onViewFlow={handleViewFlow}
         />
       </RecovListStack>
@@ -237,6 +251,12 @@ const LitigationProcessPage = () => {
         open={detailOpen}
         row={detailRow}
         onClose={handleCloseDetail}
+      />
+
+      <LitigationFilingMaterialsDrawer
+        open={materialsOpen}
+        row={materialsRow}
+        onClose={handleCloseMaterials}
       />
 
       <FlowTraceDrawer

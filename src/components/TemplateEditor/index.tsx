@@ -27,7 +27,10 @@ import { Button, ColorPicker, Popover, Select, Tooltip, theme } from 'antd';
 import clsx from 'clsx';
 import {
   type CSSProperties,
+  default as React,
+  type Ref,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useReducer,
   useRef,
@@ -43,6 +46,7 @@ import type {
 } from './types';
 import {
   editorJsonToText,
+  ensureSealPlaceholderHtml,
   htmlToEditorHtml,
   serializeHtmlWithVariableTokens,
   textToEditorHtml,
@@ -60,6 +64,12 @@ export type TemplateEditorProps = {
   showCount?: boolean;
   disabled?: boolean;
   className?: string;
+  ref?: Ref<TemplateEditorHandle>;
+};
+
+export type TemplateEditorHandle = {
+  getDomHtml: () => string;
+  getValue: () => string;
 };
 
 const DEFAULT_FEATURES: TemplateEditorFeatures = {
@@ -107,6 +117,37 @@ const FONT_PRESET_VALUES = new Set(FONT_SELECT_OPTIONS.map((o) => o.value));
 
 const SIZE_PRESET_VALUES = new Set(SIZE_SELECT_OPTIONS.map((o) => o.value));
 
+type TemplateEditorInstance = NonNullable<ReturnType<typeof useEditor>>;
+
+const getEditorHtml = (
+  instance: TemplateEditorInstance,
+  fallbackHtml: string,
+) => {
+  try {
+    return instance.getHTML();
+  } catch {
+    return fallbackHtml;
+  }
+};
+
+const isEditorViewAvailable = (instance: TemplateEditorInstance | null) => {
+  if (!instance) return false;
+  try {
+    return Boolean(instance.view.dom);
+  } catch {
+    return false;
+  }
+};
+
+const getEditorDomHtml = (instance: TemplateEditorInstance | null) => {
+  if (!instance || !isEditorViewAvailable(instance)) return '';
+  try {
+    return instance.view.dom.innerHTML;
+  } catch {
+    return '';
+  }
+};
+
 const TemplateEditor = ({
   value,
   onChange,
@@ -119,6 +160,7 @@ const TemplateEditor = ({
   showCount = false,
   disabled = false,
   className,
+  ref,
 }: TemplateEditorProps) => {
   const { token } = theme.useToken();
   const resolved: TemplateEditorFeatures = useMemo(
@@ -153,7 +195,10 @@ const TemplateEditor = ({
     if (outputTypeRef.current === 'text') {
       return editorJsonToText(instance.getJSON());
     }
-    return serializeHtmlWithVariableTokens(instance.getHTML());
+    const editorDomHtml = getEditorDomHtml(instance);
+    const editorHtml = getEditorHtml(instance, editorDomHtml);
+    const serialized = serializeHtmlWithVariableTokens(editorHtml);
+    return ensureSealPlaceholderHtml(serialized, editorDomHtml);
   };
 
   const getDocTextLength = (doc: { toJSON: () => unknown }) => {
@@ -251,6 +296,15 @@ const TemplateEditor = ({
     [editorExtensions],
   );
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      getDomHtml: () => getEditorDomHtml(editor),
+      getValue: () => serialize(editor),
+    }),
+    [editor],
+  );
+
   useEffect(() => {
     if (!editor) return;
     editor.setEditable(!disabled);
@@ -258,6 +312,7 @@ const TemplateEditor = ({
 
   useEffect(() => {
     if (!editor) return;
+    if (!isEditorViewAvailable(editor)) return;
     if (value === lastEmittedRef.current) return;
     const incomingContent = toEditorContent(value);
     const currentSerialized = serialize(editor);
@@ -729,5 +784,7 @@ const TemplateEditor = ({
     </div>
   );
 };
+
+TemplateEditor.displayName = 'TemplateEditor';
 
 export default TemplateEditor;

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ensureSealPlaceholderHtml,
   htmlToEditorHtml,
   serializeHtmlWithVariableTokens,
 } from './templateVariable';
@@ -84,6 +85,70 @@ describe('template variable html conversion', () => {
     expect(html).toContain('data-name="organization"');
     expect(html).toContain('data-seal-placeholder="seal_group"');
     expect(html).toContain('data-seal-codes="company_seal"');
+  });
+
+  it('strips leading css rule text from malformed AI html fragments', () => {
+    const html = htmlToEditorHtml(
+      `@page{size:A4;margin:20mm}body{font-family:Arial,'Microsoft YaHei',sans-serif;color:#111827;font-size:14px;line-height:1.9}h1{text-align:center;font-size:24px}.indent{text-indent:2em}
+<h1>企业催收函</h1>
+<p>{{name}}：</p>`,
+      [{ label: '客户称谓', value: 'name' }],
+      { enableVariables: true },
+    );
+
+    expect(html).toContain('<h1>企业催收函</h1>');
+    expect(html).toContain('data-name="name"');
+    expect(html).not.toContain('@page');
+    expect(html).not.toContain('font-family');
+  });
+
+  it('restores the original seal placeholder when an AI draft misses it', () => {
+    const html = ensureSealPlaceholderHtml(
+      '<h1>企业催收函</h1><p>正文</p>',
+      `<html><body>
+        <p>{{organization}}</p>
+        <p><span class="seal" data-seal-placeholder="seal_group" data-seal-codes="company_seal" data-width-mm="36" data-height-mm="36"></span></p>
+        <p>{{currentDate}}</p>
+      </body></html>`,
+    );
+
+    expect(html).toContain('data-seal-placeholder="seal_group"');
+    expect(html).toContain('data-seal-codes="company_seal"');
+    expect(html).toContain('data-width-mm="36"');
+  });
+
+  it('does not duplicate seal placeholders when an AI draft already has one', () => {
+    const html = ensureSealPlaceholderHtml(
+      '<p><span data-seal-placeholder="seal_group" data-seal-codes="company_seal"></span></p>',
+      '<p><span data-seal-placeholder="seal_group" data-seal-codes="company_seal"></span></p>',
+    );
+
+    expect(html.match(/data-seal-placeholder/g)).toHaveLength(1);
+  });
+
+  it('replaces unsupported seal placeholder tags with the original supported span', () => {
+    const html = ensureSealPlaceholderHtml(
+      '<p>正文</p><div data-seal-placeholder="seal_group" data-seal-codes="default_seal"></div>',
+      '<p><span data-seal-placeholder="seal_group" data-seal-codes="company_seal"></span></p>',
+    );
+
+    expect(html.match(/data-seal-placeholder/g)).toHaveLength(1);
+    expect(html).toContain('<span data-seal-placeholder="seal_group"');
+    expect(html).toContain('data-seal-codes="company_seal"');
+    expect(html).not.toContain('default_seal');
+  });
+
+  it('replaces changed seal placeholder metadata with the original metadata', () => {
+    const html = ensureSealPlaceholderHtml(
+      '<p>正文</p><p><span data-seal-placeholder="true" data-seal-codes="default_seal" data-width-mm="36" data-height-mm="36"></span></p>',
+      '<p><span data-seal-placeholder="seal_group" data-seal-codes="company_seal" data-width-mm="36" data-height-mm="36"></span></p>',
+    );
+
+    expect(html.match(/data-seal-placeholder/g)).toHaveLength(1);
+    expect(html).toContain('data-seal-placeholder="seal_group"');
+    expect(html).toContain('data-seal-codes="company_seal"');
+    expect(html).not.toContain('default_seal');
+    expect(html).not.toContain('data-seal-placeholder="true"');
   });
 
   it('removes visual spaces around variables in Chinese template text', () => {

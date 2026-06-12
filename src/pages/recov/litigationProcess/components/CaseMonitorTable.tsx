@@ -1,4 +1,9 @@
-import { EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  EyeOutlined,
+  FileSearchOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import {
   Button,
   Form,
@@ -10,7 +15,7 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import TableActions from '@/components/TableActions';
 import { getFlowActionIcon } from '@/pages/recov/components/FlowActionIcon';
 import {
@@ -58,6 +63,7 @@ type CaseMonitorTableProps = {
   onFilterReset: () => void;
   onPageChange: (pageNum: number, pageSize: number) => void;
   onViewDetail: (row: DisplayRow) => void;
+  onViewMaterials: (row: DisplayRow) => void;
   onViewFlow: (row: DisplayRow) => void;
 };
 
@@ -203,6 +209,7 @@ const CaseMonitorTable = ({
   onFilterReset,
   onPageChange,
   onViewDetail,
+  onViewMaterials,
   onViewFlow,
 }: CaseMonitorTableProps) => {
   const [form] = Form.useForm<FilterFormValues>();
@@ -256,6 +263,12 @@ const CaseMonitorTable = ({
               icon: <EyeOutlined />,
               onClick: () => onViewDetail(record),
             },
+            {
+              key: 'materials',
+              label: '立案材料',
+              icon: <FileSearchOutlined />,
+              onClick: () => onViewMaterials(record),
+            },
             ...(canShowFlowDetail(record)
               ? [
                   {
@@ -272,7 +285,7 @@ const CaseMonitorTable = ({
     });
 
     return dataColumns;
-  }, [nodeType, onViewDetail, onViewFlow]);
+  }, [nodeType, onViewDetail, onViewFlow, onViewMaterials]);
 
   const pagination: TablePaginationConfig = {
     current: pageNum,

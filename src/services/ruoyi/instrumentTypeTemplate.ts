@@ -40,6 +40,11 @@ export type InstrumentTypeTemplatePayload = {
   templateHtml: string;
 };
 
+export type InstrumentTypeTemplateAiModifyPayload = {
+  requirement: string;
+  currentTemplateHtml: string;
+};
+
 export type InstrumentTypeTemplateValidatePayload =
   InstrumentTypeTemplatePayload & {
     requireSealPlaceholder?: boolean;
@@ -58,6 +63,11 @@ export type InstrumentTypeTemplateImpact = {
   instrumentTypeId: number | string;
   instrumentCode: string;
   ungeneratedBuiltinTaskCount: number;
+};
+
+export type InstrumentTypeTemplateAiModifyResult = {
+  templateHtml?: string | null;
+  warnings?: string[] | null;
 };
 
 export const listInstrumentTypeTemplates = (
@@ -106,6 +116,19 @@ export const previewInstrumentTypeTemplate = (
 ) =>
   ruoyiRequest<InstrumentTypeTemplatePreviewResult>(
     `${INSTRUMENT_TYPE_TEMPLATE_API_PREFIX}/${id}/template/preview`,
+    {
+      method: 'post',
+      data,
+      headers: { repeatSubmit: false },
+    },
+  );
+
+export const modifyInstrumentTypeTemplate = (
+  id: number | string,
+  data: InstrumentTypeTemplateAiModifyPayload,
+) =>
+  ruoyiRequest<InstrumentTypeTemplateAiModifyResult>(
+    `${INSTRUMENT_TYPE_TEMPLATE_API_PREFIX}/${id}/template/ai-modify`,
     {
       method: 'post',
       data,

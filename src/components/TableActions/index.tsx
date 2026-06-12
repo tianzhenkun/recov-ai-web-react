@@ -8,7 +8,7 @@ import {
   type TooltipProps,
   theme,
 } from 'antd';
-import type React from 'react';
+import React from 'react';
 import { usePermission } from '@/components/Permission';
 import type { PermissionRequirement } from '@/utils/permission';
 

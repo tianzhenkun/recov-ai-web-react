@@ -71,6 +71,53 @@ export type LitigationPageResult = {
   total: number;
 };
 
+export type LitigationFilingMaterialDocumentVO = {
+  taskId: string;
+  revisionId: string;
+  taskSource: string;
+  instrumentCode: string;
+  instrumentName: string;
+  category: string;
+  displayGroupCode: string;
+  materialType: string;
+  status: number | null;
+  statusName: string;
+  fileStage: string;
+  ossId: string;
+  publicUrl: string;
+  viewable: boolean;
+  downloadable: boolean;
+  submittable: boolean;
+  errorMessage: string;
+};
+
+export type LitigationFilingMaterialMissingItemVO = {
+  instrumentCode: string;
+  instrumentName: string;
+  category: string;
+  displayGroupCode: string;
+  materialType: string;
+  reason: string;
+};
+
+export type LitigationFilingMaterialsVO = {
+  litigationId: string;
+  debtId: string;
+  debtNumber: number;
+  debtorName: string;
+  city: string;
+  organization: string;
+  courtName: string;
+  caseNo: string;
+  submitReady: boolean;
+  summaryMessage: string;
+  readyCount: number;
+  blockedCount: number;
+  missingCount: number;
+  documents: LitigationFilingMaterialDocumentVO[];
+  missingItems: LitigationFilingMaterialMissingItemVO[];
+};
+
 const LITIGATION_NODE_TYPES: LitigationNodeType[] = [
   'MATERIAL_SUBMIT',
   'PRE_MEDIATION',
@@ -134,6 +181,16 @@ const normalizeAmountString = (value: unknown): string => {
   return String(value);
 };
 
+const normalizeString = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  return String(value);
+};
+
+const normalizeIdString = (value: unknown): string => normalizeString(value);
+
+const normalizeBoolean = (value: unknown): boolean =>
+  value === true || value === 'true' || value === 1 || value === '1';
+
 const normalizeLitigationRow = (
   row: Partial<LitigationRowVO> & {
     status?: string;
@@ -155,6 +212,46 @@ const normalizeLitigationRow = (
   status: normalizeLitigationStatus(row.status ?? row.nodeStatus),
   failReason: row.failReason ?? null,
   result: row.result ?? null,
+});
+
+const normalizeFilingMaterialDocument = (
+  document: Partial<LitigationFilingMaterialDocumentVO> & {
+    taskId?: number | string | null;
+    revisionId?: number | string | null;
+    ossId?: number | string | null;
+  },
+): LitigationFilingMaterialDocumentVO => ({
+  taskId: normalizeIdString(document.taskId),
+  revisionId: normalizeIdString(document.revisionId),
+  taskSource: normalizeString(document.taskSource),
+  instrumentCode: normalizeString(document.instrumentCode),
+  instrumentName: normalizeString(document.instrumentName),
+  category: normalizeString(document.category),
+  displayGroupCode: normalizeString(document.displayGroupCode),
+  materialType: normalizeString(document.materialType),
+  status:
+    document.status === null || document.status === undefined
+      ? null
+      : Number(document.status),
+  statusName: normalizeString(document.statusName),
+  fileStage: normalizeString(document.fileStage),
+  ossId: normalizeIdString(document.ossId),
+  publicUrl: normalizeString(document.publicUrl),
+  viewable: normalizeBoolean(document.viewable),
+  downloadable: normalizeBoolean(document.downloadable),
+  submittable: normalizeBoolean(document.submittable),
+  errorMessage: normalizeString(document.errorMessage),
+});
+
+const normalizeFilingMaterialMissingItem = (
+  item: Partial<LitigationFilingMaterialMissingItemVO>,
+): LitigationFilingMaterialMissingItemVO => ({
+  instrumentCode: normalizeString(item.instrumentCode),
+  instrumentName: normalizeString(item.instrumentName),
+  category: normalizeString(item.category),
+  displayGroupCode: normalizeString(item.displayGroupCode),
+  materialType: normalizeString(item.materialType),
+  reason: normalizeString(item.reason),
 });
 
 export const getLitigationOverview = (nodeType: LitigationNodeType) =>
@@ -180,6 +277,14 @@ export const getLitigationPage = (params: LitigationPageQuery) =>
       organization: params.organization,
     },
   });
+
+export const getLitigationFilingMaterials = (litigationId: string | number) =>
+  ruoyiRequest<LitigationFilingMaterialsVO>(
+    `/system/recov/litigation/${litigationId}/filing-materials`,
+    {
+      method: 'get',
+    },
+  );
 
 export const unwrapLitigationOverview = (
   response: RuoyiResponse<LitigationOverviewVO>,
@@ -245,5 +350,45 @@ export const unwrapLitigationPage = (
       ),
     ),
     total,
+  };
+};
+
+export const unwrapLitigationFilingMaterials = (
+  response: RuoyiResponse<unknown>,
+): LitigationFilingMaterialsVO => {
+  const data = (response.data ?? {}) as Partial<LitigationFilingMaterialsVO>;
+  const documents = Array.isArray(data.documents) ? data.documents : [];
+  const missingItems = Array.isArray(data.missingItems)
+    ? data.missingItems
+    : [];
+
+  return {
+    litigationId: normalizeIdString(data.litigationId),
+    debtId: normalizeIdString(data.debtId),
+    debtNumber: Number(data.debtNumber ?? 0),
+    debtorName: normalizeString(data.debtorName),
+    city: normalizeString(data.city),
+    organization: normalizeString(data.organization),
+    courtName: normalizeString(data.courtName),
+    caseNo: normalizeString(data.caseNo),
+    submitReady: normalizeBoolean(data.submitReady),
+    summaryMessage: normalizeString(data.summaryMessage),
+    readyCount: Number(data.readyCount ?? 0),
+    blockedCount: Number(data.blockedCount ?? 0),
+    missingCount: Number(data.missingCount ?? 0),
+    documents: documents.map((item) =>
+      normalizeFilingMaterialDocument(
+        item as Partial<LitigationFilingMaterialDocumentVO> & {
+          taskId?: number | string | null;
+          revisionId?: number | string | null;
+          ossId?: number | string | null;
+        },
+      ),
+    ),
+    missingItems: missingItems.map((item) =>
+      normalizeFilingMaterialMissingItem(
+        item as Partial<LitigationFilingMaterialMissingItemVO>,
+      ),
+    ),
   };
 };

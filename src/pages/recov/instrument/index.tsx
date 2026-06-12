@@ -33,7 +33,6 @@ import {
   Select,
   Space,
   Spin,
-  Splitter,
   Table,
   Tabs,
   Tag,
@@ -95,6 +94,11 @@ import {
   type StandingMatchVO,
 } from '@/services/ruoyi/standing';
 import { normalizeInstrumentMetricTitle } from './_shared';
+import {
+  InstrumentDocumentNavItem,
+  InstrumentDocumentPreviewStage,
+  InstrumentDocumentWorkspaceShell,
+} from './components/DocumentPreviewWorkspace';
 import './index.css';
 
 const { Text } = Typography;
@@ -2215,367 +2219,326 @@ const InstrumentListPage = () => {
             </Space>
           </div>
 
-          <div
-            className={`instrument-workspace-shell${
-              showWorkspaceSidebar ? '' : ' instrument-workspace-shell-single'
-            }`}
-          >
-            <Splitter orientation={isNarrow ? 'vertical' : 'horizontal'}>
-              {showWorkspaceSidebar ? (
-                <Splitter.Panel
-                  defaultSize={isNarrow ? 220 : 280}
-                  min={isNarrow ? 160 : 240}
-                  max={isNarrow ? 360 : 420}
-                >
-                  <aside className="instrument-doc-sidebar">
-                    {canAddWorkspaceSupplemental ? (
-                      <div className="instrument-doc-sidebar-header">
-                        <Button
-                          block
-                          className="instrument-doc-add-btn"
-                          icon={<PlusOutlined />}
-                          onClick={() =>
-                            openAddSupplemental(groupDetail ?? currentGroup)
-                          }
-                        >
-                          新增补充文书
-                        </Button>
-                      </div>
-                    ) : null}
-                    <Spin spinning={groupLoading}>
-                      <div className="instrument-doc-nav">
-                        {isSubjectWorkspace ? (
-                          <div className="instrument-standing-section">
-                            <div className="instrument-sidebar-section-title">
-                              <span>原告材料</span>
-                              <Button
-                                type="link"
-                                size="small"
-                                onClick={() => openStandingManage()}
-                              >
-                                维护
-                              </Button>
-                            </div>
-                            <Spin spinning={standingLoading}>
-                              <div className="instrument-standing-list">
-                                {standingMatch?.items?.length ? (
-                                  standingMatch.items.map((item) => (
-                                    <div
-                                      key={item.standingCode}
-                                      className={`instrument-standing-item${
-                                        item.matched
-                                          ? ''
-                                          : ' instrument-standing-item-missing'
-                                      }`}
-                                    >
-                                      <div className="instrument-standing-item-main">
-                                        <div className="instrument-standing-title-row">
-                                          <Space
-                                            size={6}
-                                            className="instrument-standing-title"
-                                          >
-                                            <FilePdfOutlined />
-                                            <Text
-                                              strong
-                                              className="instrument-standing-item-name"
-                                            >
-                                              {item.standingCodeName}
-                                            </Text>
-                                          </Space>
-                                          {!item.matched ? (
-                                            <Tag color="orange">缺失</Tag>
-                                          ) : null}
-                                        </div>
-                                        <Text
-                                          type={
-                                            item.matched
-                                              ? 'secondary'
-                                              : 'danger'
-                                          }
-                                          className="instrument-standing-item-sub"
+          <InstrumentDocumentWorkspaceShell
+            orientation={isNarrow ? 'vertical' : 'horizontal'}
+            sidebarDefaultSize={isNarrow ? 220 : 280}
+            sidebarMin={isNarrow ? 160 : 240}
+            sidebarMax={isNarrow ? 360 : 420}
+            sidebar={
+              showWorkspaceSidebar ? (
+                <>
+                  {canAddWorkspaceSupplemental ? (
+                    <div className="instrument-doc-sidebar-header">
+                      <Button
+                        block
+                        className="instrument-doc-add-btn"
+                        icon={<PlusOutlined />}
+                        onClick={() =>
+                          openAddSupplemental(groupDetail ?? currentGroup)
+                        }
+                      >
+                        新增补充文书
+                      </Button>
+                    </div>
+                  ) : null}
+                  <Spin spinning={groupLoading}>
+                    <div className="instrument-doc-nav">
+                      {isSubjectWorkspace ? (
+                        <div className="instrument-standing-section">
+                          <div className="instrument-sidebar-section-title">
+                            <span>原告材料</span>
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => openStandingManage()}
+                            >
+                              维护
+                            </Button>
+                          </div>
+                          <Spin spinning={standingLoading}>
+                            <div className="instrument-standing-list">
+                              {standingMatch?.items?.length ? (
+                                standingMatch.items.map((item) => (
+                                  <div
+                                    key={item.standingCode}
+                                    className={`instrument-standing-item${
+                                      item.matched
+                                        ? ''
+                                        : ' instrument-standing-item-missing'
+                                    }`}
+                                  >
+                                    <div className="instrument-standing-item-main">
+                                      <div className="instrument-standing-title-row">
+                                        <Space
+                                          size={6}
+                                          className="instrument-standing-title"
                                         >
-                                          {item.matched
-                                            ? item.standingName ||
-                                              '已配置 PDF 材料'
-                                            : item.missingReason ||
-                                              '未匹配到材料'}
-                                        </Text>
-                                        {item.matched ? (
+                                          <FilePdfOutlined />
                                           <Text
-                                            type="secondary"
-                                            className="instrument-standing-applicability"
+                                            strong
+                                            className="instrument-standing-item-name"
                                           >
-                                            适用资产：
-                                            {formatStandingApplicability(item)}
+                                            {item.standingCodeName}
                                           </Text>
+                                        </Space>
+                                        {!item.matched ? (
+                                          <Tag color="orange">缺失</Tag>
                                         ) : null}
                                       </div>
-                                      <Space size={4}>
-                                        <Tooltip title="预览">
-                                          <Button
-                                            size="small"
-                                            icon={<EyeOutlined />}
-                                            disabled={!item.standingOssId}
-                                            onClick={() =>
-                                              void handleStandingPreview(item)
-                                            }
-                                          />
-                                        </Tooltip>
-                                        <Tooltip title="下载">
-                                          <Button
-                                            size="small"
-                                            icon={<DownloadOutlined />}
-                                            disabled={!item.standingOssId}
-                                            onClick={() =>
-                                              void handleStandingDownload(item)
-                                            }
-                                          />
-                                        </Tooltip>
-                                      </Space>
+                                      <Text
+                                        type={
+                                          item.matched ? 'secondary' : 'danger'
+                                        }
+                                        className="instrument-standing-item-sub"
+                                      >
+                                        {item.matched
+                                          ? item.standingName ||
+                                            '已配置 PDF 材料'
+                                          : item.missingReason ||
+                                            '未匹配到材料'}
+                                      </Text>
+                                      {item.matched ? (
+                                        <Text
+                                          type="secondary"
+                                          className="instrument-standing-applicability"
+                                        >
+                                          适用资产：
+                                          {formatStandingApplicability(item)}
+                                        </Text>
+                                      ) : null}
                                     </div>
-                                  ))
-                                ) : (
-                                  <Empty
-                                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                    description="暂无匹配结果"
-                                  />
-                                )}
-                              </div>
-                            </Spin>
-                          </div>
-                        ) : null}
-                        {isSubjectWorkspace ? (
-                          <div className="instrument-sidebar-section-title">
-                            <span>生成文书</span>
-                          </div>
-                        ) : null}
-                        {workspaceDocuments.length > 0 ? (
-                          workspaceDocuments.map((item) => {
-                            const status = getStatusInfo(item.status);
-                            const active =
-                              selectedDocument &&
-                              String(selectedDocument.id) === String(item.id);
-                            return (
-                              <button
-                                key={getDocumentRowKey(item)}
-                                type="button"
-                                className={`instrument-doc-item${
-                                  active ? ' instrument-doc-item-active' : ''
-                                }`}
-                                onClick={() => switchDocument(item)}
-                              >
-                                <span className="instrument-doc-item-main">
-                                  <Text strong ellipsis>
-                                    {toText(item.instrumentName)}
-                                  </Text>
-                                  <span className="instrument-doc-item-tags">
-                                    <Tag>V{item.currentRevisionNo || 0}</Tag>
-                                    {shouldShowWorkspaceDocumentStatusTag(
-                                      item.status,
-                                    ) ? (
-                                      <Tag color={status.color}>
-                                        {status.label}
-                                      </Tag>
-                                    ) : null}
-                                    {item.taskSource === 'SUPPLEMENTAL' ? (
-                                      <Tag color="purple">补充</Tag>
-                                    ) : null}
-                                    {item.hasPendingRevision ? (
-                                      <Tag color="orange">修改中</Tag>
-                                    ) : null}
-                                  </span>
-                                </span>
-                                {item.errorMessage ? (
-                                  <Text
-                                    type="danger"
-                                    className="instrument-doc-item-error"
-                                  >
-                                    {item.errorMessage}
-                                  </Text>
-                                ) : null}
-                              </button>
-                            );
-                          })
-                        ) : (
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description="暂无文书"
-                          />
-                        )}
-                      </div>
-                    </Spin>
-                  </aside>
-                </Splitter.Panel>
-              ) : null}
-
-              <Splitter.Panel>
-                <section className="instrument-doc-main">
-                  <Spin
-                    spinning={
-                      documentLoading ||
-                      (workspaceMode === 'preview' &&
-                        workspaceFilePreview.loading)
-                    }
-                  >
-                    {workspaceMode === 'edit' || workspaceMode === 'add' ? (
-                      <div className="instrument-editor-panel">
-                        <Form
-                          form={editForm}
-                          layout="vertical"
-                          className="instrument-editor-form"
-                          initialValues={{ instrumentName: '', debtorName: '' }}
-                        >
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                            <Form.Item
-                              name="instrumentName"
-                              label="文书名称"
-                              rules={[
-                                { required: true, message: '请输入文书名称' },
-                              ]}
-                            >
-                              <Input
-                                placeholder="请输入文书名称"
-                                disabled={editMode === 'edit'}
-                              />
-                            </Form.Item>
-                            {editorDebtLocked ? (
-                              <Form.Item name="debtorName" hidden>
-                                <Input />
-                              </Form.Item>
-                            ) : null}
-                            {!editorDebtLocked ? (
-                              <Form.Item label="关联债务" required>
-                                <Space.Compact block>
-                                  <Form.Item
-                                    name="debtorName"
-                                    noStyle
-                                    rules={[
+                                    <Space size={4}>
+                                      <Tooltip title="预览">
+                                        <Button
+                                          size="small"
+                                          icon={<EyeOutlined />}
+                                          disabled={!item.standingOssId}
+                                          onClick={() =>
+                                            void handleStandingPreview(item)
+                                          }
+                                        />
+                                      </Tooltip>
+                                      <Tooltip title="下载">
+                                        <Button
+                                          size="small"
+                                          icon={<DownloadOutlined />}
+                                          disabled={!item.standingOssId}
+                                          onClick={() =>
+                                            void handleStandingDownload(item)
+                                          }
+                                        />
+                                      </Tooltip>
+                                    </Space>
+                                  </div>
+                                ))
+                              ) : (
+                                <Empty
+                                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                  description="暂无匹配结果"
+                                />
+                              )}
+                            </div>
+                          </Spin>
+                        </div>
+                      ) : null}
+                      {isSubjectWorkspace ? (
+                        <div className="instrument-sidebar-section-title">
+                          <span>生成文书</span>
+                        </div>
+                      ) : null}
+                      {workspaceDocuments.length > 0 ? (
+                        workspaceDocuments.map((item) => {
+                          const status = getStatusInfo(item.status);
+                          const active =
+                            selectedDocument &&
+                            String(selectedDocument.id) === String(item.id);
+                          return (
+                            <InstrumentDocumentNavItem
+                              key={getDocumentRowKey(item)}
+                              active={Boolean(active)}
+                              title={toText(item.instrumentName)}
+                              tags={[
+                                {
+                                  label: `V${item.currentRevisionNo || 0}`,
+                                },
+                                ...(shouldShowWorkspaceDocumentStatusTag(
+                                  item.status,
+                                )
+                                  ? [
                                       {
-                                        required: true,
-                                        message: '请选择关联债务',
+                                        label: status.label,
+                                        color: status.color,
                                       },
-                                    ]}
-                                  >
-                                    <Input
-                                      readOnly
-                                      placeholder="请选择关联债务"
-                                    />
-                                  </Form.Item>
-                                  <Button
-                                    onClick={() => openDebtSelector('attach')}
-                                  >
-                                    选择
-                                  </Button>
-                                </Space.Compact>
-                              </Form.Item>
-                            ) : null}
+                                    ]
+                                  : []),
+                                ...(item.taskSource === 'SUPPLEMENTAL'
+                                  ? [{ label: '补充', color: 'purple' }]
+                                  : []),
+                                ...(item.hasPendingRevision
+                                  ? [{ label: '修改中', color: 'orange' }]
+                                  : []),
+                              ]}
+                              errorMessage={item.errorMessage}
+                              onClick={() => switchDocument(item)}
+                            />
+                          );
+                        })
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="暂无文书"
+                        />
+                      )}
+                    </div>
+                  </Spin>
+                </>
+              ) : undefined
+            }
+          >
+            <Spin
+              spinning={
+                documentLoading ||
+                (workspaceMode === 'preview' && workspaceFilePreview.loading)
+              }
+            >
+              {workspaceMode === 'edit' || workspaceMode === 'add' ? (
+                <div className="instrument-editor-panel">
+                  <Form
+                    form={editForm}
+                    layout="vertical"
+                    className="instrument-editor-form"
+                    initialValues={{ instrumentName: '', debtorName: '' }}
+                  >
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <Form.Item
+                        name="instrumentName"
+                        label="文书名称"
+                        rules={[{ required: true, message: '请输入文书名称' }]}
+                      >
+                        <Input
+                          placeholder="请输入文书名称"
+                          disabled={editMode === 'edit'}
+                        />
+                      </Form.Item>
+                      {editorDebtLocked ? (
+                        <Form.Item name="debtorName" hidden>
+                          <Input />
+                        </Form.Item>
+                      ) : null}
+                      {!editorDebtLocked ? (
+                        <Form.Item label="关联债务" required>
+                          <Space.Compact block>
                             <Form.Item
-                              name="sealIds"
-                              label="签章印章"
+                              name="debtorName"
+                              noStyle
                               rules={[
                                 {
                                   required: true,
-                                  message: '请选择签章印章',
+                                  message: '请选择关联债务',
                                 },
                               ]}
                             >
-                              <Select
-                                mode="multiple"
-                                allowClear
-                                loading={sealLoading}
-                                maxTagCount="responsive"
-                                placeholder="请选择签章印章"
-                                showSearch={{ optionFilterProp: 'label' }}
-                                options={sealOptions.map((seal) => ({
-                                  label: formatSealOptionLabel(seal),
-                                  value: getSealOptionId(seal),
-                                }))}
-                                onChange={handleSealSelectionChange}
-                              />
+                              <Input readOnly placeholder="请选择关联债务" />
                             </Form.Item>
-                          </div>
-                        </Form>
-
-                        {!hasSealPlaceholder(editorValue) ? (
-                          <Alert
-                            className="mb-3"
-                            type="warning"
-                            showIcon
-                            title="当前内容未检测到盖章位"
-                            action={
-                              <Button
-                                size="small"
-                                type="primary"
-                                onClick={insertSealPlaceholder}
-                              >
-                                插入盖章位
-                              </Button>
-                            }
-                          />
-                        ) : null}
-
-                        <Tabs
-                          className="instrument-editor-tabs"
-                          activeKey={editorTab}
-                          onChange={(key) => setEditorTab(key as EditorTab)}
-                          items={[
-                            {
-                              key: 'edit',
-                              label: '编辑',
-                              children: (
-                                <TemplateEditor
-                                  value={editorValue}
-                                  outputType="html"
-                                  placeholder="请输入文书内容..."
-                                  variables={templateVariables}
-                                  features={instrumentEditorFeatures}
-                                  height={isNarrow ? 420 : 620}
-                                  onChange={setEditorValue}
-                                />
-                              ),
-                            },
-                            {
-                              key: 'preview',
-                              label: '预览',
-                              children: (
-                                <iframe
-                                  title="文书预览"
-                                  srcDoc={renderPreviewHtml(editorValue)}
-                                  className="instrument-preview-frame"
-                                />
-                              ),
-                            },
-                          ]}
+                            <Button onClick={() => openDebtSelector('attach')}>
+                              选择
+                            </Button>
+                          </Space.Compact>
+                        </Form.Item>
+                      ) : null}
+                      <Form.Item
+                        name="sealIds"
+                        label="签章印章"
+                        rules={[
+                          {
+                            required: true,
+                            message: '请选择签章印章',
+                          },
+                        ]}
+                      >
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          loading={sealLoading}
+                          maxTagCount="responsive"
+                          placeholder="请选择签章印章"
+                          showSearch={{ optionFilterProp: 'label' }}
+                          options={sealOptions.map((seal) => ({
+                            label: formatSealOptionLabel(seal),
+                            value: getSealOptionId(seal),
+                          }))}
+                          onChange={handleSealSelectionChange}
                         />
-                      </div>
-                    ) : selectedDocument ? (
-                      <div className="instrument-doc-stage">
-                        {workspaceFilePreview.fileUrl ? (
-                          <PdfPreview
-                            className="instrument-preview-frame"
-                            fileName={workspaceHeaderTitle}
-                            height="100%"
-                            ossId={workspaceFilePreview.ossId}
-                            url={workspaceFilePreview.fileUrl}
+                      </Form.Item>
+                    </div>
+                  </Form>
+
+                  {!hasSealPlaceholder(editorValue) ? (
+                    <Alert
+                      className="mb-3"
+                      type="warning"
+                      showIcon
+                      title="当前内容未检测到盖章位"
+                      action={
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={insertSealPlaceholder}
+                        >
+                          插入盖章位
+                        </Button>
+                      }
+                    />
+                  ) : null}
+
+                  <Tabs
+                    className="instrument-editor-tabs"
+                    activeKey={editorTab}
+                    onChange={(key) => setEditorTab(key as EditorTab)}
+                    items={[
+                      {
+                        key: 'edit',
+                        label: '编辑',
+                        children: (
+                          <TemplateEditor
+                            value={editorValue}
+                            outputType="html"
+                            placeholder="请输入文书内容..."
+                            variables={templateVariables}
+                            features={instrumentEditorFeatures}
+                            height={isNarrow ? 420 : 620}
+                            onChange={setEditorValue}
                           />
-                        ) : (
+                        ),
+                      },
+                      {
+                        key: 'preview',
+                        label: '预览',
+                        children: (
                           <iframe
                             title="文书预览"
-                            srcDoc={renderPreviewHtml(selectedDocumentHtml)}
+                            srcDoc={renderPreviewHtml(editorValue)}
                             className="instrument-preview-frame"
                           />
-                        )}
-                      </div>
-                    ) : (
-                      <div className="instrument-empty-stage">
-                        <Empty description="暂无可预览文书" />
-                      </div>
-                    )}
-                  </Spin>
-                </section>
-              </Splitter.Panel>
-            </Splitter>
-          </div>
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+              ) : selectedDocument ? (
+                <InstrumentDocumentPreviewStage
+                  fileName={workspaceHeaderTitle}
+                  html={renderPreviewHtml(selectedDocumentHtml)}
+                  pdfOssId={workspaceFilePreview.ossId}
+                  pdfUrl={workspaceFilePreview.fileUrl}
+                />
+              ) : (
+                <div className="instrument-empty-stage">
+                  <Empty description="暂无可预览文书" />
+                </div>
+              )}
+            </Spin>
+          </InstrumentDocumentWorkspaceShell>
         </div>
       ) : (
         <div className="recov-list-stack">

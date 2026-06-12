@@ -1,5 +1,6 @@
 import {
   FileTextOutlined,
+  RobotOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
@@ -8,6 +9,7 @@ import {
   Checkbox,
   Empty,
   Grid,
+  Input,
   Modal,
   message,
   Space,
@@ -16,12 +18,19 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
-import TemplateEditor from '@/components/TemplateEditor';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import TemplateEditor, {
+  type TemplateEditorHandle,
+} from '@/components/TemplateEditor';
 import type {
   TemplateEditorFeatures,
   TemplateVariable,
 } from '@/components/TemplateEditor/types';
+import {
+  ensureSealPlaceholderHtml,
+  htmlToEditorHtml,
+  serializeHtmlWithVariableTokens,
+} from '@/components/TemplateEditor/utils/templateVariable';
 import { renderRecovSingleLineText } from '@/pages/recov/components/RecovFilterControls';
 import { RecovListPage } from '@/pages/recov/components/RecovListLayout';
 import {
@@ -30,6 +39,7 @@ import {
   type InstrumentTypeTemplateDetail,
   type InstrumentTypeTemplateListItem,
   listInstrumentTypeTemplates,
+  modifyInstrumentTypeTemplate,
   saveInstrumentTypeTemplate,
   validateInstrumentTypeTemplate,
 } from '@/services/ruoyi/instrumentTypeTemplate';
@@ -40,6 +50,7 @@ import {
 import './index.css';
 
 const { Text, Title } = Typography;
+const { TextArea } = Input;
 
 const SEAL_PLACEHOLDER_OPTIONS = [
   { label: '公司章', value: 'company_seal' },
@@ -103,6 +114,18 @@ const stripSealPlaceholders = (html: string) => {
   return document.body.innerHTML;
 };
 
+const normalizeAiModifiedTemplateHtml = (
+  html: string,
+  variables: TemplateVariable[],
+  sourceHtml: string,
+) =>
+  serializeHtmlWithVariableTokens(
+    ensureSealPlaceholderHtml(
+      htmlToEditorHtml(html, variables, { enableVariables: true }),
+      sourceHtml,
+    ),
+  ).trim();
+
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
@@ -128,8 +151,21 @@ const InstrumentTemplatePage = () => {
   const [selectedSealCodes, setSelectedSealCodes] = useState<string[]>([
     'company_seal',
   ]);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModifyRequirement, setAiModifyRequirement] = useState('');
+  const [aiModifying, setAiModifying] = useState(false);
+  const [aiModifiedTemplateHtml, setAiModifiedTemplateHtml] = useState('');
 
   const selectedId = stringifyId(selectedRecord?.id);
+  const mainEditorRef = useRef<TemplateEditorHandle>(null);
+
+  const getCurrentTemplateHtml = () => {
+    const editorHtml = mainEditorRef.current?.getValue().trim();
+    const editorDomHtml = mainEditorRef.current?.getDomHtml().trim();
+    const sealSourceHtml = editorDomHtml || templateHtml;
+    if (!editorHtml) return templateHtml.trim();
+    return ensureSealPlaceholderHtml(editorHtml, sealSourceHtml).trim();
+  };
 
   const loadVariables = useCallback(async () => {
     try {
@@ -201,6 +237,12 @@ const InstrumentTemplatePage = () => {
     };
   }, [messageApi, selectedId]);
 
+  useEffect(() => {
+    setAiModalOpen(false);
+    setAiModifyRequirement('');
+    setAiModifiedTemplateHtml('');
+  }, [selectedId]);
+
   const handleTemplateHtmlChange = (value: string) => {
     setTemplateHtml(value);
   };
@@ -214,11 +256,12 @@ const InstrumentTemplatePage = () => {
 
   const saveTemplate = async () => {
     if (!selectedDetail) return;
-    const html = templateHtml.trim();
+    const html = getCurrentTemplateHtml();
     if (!html) {
       messageApi.warning('模板HTML不能为空');
       return;
     }
+    setTemplateHtml(html);
 
     setSaving(true);
     try {
@@ -263,6 +306,94 @@ const InstrumentTemplatePage = () => {
     }
   };
 
+  const openAiModifyModal = () => {
+    if (!selectedRecord) return;
+    setAiModalOpen(true);
+    setAiModifiedTemplateHtml('');
+    setAiModifyRequirement((current) =>
+      current.trim()
+        ? current
+        : `请基于当前${selectedRecord.name}模板进行修改，语气正式，结构更清晰，保留全部变量和签章位。`,
+    );
+  };
+
+  const handleModifyTemplate = async () => {
+    if (!selectedRecord || !selectedDetail) return;
+    const requirement = aiModifyRequirement.trim();
+    const currentTemplateHtml = getCurrentTemplateHtml();
+    if (!requirement) {
+      messageApi.warning('请输入修改要求');
+      return;
+    }
+    if (!currentTemplateHtml) {
+      messageApi.warning('当前模板内容不能为空');
+      return;
+    }
+    setTemplateHtml(currentTemplateHtml);
+
+    setAiModifying(true);
+    try {
+      const response = await modifyInstrumentTypeTemplate(selectedDetail.id, {
+        requirement,
+        currentTemplateHtml,
+      });
+      const modifiedHtml = response.data?.templateHtml?.trim();
+      if (!modifiedHtml) {
+        messageApi.warning('AI 修改结果为空，请重新修改');
+        return;
+      }
+      const normalizedModifiedHtml = normalizeAiModifiedTemplateHtml(
+        modifiedHtml,
+        variables,
+        currentTemplateHtml,
+      );
+      if (!normalizedModifiedHtml) {
+        messageApi.warning('AI 修改结果为空，请重新修改');
+        return;
+      }
+      setAiModifiedTemplateHtml(normalizedModifiedHtml);
+      if (!modifiedHtml.includes('data-seal-placeholder')) {
+        messageApi.warning('AI 修改结果未返回签章位，已保留原签章位');
+      }
+      const warnings = response.data?.warnings?.filter(Boolean) ?? [];
+      if (warnings.length) {
+        messageApi.warning(warnings.join('；'));
+      }
+    } catch (error) {
+      messageApi.error(getErrorMessage(error, '修改模板失败'));
+    } finally {
+      setAiModifying(false);
+    }
+  };
+
+  const handleApplyModifiedTemplate = () => {
+    if (!aiModifiedTemplateHtml) return;
+
+    const applyTemplate = () => {
+      setTemplateHtml(aiModifiedTemplateHtml);
+      setAiModalOpen(false);
+      messageApi.info('已应用修改，请确认后保存');
+    };
+
+    const savedTemplateHtml = selectedDetail?.templateHtml ?? '';
+    const currentTemplateHtml = getCurrentTemplateHtml();
+    const hasUnsavedEditorChange =
+      currentTemplateHtml !== savedTemplateHtml.trim();
+
+    if (!hasUnsavedEditorChange) {
+      applyTemplate();
+      return;
+    }
+
+    modalApi.confirm({
+      title: '应用 AI 修改',
+      content: '应用后将替换当前编辑区内容，尚未保存的编辑内容不会保留。',
+      okText: '应用修改',
+      cancelText: '取消',
+      onOk: applyTemplate,
+    });
+  };
+
   return (
     <RecovListPage breadcrumbRender={false} title="文书模板维护">
       {messageContextHolder}
@@ -289,6 +420,86 @@ const InstrumentTemplatePage = () => {
             setSelectedSealCodes(values.map((value) => String(value)))
           }
         />
+      </Modal>
+      <Modal
+        title="AI 修改模板"
+        open={aiModalOpen}
+        width={isNarrow ? '96vw' : 1120}
+        centered
+        destroyOnHidden
+        mask={{ closable: false }}
+        wrapClassName="instrument-template-ai-modal-wrap"
+        onCancel={() => setAiModalOpen(false)}
+        footer={
+          <Space wrap className="instrument-template-ai-footer">
+            <Button onClick={() => setAiModalOpen(false)}>取消</Button>
+            <Button
+              loading={aiModifying}
+              disabled={!selectedDetail}
+              onClick={() => void handleModifyTemplate()}
+            >
+              {aiModifiedTemplateHtml ? '重新修改' : '开始修改'}
+            </Button>
+            <Button
+              type="primary"
+              disabled={!aiModifiedTemplateHtml || aiModifying}
+              onClick={handleApplyModifiedTemplate}
+            >
+              应用修改
+            </Button>
+          </Space>
+        }
+      >
+        <div className="instrument-template-ai-layout">
+          <div className="instrument-template-ai-form">
+            <div className="instrument-template-ai-field">
+              <Text strong>修改要求</Text>
+              <TextArea
+                value={aiModifyRequirement}
+                rows={4}
+                maxLength={600}
+                showCount
+                allowClear
+                disabled={aiModifying}
+                placeholder="例如：语气更正式，强化还款提醒和法律后果，保留全部变量和签章位"
+                onChange={(event) => setAiModifyRequirement(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="instrument-template-ai-preview">
+            <div className="instrument-template-ai-preview-header">
+              <Text strong>修改草稿</Text>
+              <Text type="secondary">
+                {aiModifying
+                  ? '修改中'
+                  : aiModifiedTemplateHtml
+                    ? '可编辑'
+                    : '暂无草稿'}
+              </Text>
+            </div>
+            {aiModifying ? (
+              <div className="instrument-template-ai-preview-loading">
+                <Spin description="AI 正在根据修改要求修改模板" />
+              </div>
+            ) : aiModifiedTemplateHtml ? (
+              <TemplateEditor
+                className="instrument-template-ai-preview-editor"
+                value={aiModifiedTemplateHtml}
+                outputType="html"
+                variables={variables}
+                features={EDITOR_FEATURES}
+                height={isNarrow ? 360 : 460}
+                onChange={setAiModifiedTemplateHtml}
+              />
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="暂无修改草稿"
+              />
+            )}
+          </div>
+        </div>
       </Modal>
       <div className="instrument-template-workbench">
         <Splitter orientation={isNarrow ? 'vertical' : 'horizontal'}>
@@ -367,6 +578,13 @@ const InstrumentTemplatePage = () => {
                       className="instrument-template-actions"
                     >
                       <Button
+                        icon={<RobotOutlined />}
+                        disabled={detailLoading || !selectedDetail}
+                        onClick={openAiModifyModal}
+                      >
+                        AI 修改
+                      </Button>
+                      <Button
                         type="primary"
                         icon={<SaveOutlined />}
                         loading={saving}
@@ -389,6 +607,7 @@ const InstrumentTemplatePage = () => {
                         </Button>
                       </div>
                       <TemplateEditor
+                        ref={mainEditorRef}
                         value={templateHtml}
                         outputType="html"
                         placeholder="请输入文书模板内容..."

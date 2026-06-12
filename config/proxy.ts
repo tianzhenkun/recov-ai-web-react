@@ -8,8 +8,7 @@
 const baseApi = process.env.UMI_APP_BASE_API || '/dev-api';
 const adminApi = process.env.UMI_APP_ADMIN_API || '/admin-api';
 const voiceApi = process.env.UMI_APP_VOICE_API || '/voice-api';
-const apiTarget =
-  process.env.UMI_APP_API_TARGET || 'http://111.229.146.182:19090';
+const apiTarget = process.env.UMI_APP_API_TARGET || 'http://localhost:8080';
 const adminTarget = process.env.UMI_APP_ADMIN_TARGET || apiTarget;
 const voiceApiTarget =
   process.env.UMI_APP_VOICE_API_TARGET || 'http://111.229.146.182:9100';

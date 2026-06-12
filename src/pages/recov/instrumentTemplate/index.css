@@ -156,6 +156,103 @@
   min-height: 420px;
 }
 
+.instrument-template-ai-modal-wrap .ant-modal-content {
+  overflow: hidden;
+  padding: 0;
+}
+
+.instrument-template-ai-modal-wrap .ant-modal-header {
+  margin: 0;
+  padding: 18px 24px;
+  border-bottom: 1px solid #eef0f4;
+}
+
+.instrument-template-ai-modal-wrap .ant-modal-body {
+  background: #f7f8fb;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding: 18px;
+}
+
+.instrument-template-ai-modal-wrap .ant-modal-footer {
+  margin: 0;
+  padding: 14px 18px;
+  border-top: 1px solid #eef0f4;
+}
+
+.instrument-template-ai-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 560px;
+}
+
+.instrument-template-ai-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.instrument-template-ai-field,
+.instrument-template-ai-preview {
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.instrument-template-ai-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.instrument-template-ai-preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 420px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.instrument-template-ai-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef0f4;
+}
+
+.instrument-template-ai-preview > .ant-empty {
+  margin: auto 0;
+}
+
+.instrument-template-ai-preview-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+}
+
+.instrument-template-ai-preview-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.instrument-template-ai-footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
 @media (max-width: 900px) {
   .instrument-template-workbench {
     height: auto;
@@ -180,5 +277,18 @@
 
   .instrument-template-editor-body {
     padding: 0 12px 12px;
+  }
+
+  .instrument-template-ai-modal-wrap .ant-modal {
+    max-width: 96vw;
+  }
+
+  .instrument-template-ai-modal-wrap .ant-modal-body {
+    max-height: calc(100vh - 180px);
+    padding: 12px;
+  }
+
+  .instrument-template-ai-layout {
+    min-height: 0;
   }
 }

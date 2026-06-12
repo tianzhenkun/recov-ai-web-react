@@ -3,6 +3,10 @@ import { join } from 'node:path';
 
 const source = readFileSync(join(__dirname, 'index.tsx'), 'utf8');
 const styles = readFileSync(join(__dirname, 'index.css'), 'utf8');
+const workspaceStyles = readFileSync(
+  join(__dirname, 'components/DocumentPreviewWorkspace.css'),
+  'utf8',
+);
 
 describe('/instrument-list presentation conventions', () => {
   it('keeps filters and list tools in the unified recov toolbar', () => {
@@ -155,12 +159,19 @@ describe('/instrument-list presentation conventions', () => {
   });
 
   it('keeps the document detail preview as a centered paper stage', () => {
-    expect(styles).toContain('.instrument-doc-stage {');
-    expect(styles).toContain('padding: 24px 32px 36px;');
-    expect(styles).toContain('display: flex;');
-    expect(styles).toContain('justify-content: center;');
-    expect(styles).toContain('.instrument-doc-stage .instrument-preview-frame');
-    expect(styles).toContain('width: min(880px, 100%);');
+    expect(source).toContain('InstrumentDocumentWorkspaceShell');
+    expect(workspaceStyles).toContain('.instrument-workspace-shell {');
+    expect(workspaceStyles).toContain('.instrument-doc-stage {');
+    expect(workspaceStyles).toContain('padding: 24px 32px 36px;');
+    expect(workspaceStyles).toContain('display: flex;');
+    expect(workspaceStyles).toContain('justify-content: center;');
+    expect(workspaceStyles).toContain(
+      '.instrument-doc-stage .instrument-preview-frame',
+    );
+    expect(workspaceStyles).toContain('width: min(880px, 100%);');
+    expect(styles).not.toContain('.instrument-doc-stage {');
+    expect(styles).not.toContain('.instrument-doc-item {');
+    expect(styles).not.toContain('.instrument-doc-main {');
   });
 
   it('keeps document editing inside the workspace instead of list rows', () => {
@@ -224,9 +235,9 @@ describe('/instrument-list presentation conventions', () => {
     expect(source).toContain('workspaceMetaItems');
     expect(source).toContain('className="instrument-workspace-meta-item"');
     expect(source).toContain('className="instrument-workspace-meta-value"');
-    expect(styles).toContain('.instrument-workspace-meta-item {');
-    expect(styles).toContain('.instrument-workspace-meta-value {');
-    expect(styles).toContain('text-overflow: ellipsis;');
+    expect(workspaceStyles).toContain('.instrument-workspace-meta-item {');
+    expect(workspaceStyles).toContain('.instrument-workspace-meta-value {');
+    expect(workspaceStyles).toContain('text-overflow: ellipsis;');
   });
 
   it('warns when a sealed document preview still only shows the seal placeholder', () => {
@@ -275,10 +286,9 @@ describe('/instrument-list presentation conventions', () => {
   it('uses the sealed PDF file for the workspace preview before falling back to HTML', () => {
     expect(source).toContain('selectedDocumentPdfOssId');
     expect(source).toContain('listOssByIds(selectedDocumentPdfOssId)');
-    expect(source).toContain('url={workspaceFilePreview.fileUrl}');
-    expect(source).toContain(
-      'srcDoc={renderPreviewHtml(selectedDocumentHtml)}',
-    );
+    expect(source).toContain('<InstrumentDocumentPreviewStage');
+    expect(source).toContain('pdfUrl={workspaceFilePreview.fileUrl}');
+    expect(source).toContain('html={renderPreviewHtml(selectedDocumentHtml)}');
   });
 
   it('keeps the document preview modal focused on the document body', () => {

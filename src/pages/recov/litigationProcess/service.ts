@@ -1,12 +1,15 @@
 import {
+  getLitigationFilingMaterials,
   getLitigationNodeStats,
   getLitigationOverview,
   getLitigationPage,
+  type LitigationFilingMaterialsVO,
   type LitigationNodeStatVO,
   type LitigationNodeType,
   type LitigationOverviewVO,
   type LitigationPageQuery,
   type LitigationRowVO,
+  unwrapLitigationFilingMaterials,
   unwrapLitigationNodeStats,
   unwrapLitigationOverview,
   unwrapLitigationPage,
@@ -22,7 +25,12 @@ import {
 
 export const LITIGATION_USE_LOCAL_DATA = false;
 
-export type { LitigationNodeStatVO, LitigationNodeType, LitigationOverviewVO };
+export type {
+  LitigationFilingMaterialsVO,
+  LitigationNodeStatVO,
+  LitigationNodeType,
+  LitigationOverviewVO,
+};
 
 export type LitigationListQuery = LitigationPageQuery;
 
@@ -366,6 +374,65 @@ const MOCK_ROWS_BY_NODE: Partial<
   ],
 };
 
+const MOCK_FILING_MATERIALS: Record<string, LitigationFilingMaterialsVO> = {
+  '2057117313463869442': {
+    litigationId: '2057117313463869442',
+    debtId: '1001',
+    debtNumber: 8214,
+    debtorName: '测试业主王五',
+    city: '上海市',
+    organization: '阳光花园一期',
+    courtName: '上海市浦东新区人民法院',
+    caseNo: '',
+    submitReady: false,
+    summaryMessage: '当前有1项立案材料不可提交，请到智能法律文书页面处理',
+    readyCount: 1,
+    blockedCount: 1,
+    missingCount: 0,
+    documents: [
+      {
+        taskId: '11',
+        revisionId: '111',
+        taskSource: '',
+        instrumentCode: 'LT_CP',
+        instrumentName: '起诉状',
+        category: '诉讼材料',
+        displayGroupCode: 'LITIGATION_MATERIALS',
+        materialType: '起诉状',
+        status: 5,
+        statusName: '已盖章',
+        fileStage: 'SEALED',
+        ossId: '1011',
+        publicUrl: 'https://example.test/complaint-sealed.pdf',
+        viewable: true,
+        downloadable: true,
+        submittable: true,
+        errorMessage: '',
+      },
+      {
+        taskId: '12',
+        revisionId: '112',
+        taskSource: '',
+        instrumentCode: 'DEFENDANT_STATEMENT',
+        instrumentName: '被告主体材料',
+        category: '诉讼材料',
+        displayGroupCode: 'SUBJECT_STANDING',
+        materialType: '当事人身份证明',
+        status: 6,
+        statusName: '盖章失败',
+        fileStage: 'DRAFT',
+        ossId: '1012',
+        publicUrl: 'https://example.test/subject-draft.pdf',
+        viewable: true,
+        downloadable: true,
+        submittable: false,
+        errorMessage: '盖章失败：印章缺失',
+      },
+    ],
+    missingItems: [],
+  },
+};
+
 const filterRows = (
   rows: LitigationRowVO[],
 
@@ -450,6 +517,29 @@ const fetchLitigationPageLocal = (
   });
 };
 
+const fetchLitigationFilingMaterialsLocal = (
+  litigationId: string | number,
+): Promise<LitigationFilingMaterialsVO> =>
+  withDelay(
+    MOCK_FILING_MATERIALS[String(litigationId)] ?? {
+      litigationId: String(litigationId),
+      debtId: '',
+      debtNumber: 0,
+      debtorName: '',
+      city: '',
+      organization: '',
+      courtName: '',
+      caseNo: '',
+      submitReady: false,
+      summaryMessage: '暂无立案材料',
+      readyCount: 0,
+      blockedCount: 0,
+      missingCount: 0,
+      documents: [],
+      missingItems: [],
+    },
+  );
+
 const fetchLitigationNodeStatsFromApi = async (): Promise<
   LitigationNodeStatVO[]
 > => unwrapLitigationNodeStats(await getLitigationNodeStats());
@@ -480,6 +570,13 @@ const fetchLitigationPageFromApi = async (
   };
 };
 
+const fetchLitigationFilingMaterialsFromApi = async (
+  litigationId: string | number,
+): Promise<LitigationFilingMaterialsVO> =>
+  unwrapLitigationFilingMaterials(
+    await getLitigationFilingMaterials(litigationId),
+  );
+
 export const fetchLitigationNodeStats = (): Promise<LitigationNodeStatVO[]> =>
   LITIGATION_USE_LOCAL_DATA
     ? fetchLitigationNodeStatsLocal()
@@ -498,3 +595,10 @@ export const fetchLitigationPage = (
   LITIGATION_USE_LOCAL_DATA
     ? fetchLitigationPageLocal(query)
     : fetchLitigationPageFromApi(query);
+
+export const fetchLitigationFilingMaterials = (
+  litigationId: string | number,
+): Promise<LitigationFilingMaterialsVO> =>
+  LITIGATION_USE_LOCAL_DATA
+    ? fetchLitigationFilingMaterialsLocal(litigationId)
+    : fetchLitigationFilingMaterialsFromApi(litigationId);
