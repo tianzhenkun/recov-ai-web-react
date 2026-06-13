@@ -105,7 +105,7 @@ describe('Instrument type template page wiring', () => {
       'setAiModifiedTemplateHtml(normalizedModifiedHtml)',
     );
     expect(source).toContain('AI 修改结果未返回签章位，已保留原签章位');
-    expect(source).toContain('setTemplateHtml(aiModifiedTemplateHtml)');
+    expect(source).toContain('syncEditorBeforeSave: false');
     expect(source).toContain('mainEditorRef');
     expect(source).toContain('getCurrentTemplateHtml');
     expect(source).toContain('currentTemplateHtml,');
@@ -118,8 +118,9 @@ describe('Instrument type template page wiring', () => {
     expect(source).toContain('修改草稿');
     expect(source).toContain('开始修改');
     expect(source).toContain('重新修改');
-    expect(source).toContain('应用修改');
+    expect(source).toContain('应用并保存');
     expect(source).toContain('尚未保存的编辑内容不会保留');
+    expect(source).toContain('persistTemplateHtml(aiModifiedTemplateHtml');
     expect(source).not.toContain('AI 生成');
     expect(source).not.toContain('AI 生成模板');
     expect(source).not.toContain('生成要求');
@@ -144,6 +145,52 @@ describe('Instrument type template page wiring', () => {
     expect(styles).not.toContain(
       '.instrument-template-ai-preview-editor > .template-editor-toolbar',
     );
+  });
+
+  it('keeps the AI modify requirement empty by default and moves guidance outside the input', () => {
+    const source = readSource('pages/recov/instrumentTemplate/index.tsx');
+    const styles = readSource('pages/recov/instrumentTemplate/index.css');
+
+    expect(source).toContain('QuestionCircleOutlined');
+    expect(source).toContain('instrument-template-ai-label-row');
+    expect(source).toContain('输入修改建议，AI 会基于当前模板进行二次修改');
+    expect(source).not.toContain('描述需要调整的语气、结构或重点');
+    expect(source).toContain("setAiModifyRequirement('')");
+    expect(source).not.toContain(
+      '请基于当前${' + 'selectedRecord.name}模板进行修改',
+    );
+    expect(source).not.toContain(
+      'placeholder="例如：语气更正式，强化还款提醒和法律后果，保留全部变量和签章位"',
+    );
+    expect(styles).toContain('.instrument-template-ai-label-row');
+  });
+
+  it('opens templates in review mode and only exposes save while editing', () => {
+    const source = readSource('pages/recov/instrumentTemplate/index.tsx');
+
+    expect(source).toContain('isEditing');
+    expect(source).toContain('setIsEditing(false)');
+    expect(source).toContain('EditOutlined');
+    expect(source).toContain('CloseOutlined');
+    expect(source).toContain('编辑');
+    expect(source).toContain('取消');
+    expect(source).toContain('hasTemplateChange');
+    expect(source).toContain('disabled={!isEditing}');
+    expect(source).toContain('isEditing ? (');
+    expect(source).toContain('onClick={() => setIsEditing(true)}');
+    expect(source).toContain('onClick={() => void saveTemplate()}');
+  });
+
+  it('guards unsaved manual edits when cancelling or switching templates', () => {
+    const source = readSource('pages/recov/instrumentTemplate/index.tsx');
+
+    expect(source).toContain('hasUnsavedTemplateChange');
+    expect(source).toContain('handleCancelEditing');
+    expect(source).toContain('handleSelectTemplate');
+    expect(source).toContain('放弃修改');
+    expect(source).toContain('切换模板');
+    expect(source).toContain('当前模板存在未保存修改');
+    expect(source).toContain('onClick={() => handleSelectTemplate(item)}');
   });
 
   it('reads the latest serialized html from the editor before save or AI modify', () => {

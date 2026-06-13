@@ -1,5 +1,8 @@
 import {
+  CloseOutlined,
+  EditOutlined,
   FileTextOutlined,
+  QuestionCircleOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
@@ -129,6 +132,12 @@ const normalizeAiModifiedTemplateHtml = (
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
+type PersistTemplateOptions = {
+  onSaved?: () => void;
+  source?: 'manual' | 'ai';
+  syncEditorBeforeSave?: boolean;
+};
+
 const InstrumentTemplatePage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
@@ -147,6 +156,7 @@ const InstrumentTemplatePage = () => {
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [sealPickerOpen, setSealPickerOpen] = useState(false);
   const [selectedSealCodes, setSelectedSealCodes] = useState<string[]>([
     'company_seal',
@@ -158,6 +168,9 @@ const InstrumentTemplatePage = () => {
 
   const selectedId = stringifyId(selectedRecord?.id);
   const mainEditorRef = useRef<TemplateEditorHandle>(null);
+  const savedTemplateHtml = selectedDetail?.templateHtml?.trim() ?? '';
+  const hasTemplateChange =
+    Boolean(selectedDetail) && templateHtml.trim() !== savedTemplateHtml;
 
   const getCurrentTemplateHtml = () => {
     const editorHtml = mainEditorRef.current?.getValue().trim();
@@ -208,12 +221,14 @@ const InstrumentTemplatePage = () => {
     if (!selectedId) {
       setSelectedDetail(null);
       setTemplateHtml('');
+      setIsEditing(false);
       return undefined;
     }
 
     let active = true;
     setSelectedDetail(null);
     setTemplateHtml('');
+    setIsEditing(false);
     setDetailLoading(true);
 
     getInstrumentTypeTemplate(selectedId)
@@ -241,7 +256,60 @@ const InstrumentTemplatePage = () => {
     setAiModalOpen(false);
     setAiModifyRequirement('');
     setAiModifiedTemplateHtml('');
+    setIsEditing(false);
   }, [selectedId]);
+
+  const hasUnsavedTemplateChange = () => {
+    if (!selectedDetail) return false;
+    return getCurrentTemplateHtml() !== savedTemplateHtml;
+  };
+
+  const handleSelectTemplate = (item: InstrumentTypeTemplateListItem) => {
+    if (stringifyId(item.id) === selectedId) return;
+
+    const selectTemplate = () => {
+      setSelectedRecord(item);
+      setIsEditing(false);
+    };
+
+    if (!isEditing || !hasUnsavedTemplateChange()) {
+      selectTemplate();
+      return;
+    }
+
+    modalApi.confirm({
+      title: '切换模板',
+      content: '当前模板存在未保存修改，切换后这些修改不会保留。',
+      okText: '放弃修改并切换',
+      cancelText: '取消',
+      onOk: selectTemplate,
+    });
+  };
+
+  const handleCancelEditing = () => {
+    if (!selectedDetail) {
+      setIsEditing(false);
+      return;
+    }
+
+    const cancelEditing = () => {
+      setTemplateHtml(selectedDetail.templateHtml ?? '');
+      setIsEditing(false);
+    };
+
+    if (!hasUnsavedTemplateChange()) {
+      cancelEditing();
+      return;
+    }
+
+    modalApi.confirm({
+      title: '放弃修改',
+      content: '当前模板存在未保存修改，放弃后无法恢复。',
+      okText: '放弃修改',
+      cancelText: '继续编辑',
+      onOk: cancelEditing,
+    });
+  };
 
   const handleTemplateHtmlChange = (value: string) => {
     setTemplateHtml(value);
@@ -257,11 +325,22 @@ const InstrumentTemplatePage = () => {
   const saveTemplate = async () => {
     if (!selectedDetail) return;
     const html = getCurrentTemplateHtml();
+    await persistTemplateHtml(html);
+  };
+
+  const persistTemplateHtml = async (
+    rawHtml: string,
+    options: PersistTemplateOptions = {},
+  ) => {
+    if (!selectedDetail) return false;
+    const html = rawHtml.trim();
     if (!html) {
       messageApi.warning('模板HTML不能为空');
-      return;
+      return false;
     }
-    setTemplateHtml(html);
+    if (options.syncEditorBeforeSave !== false) {
+      setTemplateHtml(html);
+    }
 
     setSaving(true);
     try {
@@ -277,44 +356,84 @@ const InstrumentTemplatePage = () => {
       );
       setSaving(false);
 
-      modalApi.confirm({
-        title: '保存文书模板',
-        content: `本次修改只影响后续尚未生成正文的内置文书任务，已生成或已盖章文书不会自动变更。当前预计影响 ${impactCount} 个未生成任务。`,
-        okText: '确认保存',
-        cancelText: '取消',
-        onOk: async () => {
-          setSaving(true);
-          try {
-            await saveInstrumentTypeTemplate(selectedDetail.id, {
-              templateHtml: html,
-            });
-            setSelectedDetail((current) =>
-              current ? { ...current, templateHtml: html } : current,
-            );
-            messageApi.success('保存成功');
-            await loadTemplates();
-          } catch (error) {
-            messageApi.error(getErrorMessage(error, '保存文书模板失败'));
-          } finally {
-            setSaving(false);
-          }
-        },
+      return await new Promise<boolean>((resolve) => {
+        const isAiSave = options.source === 'ai';
+        modalApi.confirm({
+          title: isAiSave ? '应用并保存 AI 修改' : '保存文书模板',
+          content: isAiSave
+            ? `应用 AI 草稿后将立即保存。本次修改只影响后续尚未生成正文的内置文书任务，已生成或已盖章文书不会自动变更。当前预计影响 ${impactCount} 个未生成任务。`
+            : `本次修改只影响后续尚未生成正文的内置文书任务，已生成或已盖章文书不会自动变更。当前预计影响 ${impactCount} 个未生成任务。`,
+          okText: isAiSave ? '确认应用并保存' : '确认保存',
+          cancelText: '取消',
+          onCancel: () => resolve(false),
+          onOk: async () => {
+            setSaving(true);
+            try {
+              await saveInstrumentTypeTemplate(selectedDetail.id, {
+                templateHtml: html,
+              });
+              setTemplateHtml(html);
+              setSelectedDetail((current) =>
+                current ? { ...current, templateHtml: html } : current,
+              );
+              setIsEditing(false);
+              messageApi.success(isAiSave ? '应用并保存成功' : '保存成功');
+              await loadTemplates();
+              options.onSaved?.();
+              resolve(true);
+            } catch (error) {
+              messageApi.error(getErrorMessage(error, '保存文书模板失败'));
+              resolve(false);
+            } finally {
+              setSaving(false);
+            }
+          },
+        });
       });
     } catch (error) {
       messageApi.error(getErrorMessage(error, '模板检查失败'));
       setSaving(false);
+      return false;
     }
+  };
+
+  const handleApplyModifiedTemplate = () => {
+    if (!aiModifiedTemplateHtml) return;
+
+    const applyAndSave = () => {
+      void persistTemplateHtml(aiModifiedTemplateHtml, {
+        onSaved: () => {
+          setAiModalOpen(false);
+          setAiModifiedTemplateHtml('');
+        },
+        source: 'ai',
+        syncEditorBeforeSave: false,
+      });
+    };
+
+    const currentTemplateHtml = getCurrentTemplateHtml();
+    const hasUnsavedEditorChange = currentTemplateHtml !== savedTemplateHtml;
+
+    if (!isEditing || !hasUnsavedEditorChange) {
+      applyAndSave();
+      return;
+    }
+
+    modalApi.confirm({
+      title: '应用并保存 AI 修改',
+      content:
+        '应用后将以 AI 草稿替换当前编辑区内容，并立即进入保存确认，尚未保存的编辑内容不会保留。',
+      okText: '继续应用',
+      cancelText: '取消',
+      onOk: applyAndSave,
+    });
   };
 
   const openAiModifyModal = () => {
     if (!selectedRecord) return;
     setAiModalOpen(true);
     setAiModifiedTemplateHtml('');
-    setAiModifyRequirement((current) =>
-      current.trim()
-        ? current
-        : `请基于当前${selectedRecord.name}模板进行修改，语气正式，结构更清晰，保留全部变量和签章位。`,
-    );
+    setAiModifyRequirement('');
   };
 
   const handleModifyTemplate = async () => {
@@ -364,34 +483,6 @@ const InstrumentTemplatePage = () => {
     } finally {
       setAiModifying(false);
     }
-  };
-
-  const handleApplyModifiedTemplate = () => {
-    if (!aiModifiedTemplateHtml) return;
-
-    const applyTemplate = () => {
-      setTemplateHtml(aiModifiedTemplateHtml);
-      setAiModalOpen(false);
-      messageApi.info('已应用修改，请确认后保存');
-    };
-
-    const savedTemplateHtml = selectedDetail?.templateHtml ?? '';
-    const currentTemplateHtml = getCurrentTemplateHtml();
-    const hasUnsavedEditorChange =
-      currentTemplateHtml !== savedTemplateHtml.trim();
-
-    if (!hasUnsavedEditorChange) {
-      applyTemplate();
-      return;
-    }
-
-    modalApi.confirm({
-      title: '应用 AI 修改',
-      content: '应用后将替换当前编辑区内容，尚未保存的编辑内容不会保留。',
-      okText: '应用修改',
-      cancelText: '取消',
-      onOk: applyTemplate,
-    });
   };
 
   return (
@@ -444,8 +535,9 @@ const InstrumentTemplatePage = () => {
               type="primary"
               disabled={!aiModifiedTemplateHtml || aiModifying}
               onClick={handleApplyModifiedTemplate}
+              loading={saving}
             >
-              应用修改
+              应用并保存
             </Button>
           </Space>
         }
@@ -453,7 +545,12 @@ const InstrumentTemplatePage = () => {
         <div className="instrument-template-ai-layout">
           <div className="instrument-template-ai-form">
             <div className="instrument-template-ai-field">
-              <Text strong>修改要求</Text>
+              <span className="instrument-template-ai-label-row">
+                <Text strong>修改要求</Text>
+                <Tooltip title="输入修改建议，AI 会基于当前模板进行二次修改。">
+                  <QuestionCircleOutlined className="instrument-template-ai-help-icon" />
+                </Tooltip>
+              </span>
               <TextArea
                 value={aiModifyRequirement}
                 rows={4}
@@ -461,7 +558,6 @@ const InstrumentTemplatePage = () => {
                 showCount
                 allowClear
                 disabled={aiModifying}
-                placeholder="例如：语气更正式，强化还款提醒和法律后果，保留全部变量和签章位"
                 onChange={(event) => setAiModifyRequirement(event.target.value)}
               />
             </div>
@@ -527,7 +623,7 @@ const InstrumentTemplatePage = () => {
                               ? ' instrument-template-list-item-active'
                               : ''
                           }`}
-                          onClick={() => setSelectedRecord(item)}
+                          onClick={() => handleSelectTemplate(item)}
                         >
                           <span className="instrument-template-list-main">
                             <Text strong ellipsis>
@@ -577,42 +673,73 @@ const InstrumentTemplatePage = () => {
                       wrap
                       className="instrument-template-actions"
                     >
-                      <Button
-                        icon={<RobotOutlined />}
-                        disabled={detailLoading || !selectedDetail}
-                        onClick={openAiModifyModal}
-                      >
-                        AI 修改
-                      </Button>
-                      <Button
-                        type="primary"
-                        icon={<SaveOutlined />}
-                        loading={saving}
-                        disabled={detailLoading || !selectedDetail}
-                        onClick={() => void saveTemplate()}
-                      >
-                        保存
-                      </Button>
+                      {isEditing ? (
+                        <>
+                          <Button
+                            icon={<CloseOutlined />}
+                            disabled={saving}
+                            onClick={handleCancelEditing}
+                          >
+                            取消
+                          </Button>
+                          <Button
+                            type="primary"
+                            icon={<SaveOutlined />}
+                            loading={saving}
+                            disabled={
+                              detailLoading ||
+                              !selectedDetail ||
+                              !hasTemplateChange
+                            }
+                            onClick={() => void saveTemplate()}
+                          >
+                            保存
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            icon={<RobotOutlined />}
+                            disabled={detailLoading || !selectedDetail}
+                            onClick={openAiModifyModal}
+                          >
+                            AI 修改
+                          </Button>
+                          <Button
+                            type="primary"
+                            icon={<EditOutlined />}
+                            disabled={detailLoading || !selectedDetail}
+                            onClick={() => setIsEditing(true)}
+                          >
+                            编辑
+                          </Button>
+                        </>
+                      )}
                     </Space>
                   </div>
 
                   <Spin spinning={detailLoading}>
                     <div className="instrument-template-editor-body">
-                      <div className="instrument-template-editor-toolbar">
-                        <Button
-                          icon={<SafetyCertificateOutlined />}
-                          onClick={() => setSealPickerOpen(true)}
-                        >
-                          插入签章位
-                        </Button>
-                      </div>
+                      {isEditing ? (
+                        <div className="instrument-template-editor-toolbar">
+                          <Button
+                            icon={<SafetyCertificateOutlined />}
+                            disabled={detailLoading || !selectedDetail}
+                            onClick={() => setSealPickerOpen(true)}
+                          >
+                            插入签章位
+                          </Button>
+                        </div>
+                      ) : null}
                       <TemplateEditor
                         ref={mainEditorRef}
+                        className="instrument-template-main-editor"
                         value={templateHtml}
                         outputType="html"
                         placeholder="请输入文书模板内容..."
                         variables={variables}
                         features={EDITOR_FEATURES}
+                        disabled={!isEditing}
                         height={isNarrow ? 460 : 640}
                         onChange={handleTemplateHtmlChange}
                       />

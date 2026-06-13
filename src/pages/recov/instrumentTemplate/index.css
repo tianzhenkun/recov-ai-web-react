@@ -148,6 +148,11 @@
   margin-bottom: 12px;
 }
 
+.instrument-template-main-editor.template-editor-disabled
+  .template-editor-toolbar {
+  display: none;
+}
+
 .instrument-template-empty-stage {
   display: flex;
   flex: 1;
@@ -206,6 +211,19 @@
   flex-direction: column;
   gap: 10px;
   padding: 14px;
+}
+
+.instrument-template-ai-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+}
+
+.instrument-template-ai-help-icon {
+  color: #909399;
+  cursor: help;
+  font-size: 14px;
 }
 
 .instrument-template-ai-preview {
