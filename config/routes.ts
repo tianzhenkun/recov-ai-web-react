@@ -527,6 +527,11 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys/billing-sandbox',
+    component: './recov/billingSandbox',
+    hideInMenu: true,
+  },
+  {
     path: '/intelligent-outbound',
     component: './recov/intelligentOutbound',
     hideInMenu: true,

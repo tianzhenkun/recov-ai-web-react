@@ -71,8 +71,11 @@ import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
 const loginPath = '/user/login';
+const billingSandboxPath = '/sys/billing-sandbox';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
+const isLocalBillingSandboxPath = (path: string) =>
+  process.env.NODE_ENV !== 'production' && path === billingSandboxPath;
 
 type RecovColorTheme = 'default' | 'layeredDarkNav';
 type RecovLayoutSettings = Partial<LayoutSettings> & {
@@ -220,6 +223,7 @@ const recovListPagePaths = new Set([
   '/sys/instrument-standing',
   '/sys/instrument-template',
   '/sys/project',
+  billingSandboxPath,
   '/test11',
 ]);
 
@@ -469,6 +473,14 @@ const toCurrentUser = (info?: UserInfo): RuoyiCurrentUser | undefined => {
   };
 };
 
+const createBillingSandboxUser = (): RuoyiCurrentUser => ({
+  userid: 'billing-sandbox',
+  name: '测试用户',
+  access: 'admin',
+  roles: ['admin'],
+  permissions: ['*:*:*'],
+});
+
 const getCurrentUserId = (currentUser?: RuoyiCurrentUser) =>
   currentUser?.rawUser?.userId || currentUser?.userid;
 
@@ -532,6 +544,19 @@ export async function getInitialState(): Promise<{
   const { location } = history;
   const floatingProcessPanelDefaultMode =
     getStoredFloatingProcessPanelDefaultMode();
+  if (isLocalBillingSandboxPath(location.pathname)) {
+    return {
+      fetchUserInfo,
+      currentUser: createBillingSandboxUser(),
+      settings: defaultSettings as RecovLayoutSettings,
+      floatingProcessPanelDefaultMode,
+      settingDrawerOpen: false,
+      tenantSwitchVersion: 0,
+      menuWorkspaceMode: 'default',
+      menuContextPathname: location.pathname,
+    };
+  }
+
   if (
     ![loginPath, '/user/register', '/user/register-result'].includes(
       location.pathname,
@@ -601,6 +626,9 @@ const AppLayoutChildren = ({
   setInitialState,
 }: AppLayoutChildrenProps) => {
   const recovColorTheme = resolveRecovColorTheme(initialState?.settings);
+  const backgroundFeaturesEnabled =
+    Boolean(initialState?.currentUser?.userid) &&
+    !isLocalBillingSandboxPath(history.location.pathname);
   const sseConnectionKey = [
     initialState?.currentUser?.userid || 'anonymous',
     initialState?.dynamicTenantId || 'default',
@@ -624,7 +652,7 @@ const AppLayoutChildren = ({
 
   const loadFlowProcessItems = React.useCallback(
     async (silent = false) => {
-      if (!initialState?.currentUser?.userid) {
+      if (!backgroundFeaturesEnabled) {
         setFlowProcessItems([]);
         setFlowProcessItemsLoading(false);
         return false;
@@ -662,6 +690,7 @@ const AppLayoutChildren = ({
       }
     },
     [
+      backgroundFeaturesEnabled,
       initialState?.currentUser?.userid,
       initialState?.dynamicTenantId,
       initialState?.tenantSwitchVersion,
@@ -669,7 +698,7 @@ const AppLayoutChildren = ({
   );
 
   const loadFlowEventUnreadCount = React.useCallback(async () => {
-    if (!initialState?.currentUser?.userid) {
+    if (!backgroundFeaturesEnabled) {
       setFlowEventUnreadCount(0);
       return;
     }
@@ -689,13 +718,14 @@ const AppLayoutChildren = ({
       setFlowEventUnreadCount(0);
     }
   }, [
+    backgroundFeaturesEnabled,
     initialState?.currentUser?.userid,
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
   ]);
 
   const markFlowProcessItemsRead = React.useCallback(async () => {
-    if (!initialState?.currentUser?.userid) return;
+    if (!backgroundFeaturesEnabled) return;
 
     try {
       await markAllFlowEventsRead();
@@ -712,6 +742,7 @@ const AppLayoutChildren = ({
       void loadFlowEventUnreadCount();
     }
   }, [
+    backgroundFeaturesEnabled,
     initialState?.currentUser?.userid,
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
@@ -740,7 +771,7 @@ const AppLayoutChildren = ({
   }, [loadFlowEventUnreadCount]);
 
   React.useEffect(() => {
-    if (!initialState?.currentUser?.userid) return;
+    if (!backgroundFeaturesEnabled) return;
 
     return subscribeSseMessage((message) => {
       if (!isFlowEventSseMessage(message)) return;
@@ -762,6 +793,7 @@ const AppLayoutChildren = ({
       void loadFlowEventUnreadCount();
     });
   }, [
+    backgroundFeaturesEnabled,
     initialState?.currentUser?.userid,
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
@@ -806,7 +838,7 @@ const AppLayoutChildren = ({
     <>
       <SseBootstrap
         connectionKey={sseConnectionKey}
-        enabled={Boolean(initialState?.currentUser)}
+        enabled={backgroundFeaturesEnabled}
       />
       <React.Fragment
         key={`${initialState?.dynamicTenantId || 'default'}-${initialState?.tenantSwitchVersion || 0}`}
@@ -815,7 +847,7 @@ const AppLayoutChildren = ({
       </React.Fragment>
       <FloatingProcessPanel
         defaultMode={floatingProcessPanelDefaultMode}
-        enabled={Boolean(initialState?.currentUser)}
+        enabled={backgroundFeaturesEnabled}
         hasUnread={flowEventUnreadCount > 0}
         items={flowProcessItems}
         loading={flowProcessItemsLoading}
@@ -915,6 +947,11 @@ export const layout: RunTimeLayoutConfig = ({
   const floatingProcessPanelDefaultMode =
     initialState?.floatingProcessPanelDefaultMode ?? 'normal';
   const isSideLayout = initialState?.settings?.layout === 'side';
+  const isBillingSandboxLayout = isLocalBillingSandboxPath(
+    history.location.pathname,
+  );
+  const layoutBackgroundFeaturesEnabled =
+    Boolean(initialState?.currentUser) && !isBillingSandboxLayout;
   const currentUserName = initialState?.currentUser?.name || '用户';
   const notificationContextKey = [
     initialState?.currentUser?.userid || 'anonymous',
@@ -985,6 +1022,10 @@ export const layout: RunTimeLayoutConfig = ({
         menuWorkspaceMode: initialState?.menuWorkspaceMode,
       },
       request: async (params, defaultMenuData: MenuDataItem[]) => {
+        if (isBillingSandboxLayout) {
+          return buildLayoutMenuData([], defaultMenuData);
+        }
+
         if (!initialState?.currentUser) {
           return buildLayoutMenuData([], defaultMenuData);
         }
@@ -1027,7 +1068,7 @@ export const layout: RunTimeLayoutConfig = ({
             <NotificationCenter
               key="notification"
               contextKey={notificationContextKey}
-              enabled={Boolean(initialState?.currentUser)}
+              enabled={layoutBackgroundFeaturesEnabled}
               variant="icon"
             />,
             // 使用文档入口暂时隐藏。
@@ -1079,14 +1120,20 @@ export const layout: RunTimeLayoutConfig = ({
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
-      if (!initialState?.currentUser && location.pathname !== loginPath) {
+      if (
+        !initialState?.currentUser &&
+        location.pathname !== loginPath &&
+        !isLocalBillingSandboxPath(location.pathname)
+      ) {
         history.replace(
           `${loginPath}?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`,
         );
         return;
       }
 
-      void syncMenuContextFromPath(location.pathname);
+      if (!isLocalBillingSandboxPath(location.pathname)) {
+        void syncMenuContextFromPath(location.pathname);
+      }
     },
     bgLayoutImgList: [
       {
@@ -1127,7 +1174,7 @@ export const layout: RunTimeLayoutConfig = ({
           collapsed={Boolean(siderProps.collapsed)}
           currentUserName={currentUserName}
           notificationContextKey={notificationContextKey}
-          notificationEnabled={Boolean(initialState?.currentUser)}
+          notificationEnabled={layoutBackgroundFeaturesEnabled}
         />
       ) : null,
     // Replace ProLayout's default ErrorBoundary with our offline-aware version,
