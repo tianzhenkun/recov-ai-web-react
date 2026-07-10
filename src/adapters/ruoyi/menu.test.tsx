@@ -225,6 +225,70 @@ describe('RuoYi menu transform', () => {
     ]);
   });
 
+  it('treats billing management as an isolated platform workspace', () => {
+    const menuData = buildRuoyiMenuData([
+      ...ruoyiRoutes,
+      {
+        name: 'BillingOperations',
+        path: '/billing-operations',
+        hidden: false,
+        component: 'Layout',
+        alwaysShow: true,
+        meta: {
+          title: '计费管理',
+          icon: 'fund',
+        },
+        children: [
+          {
+            name: 'BillingCatalog',
+            path: 'catalog',
+            hidden: false,
+            component: 'billing/operations/catalog/index',
+            meta: {
+              title: '计量与定价',
+              icon: 'setting',
+            },
+          },
+          {
+            name: 'BillingPayments',
+            path: 'payments',
+            hidden: false,
+            component: 'billing/operations/payments/index',
+            meta: {
+              title: '支付与退款',
+              icon: 'money',
+            },
+          },
+        ],
+      },
+    ]);
+    const workspaceNames = ['账户管理', '后台管理', '系统管理', '计费管理'];
+
+    expect(resolveRuoyiMenuWorkspaces(menuData, workspaceNames)).toEqual([
+      expect.objectContaining({
+        key: '/system',
+        name: '账户管理',
+      }),
+      expect.objectContaining({
+        key: '/billing-operations',
+        name: '计费管理',
+      }),
+    ]);
+    expect(
+      getVisibleRuoyiMenuData(menuData, {
+        menuMode: 'default',
+        configuredWorkspaceNames: workspaceNames,
+      }).map((item) => item.path),
+    ).toEqual(['/datelligence']);
+    expect(
+      getVisibleRuoyiMenuData(menuData, {
+        menuMode: 'workspace',
+        activeWorkspaceKey: '/billing-operations',
+        configuredWorkspaceNames: workspaceNames,
+      }).map((item) => item.path),
+    ).toEqual(['/billing-operations/catalog', '/billing-operations/payments']);
+  });
+
   it('scopes left menu data to the selected workspace', () => {
     const menuData = buildRuoyiMenuData([
       ...ruoyiRoutes,

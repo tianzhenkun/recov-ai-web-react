@@ -71,11 +71,8 @@ import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 
 const loginPath = '/user/login';
-const billingSandboxPath = '/sys/billing-sandbox';
 const isExternalPath = (path?: string) =>
   /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
-const isLocalBillingSandboxPath = (path: string) =>
-  process.env.NODE_ENV !== 'production' && path === billingSandboxPath;
 
 type RecovColorTheme = 'default' | 'layeredDarkNav';
 type RecovLayoutSettings = Partial<LayoutSettings> & {
@@ -223,7 +220,6 @@ const recovListPagePaths = new Set([
   '/sys/instrument-standing',
   '/sys/instrument-template',
   '/sys/project',
-  billingSandboxPath,
   '/test11',
 ]);
 
@@ -473,14 +469,6 @@ const toCurrentUser = (info?: UserInfo): RuoyiCurrentUser | undefined => {
   };
 };
 
-const createBillingSandboxUser = (): RuoyiCurrentUser => ({
-  userid: 'billing-sandbox',
-  name: '测试用户',
-  access: 'admin',
-  roles: ['admin'],
-  permissions: ['*:*:*'],
-});
-
 const getCurrentUserId = (currentUser?: RuoyiCurrentUser) =>
   currentUser?.rawUser?.userId || currentUser?.userid;
 
@@ -544,19 +532,6 @@ export async function getInitialState(): Promise<{
   const { location } = history;
   const floatingProcessPanelDefaultMode =
     getStoredFloatingProcessPanelDefaultMode();
-  if (isLocalBillingSandboxPath(location.pathname)) {
-    return {
-      fetchUserInfo,
-      currentUser: createBillingSandboxUser(),
-      settings: defaultSettings as RecovLayoutSettings,
-      floatingProcessPanelDefaultMode,
-      settingDrawerOpen: false,
-      tenantSwitchVersion: 0,
-      menuWorkspaceMode: 'default',
-      menuContextPathname: location.pathname,
-    };
-  }
-
   if (
     ![loginPath, '/user/register', '/user/register-result'].includes(
       location.pathname,
@@ -626,9 +601,7 @@ const AppLayoutChildren = ({
   setInitialState,
 }: AppLayoutChildrenProps) => {
   const recovColorTheme = resolveRecovColorTheme(initialState?.settings);
-  const backgroundFeaturesEnabled =
-    Boolean(initialState?.currentUser?.userid) &&
-    !isLocalBillingSandboxPath(history.location.pathname);
+  const backgroundFeaturesEnabled = Boolean(initialState?.currentUser?.userid);
   const sseConnectionKey = [
     initialState?.currentUser?.userid || 'anonymous',
     initialState?.dynamicTenantId || 'default',
@@ -947,11 +920,7 @@ export const layout: RunTimeLayoutConfig = ({
   const floatingProcessPanelDefaultMode =
     initialState?.floatingProcessPanelDefaultMode ?? 'normal';
   const isSideLayout = initialState?.settings?.layout === 'side';
-  const isBillingSandboxLayout = isLocalBillingSandboxPath(
-    history.location.pathname,
-  );
-  const layoutBackgroundFeaturesEnabled =
-    Boolean(initialState?.currentUser) && !isBillingSandboxLayout;
+  const layoutBackgroundFeaturesEnabled = Boolean(initialState?.currentUser);
   const currentUserName = initialState?.currentUser?.name || '用户';
   const notificationContextKey = [
     initialState?.currentUser?.userid || 'anonymous',
@@ -1022,10 +991,6 @@ export const layout: RunTimeLayoutConfig = ({
         menuWorkspaceMode: initialState?.menuWorkspaceMode,
       },
       request: async (params, defaultMenuData: MenuDataItem[]) => {
-        if (isBillingSandboxLayout) {
-          return buildLayoutMenuData([], defaultMenuData);
-        }
-
         if (!initialState?.currentUser) {
           return buildLayoutMenuData([], defaultMenuData);
         }
@@ -1120,20 +1085,14 @@ export const layout: RunTimeLayoutConfig = ({
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
-      if (
-        !initialState?.currentUser &&
-        location.pathname !== loginPath &&
-        !isLocalBillingSandboxPath(location.pathname)
-      ) {
+      if (!initialState?.currentUser && location.pathname !== loginPath) {
         history.replace(
           `${loginPath}?redirect=${encodeURIComponent(location.pathname + location.search + location.hash)}`,
         );
         return;
       }
 
-      if (!isLocalBillingSandboxPath(location.pathname)) {
-        void syncMenuContextFromPath(location.pathname);
-      }
+      void syncMenuContextFromPath(location.pathname);
     },
     bgLayoutImgList: [
       {

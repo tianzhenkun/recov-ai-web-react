@@ -41,6 +41,7 @@ type RequestOptions = {
 
 type AxiosResponse<T = unknown> = {
   data: T;
+  status?: number;
   headers?: Record<string, string>;
   request?: {
     responseType?: string;
@@ -48,6 +49,12 @@ type AxiosResponse<T = unknown> = {
 };
 
 type UmiRequest = (url: string, opts: RequestOptions) => Promise<AxiosResponse>;
+
+type UmiRequestError = Error & {
+  response?: AxiosResponse;
+  data?: unknown;
+  request?: unknown;
+};
 
 type InternalHeaders = Record<string, unknown> & {
   isToken?: boolean;
@@ -176,6 +183,16 @@ const decryptResponseData = (encryptedKey: string, data: unknown) => {
   return JSON.parse(decrypted);
 };
 
+const isRawResponseType = (responseType?: string) =>
+  responseType === 'blob' || responseType === 'arraybuffer';
+
+const readResponseData = (response: AxiosResponse) => {
+  const encryptedKey = response.headers?.[encryptHeader];
+  return isEncryptEnabled() && encryptedKey
+    ? decryptResponseData(encryptedKey, response.data)
+    : response.data;
+};
+
 const redirectToLogin = () => {
   stopSse();
   removeToken();
@@ -228,6 +245,7 @@ const requestWithBaseApi = async <T = unknown>(
     headers: requestHeaders,
     method,
     getResponse: true,
+    skipErrorHandler: true,
   };
 
   if (method === 'get') {
@@ -253,37 +271,56 @@ const requestWithBaseApi = async <T = unknown>(
     };
   }
 
-  const request = umiRequest as unknown as UmiRequest;
-  const response = await request(withBaseApi(url, baseApi), requestOptions);
-  const encryptedKey = response.headers?.[encryptHeader];
-  const responseType = response.request?.responseType;
-  const rawData =
-    isEncryptEnabled() && encryptedKey
-      ? decryptResponseData(encryptedKey, response.data)
-      : response.data;
+  const handleResponseData = (rawData: unknown, responseType?: string) => {
+    if (isRawResponseType(responseType)) {
+      return rawData as T;
+    }
 
-  if (responseType === 'blob' || responseType === 'arraybuffer') {
-    return rawData as T;
-  }
+    if (!isRuoyiResponse(rawData)) {
+      return rawData as RuoyiResponse<T>;
+    }
 
-  if (!isRuoyiResponse(rawData)) {
+    if (rawData.code === RuoYiCode.UNAUTHORIZED) {
+      redirectToLogin();
+      throw new RuoyiError('无效的会话，或者会话已过期，请重新登录。', rawData);
+    }
+
+    if (rawData.code !== RuoYiCode.SUCCESS) {
+      const errorMessage = getRuoyiMessage(rawData);
+      if (!options.skipErrorHandler) {
+        showRuoyiError(errorMessage);
+      }
+      throw new RuoyiError(errorMessage, rawData);
+    }
+
     return rawData as RuoyiResponse<T>;
-  }
+  };
 
-  if (rawData.code === RuoYiCode.UNAUTHORIZED) {
-    redirectToLogin();
-    throw new RuoyiError('无效的会话，或者会话已过期，请重新登录。', rawData);
-  }
+  const request = umiRequest as unknown as UmiRequest;
+  try {
+    const response = await request(withBaseApi(url, baseApi), requestOptions);
+    return handleResponseData(
+      readResponseData(response),
+      response.request?.responseType,
+    );
+  } catch (error) {
+    const requestError = error as UmiRequestError;
+    const response = requestError.response;
+    const responseType = response?.request?.responseType;
+    const errorData = response ? readResponseData(response) : requestError.data;
+    if (!isRawResponseType(responseType) && isRuoyiResponse(errorData)) {
+      return handleResponseData(errorData, responseType);
+    }
 
-  if (rawData.code !== RuoYiCode.SUCCESS) {
-    const errorMessage = getRuoyiMessage(rawData);
+    const errorMessage =
+      response?.status !== undefined
+        ? `Response status:${response.status}`
+        : requestError.message || '请求失败';
     if (!options.skipErrorHandler) {
       showRuoyiError(errorMessage);
     }
-    throw new RuoyiError(errorMessage, rawData);
+    throw error;
   }
-
-  return rawData as RuoyiResponse<T>;
 };
 
 export async function ruoyiRequest<T = unknown>(

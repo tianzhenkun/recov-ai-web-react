@@ -47,8 +47,18 @@ export const getSseApi = () => getClientEnv('UMI_APP_SSE', '/resource/sse');
 
 export const getClientId = () => getClientEnv('UMI_APP_CLIENT_ID');
 
+const DEFAULT_MENU_WORKSPACE_NAMES = [
+  '账户管理',
+  '后台管理',
+  '系统管理',
+  '计费管理',
+];
+
 export const getMenuWorkspaceNames = () =>
-  getClientEnv('UMI_APP_MENU_WORKSPACE_NAMES')
+  getClientEnv(
+    'UMI_APP_MENU_WORKSPACE_NAMES',
+    DEFAULT_MENU_WORKSPACE_NAMES.join(','),
+  )
     .split(/[\n,，|]/)
     .map((item) => item.trim())
     .filter(Boolean);
