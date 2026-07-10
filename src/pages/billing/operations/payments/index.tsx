@@ -481,6 +481,12 @@ const PaymentOperationsPage = () => {
       width: 170,
       ellipsis: true,
     },
+    {
+      title: '发起人',
+      key: 'creator',
+      width: 130,
+      render: (_, record) => record.createByName || record.createBy || '-',
+    },
     { title: '原因', dataIndex: 'reason', ellipsis: true },
     {
       title: '创建时间',
@@ -798,6 +804,9 @@ const PaymentOperationsPage = () => {
           </Descriptions.Item>
           <Descriptions.Item label="渠道退款号" span={2}>
             {selectedRefund?.channelRefundNo || '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="退款发起人" span={2}>
+            {selectedRefund?.createByName || selectedRefund?.createBy || '-'}
           </Descriptions.Item>
           <Descriptions.Item label="失败原因" span={2}>
             {selectedRefund?.errorMessage || '-'}

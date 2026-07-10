@@ -95,6 +95,8 @@ export type PaymentRefundOrder = {
   reason?: string;
   errorCode?: string;
   errorMessage?: string;
+  createBy?: number | string;
+  createByName?: string;
   successTime?: string;
   createTime?: string;
   updateTime?: string;
