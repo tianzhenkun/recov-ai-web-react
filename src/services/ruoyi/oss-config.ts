@@ -4,7 +4,7 @@ export type OssConfigItem = {
   ossConfigId?: number | string;
   configKey?: string;
   accessKey?: string;
-  secretKey?: string;
+  secretKeyConfigured?: boolean;
   bucketName?: string;
   prefix?: string;
   endpoint?: string;

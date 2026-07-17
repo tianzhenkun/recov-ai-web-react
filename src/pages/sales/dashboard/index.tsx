@@ -1,8 +1,8 @@
 import {
-  DollarOutlined,
-  LineChartOutlined,
-  StarOutlined,
+  CheckCircleOutlined,
+  SearchOutlined,
   TeamOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { useQuery } from '@tanstack/react-query';
@@ -14,13 +14,7 @@ import KpiCard from './components/KpiCard';
 import TrendChart from './components/TrendChart';
 import type { SalesOverview } from './data.d';
 import { getSalesOverview, getSalesTrends } from './service';
-import {
-  formatLeads,
-  formatPositiveRate,
-  formatRevenue,
-  formatRoi,
-  formatScore,
-} from './utils';
+import { formatCount } from './utils';
 
 const currentYear = dayjs().year();
 
@@ -49,28 +43,28 @@ const SalesDashboard: FC = () => {
 
     return [
       {
-        key: 'newLeads',
-        label: '新增有效线索',
-        value: data ? formatLeads(data.newLeads) : '-',
+        key: 'totalTasks',
+        label: '获客任务',
+        value: data ? formatCount(data.totalTasks) : '-',
         icon: <TeamOutlined />,
       },
       {
-        key: 'leadQualityScore',
-        label: '线索质量评分',
-        value: data ? formatScore(data.leadQualityScore) : '-',
-        icon: <StarOutlined />,
+        key: 'readyTasks',
+        label: '可搜索任务',
+        value: data ? formatCount(data.readyTasks) : '-',
+        icon: <CheckCircleOutlined />,
       },
       {
-        key: 'positiveReplyRate',
-        label: '正向回复率',
-        value: data ? formatPositiveRate(data.positiveReplyRate) : '-',
-        icon: <LineChartOutlined />,
+        key: 'pendingTasks',
+        label: '待补充任务',
+        value: data ? formatCount(data.pendingTasks) : '-',
+        icon: <WarningOutlined />,
       },
       {
-        key: 'estimatedRoi',
-        label: '预计收入',
-        value: data ? formatRoi(data.estimatedRoi) : '-',
-        icon: <DollarOutlined />,
+        key: 'searchRuns',
+        label: '搜索运行记录',
+        value: data ? formatCount(data.searchRuns) : '-',
+        icon: <SearchOutlined />,
       },
     ];
   }, [overview]);
@@ -113,30 +107,30 @@ const SalesDashboard: FC = () => {
 
         <div className="grid grid-cols-1 gap-6">
           <TrendChart
-            title="新增有效线索"
+            title="获客任务"
             unit="个"
             data={months}
-            yField="leads"
+            yField="tasks"
             color="#1677ff"
-            valueFormatter={(v) => formatLeads(v)}
+            valueFormatter={(v) => formatCount(v)}
             loading={trendsLoading}
           />
           <TrendChart
-            title="预计收入"
-            unit="万元"
+            title="可搜索任务"
+            unit="个"
             data={months}
-            yField="revenue"
-            color="#faad14"
-            valueFormatter={(v) => formatRevenue(v)}
-            loading={trendsLoading}
-          />
-          <TrendChart
-            title="预计 ROI"
-            unit="倍"
-            data={months}
-            yField="roi"
+            yField="readyTasks"
             color="#52c41a"
-            valueFormatter={(v) => formatRoi(v)}
+            valueFormatter={(v) => formatCount(v)}
+            loading={trendsLoading}
+          />
+          <TrendChart
+            title="搜索运行记录"
+            unit="次"
+            data={months}
+            yField="runs"
+            color="#faad14"
+            valueFormatter={(v) => formatCount(v)}
             loading={trendsLoading}
           />
         </div>

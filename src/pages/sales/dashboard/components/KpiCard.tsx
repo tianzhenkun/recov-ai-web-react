@@ -14,7 +14,7 @@ type KpiCardProps = {
 const KpiCard: FC<KpiCardProps> = ({ label, value, icon, loading }) => (
   <ProCard
     loading={loading}
-    style={{ borderRadius: 16, minHeight: 84 }}
+    style={{ borderRadius: 8, minHeight: 84 }}
     styles={{ body: { padding: 16 } }}
   >
     <div className="flex flex-col justify-center gap-2">

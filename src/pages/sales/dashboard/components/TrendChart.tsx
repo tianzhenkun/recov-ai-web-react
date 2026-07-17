@@ -26,7 +26,7 @@ const TrendChart: FC<TrendChartProps> = ({
   valueFormatter,
   loading,
 }) => (
-  <ProCard style={{ borderRadius: 16 }} styles={{ body: { padding: 24 } }}>
+  <ProCard style={{ borderRadius: 8 }} styles={{ body: { padding: 24 } }}>
     <div className="mb-6 flex items-center justify-between">
       <div>
         <Title level={5} style={{ margin: 0 }}>

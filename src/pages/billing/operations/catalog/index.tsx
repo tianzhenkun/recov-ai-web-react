@@ -46,6 +46,10 @@ import {
   saveCreditPricingRule,
   saveCreditProduct,
 } from '@/services/ruoyi/credit-billing';
+import {
+  listEnabledPlatformProducts,
+  type PlatformProduct,
+} from '@/services/ruoyi/product-catalog';
 import OperationsGuard from '../components/OperationsGuard';
 
 type ProductFormValues = {
@@ -133,6 +137,9 @@ const CreditRulePage = () => {
   const selectedRuleProductCode = Form.useWatch('productCode', ruleForm);
 
   const [products, setProducts] = useState<CreditProduct[]>([]);
+  const [platformProducts, setPlatformProducts] = useState<PlatformProduct[]>(
+    [],
+  );
   const [scenarios, setScenarios] = useState<CreditMeterScenario[]>([]);
   const [rules, setRules] = useState<CreditPricingRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -147,14 +154,17 @@ const CreditRulePage = () => {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextProducts, nextScenarios, nextRules] = await Promise.all([
-        listCreditProducts(),
-        listCreditMeterScenarios(),
-        listCreditPricingRules(),
-      ]);
+      const [nextProducts, nextScenarios, nextRules, platformResponse] =
+        await Promise.all([
+          listCreditProducts(),
+          listCreditMeterScenarios(),
+          listCreditPricingRules(),
+          listEnabledPlatformProducts(),
+        ]);
       setProducts(nextProducts);
       setScenarios(nextScenarios);
       setRules(nextRules);
+      setPlatformProducts(platformResponse.data || []);
     } catch (error) {
       messageApi.error(getErrorMessage(error, '加载计量配置失败'));
     } finally {
@@ -193,6 +203,23 @@ const CreditRulePage = () => {
       })),
     [products],
   );
+
+  const availablePlatformProductOptions = useMemo(() => {
+    const registeredCodes = new Set(
+      products
+        .map((product) => product.productCode)
+        .filter((code): code is string => Boolean(code)),
+    );
+    return platformProducts
+      .filter(
+        (product) =>
+          product.productCode && !registeredCodes.has(product.productCode),
+      )
+      .map((product) => ({
+        label: `${product.productName || product.productCode} · ${product.productCode}`,
+        value: String(product.productCode),
+      }));
+  }, [platformProducts, products]);
 
   const scenarioOptions = useMemo(
     () =>
@@ -304,8 +331,8 @@ const CreditRulePage = () => {
     try {
       await saveCreditProduct({
         id: values.id,
-        productCode: normalizeCode(values.productCode),
-        productName: values.productName.trim(),
+        productCode: values.productCode.trim().toUpperCase(),
+        productName: values.productName,
         status: values.status || 'ENABLED',
         sortOrder: values.sortOrder,
       });
@@ -620,7 +647,7 @@ const CreditRulePage = () => {
             type="primary"
             onClick={() => openProductModal()}
           >
-            产品登记
+            新增计量产品
           </PermissionButton>
           <PermissionButton
             permissions={billingPermissions.adminCatalogEdit}
@@ -644,7 +671,7 @@ const CreditRulePage = () => {
           items={[
             {
               key: 'products',
-              label: '产品登记',
+              label: '计量产品',
               children: (
                 <Table<CreditProduct>
                   columns={productColumns}
@@ -703,7 +730,7 @@ const CreditRulePage = () => {
         forceRender
         okText="保存"
         open={productOpen}
-        title={editingProduct ? '编辑产品' : '新增产品'}
+        title={editingProduct ? '编辑计量产品' : '新增计量产品'}
         onCancel={closeProductModal}
         onOk={saveProduct}
       >
@@ -714,27 +741,34 @@ const CreditRulePage = () => {
           <Form.Item
             label="产品编码"
             name="productCode"
-            rules={[
-              { required: true, message: '请输入产品编码' },
-              { max: 64, message: '产品编码不能超过64个字符' },
-              {
-                pattern: contractCodePattern,
-                message: '产品编码只能使用小写英文、数字、下划线，并以英文开头',
-              },
-            ]}
-            normalize={normalizeCode}
+            rules={[{ required: true, message: '请选择平台产品' }]}
           >
-            <Input disabled={!!editingProduct} />
+            {editingProduct ? (
+              <Input disabled />
+            ) : (
+              <Select
+                options={availablePlatformProductOptions}
+                optionFilterProp="label"
+                placeholder="从已启用的平台产品中选择"
+                showSearch
+                onChange={(productCode) => {
+                  const selected = platformProducts.find(
+                    (product) => product.productCode === productCode,
+                  );
+                  productForm.setFieldValue(
+                    'productName',
+                    selected?.productName || productCode,
+                  );
+                }}
+              />
+            )}
           </Form.Item>
           <Form.Item
             label="产品名称"
             name="productName"
-            rules={[
-              { required: true, message: '请输入产品名称' },
-              { max: 50, message: '产品名称不能超过50个字符' },
-            ]}
+            rules={[{ required: true, message: '平台产品名称不能为空' }]}
           >
-            <Input allowClear />
+            <Input disabled />
           </Form.Item>
           <Row gutter={12}>
             <Col span={12}>

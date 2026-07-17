@@ -14,8 +14,6 @@ export type CreditPayStatus =
   | 'REFUND_LOCKED'
   | 'REFUNDED';
 export type CreditPackagePaymentStatus =
-  | 'PENDING_PAYMENT'
-  | 'PREPAY_FAILED'
   | 'PENDING'
   | 'SUCCESS'
   | 'CLOSED'
@@ -181,10 +179,16 @@ export type CreditPackage = {
   points?: number | string;
   price?: number | string;
   status?: 'ON_SALE' | 'OFF_SALE';
+  products?: CreditPackageProduct[];
   sortOrder?: number | string;
   remark?: string;
   createTime?: string;
   updateTime?: string;
+};
+
+export type CreditPackageProduct = {
+  productCode?: string;
+  productName?: string;
 };
 
 export type CreditPackageOrder = {
@@ -194,6 +198,8 @@ export type CreditPackageOrder = {
   packageId?: string;
   packageNameSnapshot?: string;
   packageKindSnapshot?: CreditPackageKind;
+  productCode?: string;
+  productNameSnapshot?: string;
   termMonths?: number | string | null;
   buyerUserId?: string;
   ownerType?: CreditOwnerType;
@@ -221,6 +227,35 @@ export type CreditPackageOrder = {
   remark?: string;
   createTime?: string;
   updateTime?: string;
+};
+
+export type CreditTermEntitlement = {
+  grantId?: string;
+  packageOrderId?: string;
+  packageId?: string;
+  packageName?: string;
+  totalPoints?: number | string;
+  remainingPoints?: number | string;
+  expiresAt?: string;
+  status?: CreditGrant['status'];
+};
+
+export type CreditProductEntitlements = {
+  productCode?: string;
+  productName?: string;
+  termPackages?: CreditTermEntitlement[];
+};
+
+export type CreditEntitlements = {
+  tenantId?: string;
+  accountId?: string;
+  ownerType?: CreditOwnerType;
+  ownerId?: string;
+  fixedPoints?: {
+    totalPoints?: number | string;
+    remainingPoints?: number | string;
+  };
+  products?: CreditProductEntitlements[];
 };
 
 export type CreditCouponTemplate = {
@@ -315,6 +350,7 @@ export type CreditPackageCreatePayload = {
   termMonths?: 1 | 3;
   points: number;
   price: number;
+  productCodes: string[];
   sortOrder?: number;
   remark?: string;
 };
@@ -325,6 +361,8 @@ export type CreditPackageStatusPayload = {
 
 export type CreditPackageOrderCreatePayload = {
   packageId: string;
+  productCode: string;
+  idempotencyKey: string;
   couponId?: string;
   remark?: string;
 };
@@ -496,6 +534,18 @@ export const createCreditPackage = async (
   unwrapData(
     await ruoyiRequest<CreditPackage>(`${CREDIT_ADMIN_BASE}/packages`, {
       method: 'post',
+      data,
+      repeatSubmit: false,
+    }),
+  );
+
+export const updateCreditPackage = async (
+  id: string,
+  data: CreditPackageCreatePayload,
+) =>
+  unwrapData(
+    await ruoyiRequest<CreditPackage>(`${CREDIT_ADMIN_BASE}/packages/${id}`, {
+      method: 'put',
       data,
       repeatSubmit: false,
     }),
@@ -696,11 +746,23 @@ export const listScopedCreditGrants = async (scope: 'tenant' | 'me') =>
 
 export const listScopedCreditPackages = async (
   scope: 'tenant' | 'me',
+  productCode?: string,
 ) =>
   unwrapList(
     await ruoyiRequest<CreditPackage[]>(`${scopedCreditBase(scope)}/packages`, {
       method: 'get',
+      params: productCode ? { productCode } : undefined,
     }),
+  );
+
+export const getScopedCreditEntitlements = async (
+  scope: 'tenant' | 'me',
+) =>
+  unwrapData(
+    await ruoyiRequest<CreditEntitlements>(
+      `${scopedCreditBase(scope)}/entitlements`,
+      { method: 'get' },
+    ),
   );
 
 export const createScopedCreditPackageOrder = async (

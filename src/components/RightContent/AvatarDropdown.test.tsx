@@ -11,8 +11,8 @@ var mockHeaderDropdownProps: any[] = [];
 
 jest.mock('@umijs/max', () => ({
   history: {
-    push: mockPush,
-    replace: mockReplace,
+    push: (...args: any[]) => mockPush(...args),
+    replace: (...args: any[]) => mockReplace(...args),
   },
   useModel: () => mockUseModel(),
 }));
@@ -36,6 +36,10 @@ jest.mock('@/adapters/ruoyi/token', () => ({
   removeToken: jest.fn(),
 }));
 
+jest.mock('@/components/Permission', () => ({
+  usePermission: () => ({ hasPermission: () => true }),
+}));
+
 jest.mock('@/services/ruoyi/auth', () => ({
   logout: jest.fn(() => Promise.resolve()),
 }));
@@ -52,6 +56,8 @@ jest.mock('../HeaderDropdown', () => (props: any) => {
 
 describe('AvatarDropdown', () => {
   beforeEach(() => {
+    mockPush.mockReset();
+    mockReplace.mockReset();
     mockHeaderDropdownProps.length = 0;
     mockLoadRuoyiMenuData.mockResolvedValue([]);
     mockUseModel.mockReturnValue({
@@ -75,5 +81,33 @@ describe('AvatarDropdown', () => {
     );
 
     expect(mockHeaderDropdownProps[0].trigger).toEqual(['click']);
+  });
+
+  it('opens the production personal center from the profile menu', () => {
+    render(
+      createElement(
+        AvatarDropdown,
+        null,
+        createElement('button', { type: 'button' }, '超级管理员'),
+      ),
+    );
+
+    mockHeaderDropdownProps[0].menu.onClick({ key: 'settings' });
+
+    expect(mockPush).toHaveBeenCalledWith('/account/center');
+  });
+
+  it('opens the purchased credit entitlement workspace from the account menu', () => {
+    render(
+      createElement(
+        AvatarDropdown,
+        null,
+        createElement('button', { type: 'button' }, '超级管理员'),
+      ),
+    );
+
+    mockHeaderDropdownProps[0].menu.onClick({ key: 'credit' });
+
+    expect(mockPush).toHaveBeenCalledWith('/account/credit');
   });
 });

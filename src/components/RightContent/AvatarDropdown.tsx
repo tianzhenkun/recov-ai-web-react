@@ -3,6 +3,7 @@ import {
   LogoutOutlined,
   SettingOutlined,
   SkinOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
@@ -18,6 +19,7 @@ import {
 } from '@/adapters/ruoyi/menu';
 import { stopSse } from '@/adapters/ruoyi/sse';
 import { removeToken } from '@/adapters/ruoyi/token';
+import { usePermission } from '@/components/Permission';
 import { logout } from '@/services/ruoyi/auth';
 import HeaderDropdown from '../HeaderDropdown';
 
@@ -55,6 +57,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
     }
   };
   const { initialState, setInitialState } = useModel('@@initialState');
+  const { hasPermission } = usePermission();
   const currentUserId = initialState?.currentUser?.userid;
   const activeWorkspaceKey = initialState?.activeMenuWorkspaceKey;
   const menuWorkspaceMode = initialState?.menuWorkspaceMode;
@@ -133,6 +136,10 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
       setInitialState((s) => ({ ...s, settingDrawerOpen: true }));
       return;
     }
+    if (key === 'settings') {
+      history.push('/account/center');
+      return;
+    }
     if (key.startsWith('workspace:')) {
       const workspaceKey = key.slice('workspace:'.length);
       const nextWorkspace = workspaces.find(
@@ -173,8 +180,17 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
           {
             key: 'settings',
             icon: <SettingOutlined />,
-            label: '个人设置',
+            label: '个人中心',
           },
+          ...(hasPermission('credit:me:account:view')
+            ? [
+                {
+                  key: 'credit',
+                  icon: <WalletOutlined />,
+                  label: '信用点权益',
+                },
+              ]
+            : []),
         ]),
     {
       key: 'preferences',
