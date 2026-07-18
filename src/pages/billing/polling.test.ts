@@ -1,6 +1,9 @@
 import {
+  canRetryPackagePayment,
+  getExpiryRefreshDelay,
   isPackageOrderTerminal,
   isPaymentRefundTerminal,
+  MAX_EXPIRY_REFRESH_DELAY_MS,
   PACKAGE_ORDER_POLL_INTERVAL_MS,
   shouldPollPackageOrder,
   shouldPollPaymentOrder,
@@ -22,13 +25,24 @@ describe('package order polling policy', () => {
   });
 
   it('stops after prepay creation fails because only a manual retry can advance it', () => {
-    expect(
-      shouldPollPackageOrder({
-        id: '1',
-        payStatus: 'PENDING_PAYMENT',
-        paymentStatus: 'PREPAY_FAILED',
-      }),
-    ).toBe(false);
+    const order = {
+      id: '1',
+      payStatus: 'PENDING_PAYMENT',
+      paymentStatus: 'FAILED',
+    } as const;
+    expect(canRetryPackagePayment(order)).toBe(true);
+    expect(shouldPollPackageOrder(order)).toBe(false);
+  });
+
+  it('keeps polling an attached failed payment until the credit order is closed', () => {
+    const order = {
+      id: '2',
+      payStatus: 'PENDING_PAYMENT',
+      paymentOrderId: '200',
+      paymentStatus: 'FAILED',
+    } as const;
+    expect(canRetryPackagePayment(order)).toBe(false);
+    expect(shouldPollPackageOrder(order)).toBe(true);
   });
 
   it('keeps polling pending payment and refund processing states', () => {
@@ -113,5 +127,24 @@ describe('package order polling policy', () => {
     ]) {
       expect(shouldPollPaymentOrder({ id: '20', status })).toBe(false);
     }
+  });
+});
+
+describe('entitlement expiry refresh policy', () => {
+  const now = Date.parse('2026-07-14T00:00:00.000Z');
+
+  it('refreshes just after a near expiry boundary', () => {
+    expect(getExpiryRefreshDelay('2026-07-14T00:00:10.000Z', now)).toBe(10_100);
+  });
+
+  it('caps long package terms so the caller can re-arm the browser timer', () => {
+    expect(getExpiryRefreshDelay('2026-10-14T00:00:00.000Z', now)).toBe(
+      MAX_EXPIRY_REFRESH_DELAY_MS,
+    );
+  });
+
+  it('refreshes immediately for expired values and ignores invalid dates', () => {
+    expect(getExpiryRefreshDelay('2026-07-13T23:59:59.000Z', now)).toBe(0);
+    expect(getExpiryRefreshDelay('invalid', now)).toBeUndefined();
   });
 });

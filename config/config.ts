@@ -39,11 +39,13 @@ const clientEnvKeys = [
   'UMI_APP_ENV',
   'UMI_APP_BASE_API',
   'UMI_APP_ADMIN_API',
+  'UMI_APP_PRODUCT_API',
+  'UMI_APP_VOICE_API',
   'UMI_APP_CONTEXT_PATH',
   'UMI_APP_ENCRYPT',
   'UMI_APP_RSA_PUBLIC_KEY',
-  'UMI_APP_RSA_PRIVATE_KEY',
   'UMI_APP_CLIENT_ID',
+  'UMI_APP_LOGIN_VARIANT',
   'UMI_APP_WEBSOCKET',
   'UMI_APP_SSE',
   'UMI_APP_MENU_WORKSPACE_NAMES',
@@ -223,6 +225,8 @@ export default defineConfig({
    * @description 配置 <head> 中额外的 script
    */
   headScripts: [
+    // 生产部署在启动前原子生成该文件；必须同步加载，确保请求发出前配置已就绪。
+    { src: join(PUBLIC_PATH, 'runtime-config.js') },
     // 解决首次加载时白屏的问题
     { src: join(PUBLIC_PATH, 'scripts/loading.js'), async: true },
   ],

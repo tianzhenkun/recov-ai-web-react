@@ -27,6 +27,12 @@ import {
   type OssConfigQuery,
   updateOssConfig,
 } from '@/services/ruoyi/oss-config';
+import {
+  buildOssConfigPayload,
+  isOssSecretRequired,
+  type OssConfigEditingRecord,
+  toOssEditingRecord,
+} from './model';
 
 type OssConfigSearchParams = {
   current?: number;
@@ -66,35 +72,13 @@ const toOssConfigQuery = (params: OssConfigSearchParams): OssConfigQuery => ({
   status: params.status,
 });
 
-const toOssConfigPayload = (
-  record: OssConfigForm | undefined,
-  values: OssConfigForm,
-): OssConfigForm => {
-  const merged = { ...(record || {}), ...values };
-  return {
-    ossConfigId: merged.ossConfigId,
-    configKey: merged.configKey,
-    accessKey: merged.accessKey,
-    secretKey: merged.secretKey,
-    bucketName: merged.bucketName,
-    prefix: merged.prefix,
-    endpoint: merged.endpoint,
-    domain: merged.domain,
-    isHttps: merged.isHttps,
-    accessPolicy: merged.accessPolicy,
-    region: merged.region,
-    status: merged.status,
-    remark: merged.remark,
-  };
-};
-
 const OssConfigPage = () => {
   const actionRef = useRef<ActionType | null>(null);
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const [selectedRows, setSelectedRows] = useState<OssConfigItem[]>([]);
   const [formOpen, setFormOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<OssConfigForm>();
+  const [editingRecord, setEditingRecord] = useState<OssConfigEditingRecord>();
   const [formLoading, setFormLoading] = useState(false);
   const { options: yesNoOptions } = useRuoyiDict('sys_yes_no', yesNoFallback);
   const openDeleteConfirm = useDeleteConfirm({
@@ -131,10 +115,7 @@ const OssConfigPage = () => {
     setFormLoading(true);
     try {
       const response = await getOssConfig(record.ossConfigId);
-      setEditingRecord({
-        ...record,
-        ...response.data,
-      });
+      setEditingRecord(toOssEditingRecord({ ...record, ...response.data }));
       setFormOpen(true);
     } finally {
       setFormLoading(false);
@@ -284,7 +265,7 @@ const OssConfigPage = () => {
   return (
     <PageContainer
       title="对象存储配置"
-      onBack={() => history.push('/sys-conf/oss')}
+      onBack={() => history.push('/sys-conf/integrations')}
     >
       {messageContextHolder}
       {modalContextHolder}
@@ -364,7 +345,7 @@ const OssConfigPage = () => {
           }
         }}
         onFinish={async (values) => {
-          const payload = toOssConfigPayload(editingRecord, values);
+          const payload = buildOssConfigPayload(editingRecord, values);
           if (editingRecord?.ossConfigId) {
             await updateOssConfig(payload);
           } else {
@@ -431,10 +412,28 @@ const OssConfigPage = () => {
         />
         <ProFormText.Password
           name="secretKey"
-          label="secretKey"
-          placeholder="请输入秘钥"
+          label={
+            editingRecord?.secretKeyConfigured ? (
+              <>
+                secretKey
+                <Tag color="success" style={{ marginInlineStart: 8 }}>
+                  已配置
+                </Tag>
+              </>
+            ) : (
+              'secretKey'
+            )
+          }
+          placeholder={
+            editingRecord?.ossConfigId ? '留空保留原密钥' : '请输入密钥'
+          }
+          fieldProps={{ autoComplete: 'new-password' }}
           rules={[
-            { required: true, message: 'secretKey不能为空' },
+            {
+              required: isOssSecretRequired(editingRecord?.ossConfigId),
+              whitespace: true,
+              message: 'secretKey不能为空',
+            },
             {
               min: 2,
               max: 100,

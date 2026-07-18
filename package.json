@@ -7,6 +7,7 @@
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
     "build": "max build",
+    "configure:local": "node scripts/configure-local-dev.js",
     "deploy": "cross-env CI=true max build && gh-pages -d dist",
     "dev": "cross-env UMI_ENV=dev MOCK=none max dev",
     "i18n-remove": "node scripts/i18n-remove.js",

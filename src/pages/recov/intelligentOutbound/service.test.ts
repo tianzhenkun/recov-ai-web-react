@@ -1,4 +1,5 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
+import { voiceFetch } from '@/adapters/ruoyi/voice';
 import {
   claimAiCallHandoff,
   getAiCallAgentWebRtcConfig,
@@ -9,17 +10,17 @@ import {
 jest.mock('@/adapters/ruoyi/request', () => ({
   ruoyiRequest: jest.fn(),
 }));
+jest.mock('@/adapters/ruoyi/voice', () => ({
+  voiceFetch: jest.fn(),
+}));
 
 const mockedRequest = ruoyiRequest as jest.Mock;
-const originalFetch = global.fetch;
+const mockedVoiceFetch = voiceFetch as jest.Mock;
 
 describe('intelligent outbound service', () => {
   beforeEach(() => {
     mockedRequest.mockResolvedValue({ code: 200, data: null });
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
+    mockedVoiceFetch.mockReset();
   });
 
   it('loads optional WebRTC config without global error handling', async () => {
@@ -35,26 +36,23 @@ describe('intelligent outbound service', () => {
   });
 
   it('loads realtime gateway calls through the voice api proxy', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
+    mockedVoiceFetch.mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({ calls: [] }),
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(getGatewayCalls()).resolves.toEqual({ calls: [] });
 
-    expect(fetchMock).toHaveBeenCalledWith('/voice-api/calls', {
+    expect(mockedVoiceFetch).toHaveBeenCalledWith('/calls', {
       method: 'get',
-      credentials: 'same-origin',
     });
   });
 
   it('claims handoff calls through the voice api proxy', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
+    mockedVoiceFetch.mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({ status: 'accepted', call: {} }),
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(
       claimAiCallHandoff({
@@ -65,11 +63,10 @@ describe('intelligent outbound service', () => {
       }),
     ).resolves.toEqual({ status: 'accepted', call: {} });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/voice-api/calls/gateway-101/handoff/claim',
+    expect(mockedVoiceFetch).toHaveBeenCalledWith(
+      '/calls/gateway-101/handoff/claim',
       {
         method: 'post',
-        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -87,11 +84,10 @@ describe('intelligent outbound service', () => {
   });
 
   it('hangs up gateway calls through the voice api proxy', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
+    mockedVoiceFetch.mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({ status: 'accepted', call: {} }),
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(
       hangupGatewayCall({
@@ -100,18 +96,14 @@ describe('intelligent outbound service', () => {
       }),
     ).resolves.toEqual({ status: 'accepted', call: {} });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/voice-api/calls/gateway-101/hangup',
-      {
-        method: 'post',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          reason: 'agent_hangup',
-        }),
+    expect(mockedVoiceFetch).toHaveBeenCalledWith('/calls/gateway-101/hangup', {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        reason: 'agent_hangup',
+      }),
+    });
   });
 });

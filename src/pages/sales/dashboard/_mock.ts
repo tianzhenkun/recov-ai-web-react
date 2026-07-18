@@ -3,34 +3,19 @@ import type { SalesOverview, SalesTrendMonth } from './data.d';
 
 const DEFAULT_YEAR = 2026;
 
-const BASE_LEADS_TREND: Omit<SalesTrendMonth, 'revenue' | 'roi'>[] = [
-  { month: '1月', leads: 120 },
-  { month: '2月', leads: 145 },
-  { month: '3月', leads: 168 },
-  { month: '4月', leads: 155 },
-  { month: '5月', leads: 192 },
-  { month: '6月', leads: 215 },
-  { month: '7月', leads: 248 },
-  { month: '8月', leads: 235 },
-  { month: '9月', leads: 278 },
-  { month: '10月', leads: 312 },
-  { month: '11月', leads: 345 },
-  { month: '12月', leads: 380 },
-];
-
-const BASE_REVENUE_ROI: Pick<SalesTrendMonth, 'revenue' | 'roi'>[] = [
-  { revenue: 350, roi: 1.5 },
-  { revenue: 420, roi: 1.8 },
-  { revenue: 480, roi: 2.1 },
-  { revenue: 440, roi: 1.9 },
-  { revenue: 520, roi: 2.4 },
-  { revenue: 610, roi: 2.8 },
-  { revenue: 700, roi: 3.2 },
-  { revenue: 680, roi: 3.0 },
-  { revenue: 790, roi: 3.5 },
-  { revenue: 820, roi: 3.9 },
-  { revenue: 910, roi: 4.2 },
-  { revenue: 980, roi: 4.8 },
+const BASE_TASK_TREND: SalesTrendMonth[] = [
+  { month: '1月', tasks: 12, readyTasks: 8, runs: 3 },
+  { month: '2月', tasks: 14, readyTasks: 9, runs: 4 },
+  { month: '3月', tasks: 16, readyTasks: 12, runs: 6 },
+  { month: '4月', tasks: 15, readyTasks: 11, runs: 5 },
+  { month: '5月', tasks: 19, readyTasks: 15, runs: 8 },
+  { month: '6月', tasks: 21, readyTasks: 16, runs: 9 },
+  { month: '7月', tasks: 24, readyTasks: 18, runs: 11 },
+  { month: '8月', tasks: 23, readyTasks: 17, runs: 10 },
+  { month: '9月', tasks: 27, readyTasks: 21, runs: 13 },
+  { month: '10月', tasks: 31, readyTasks: 25, runs: 16 },
+  { month: '11月', tasks: 34, readyTasks: 27, runs: 18 },
+  { month: '12月', tasks: 38, readyTasks: 31, runs: 21 },
 ];
 
 const hashYear = (year: number, salt: number) => {
@@ -59,18 +44,15 @@ const scaleByYear = (
 };
 
 const buildTrendMonths = (year: number): SalesTrendMonth[] =>
-  BASE_LEADS_TREND.map((item, index) => {
-    const revenueRoi = BASE_REVENUE_ROI[index];
+  BASE_TASK_TREND.map((item, index) => {
     const monthSalt = index + 1;
     return {
       month: item.month,
-      leads: Math.round(scaleByYear(item.leads, year, monthSalt + 10)),
-      revenue: Math.round(
-        scaleByYear(revenueRoi.revenue, year, monthSalt + 20),
+      tasks: Math.round(scaleByYear(item.tasks, year, monthSalt + 10)),
+      readyTasks: Math.round(
+        scaleByYear(item.readyTasks, year, monthSalt + 20),
       ),
-      roi: Number(
-        scaleByYear(revenueRoi.roi, year, monthSalt + 30, 0.15).toFixed(1),
-      ),
+      runs: Math.round(scaleByYear(item.runs, year, monthSalt + 30)),
     };
   });
 
@@ -80,19 +62,22 @@ const buildOverview = (year: number): SalesOverview => {
 
   if (year === DEFAULT_YEAR) {
     return {
-      newLeads: 248,
-      leadQualityScore: 8.4,
-      positiveReplyRate: 0.057,
-      estimatedRoi: 3.2,
+      totalTasks: 248,
+      readyTasks: 176,
+      pendingTasks: 72,
+      searchRuns: 124,
     };
   }
 
   const factor = 0.8 + hashYear(year, 1) * 0.4;
   return {
-    newLeads: Math.round(lastMonth.leads * factor),
-    leadQualityScore: Number(scaleByYear(8.4, year, 2, 0.12).toFixed(1)),
-    positiveReplyRate: Number(scaleByYear(0.057, year, 3, 0.2).toFixed(3)),
-    estimatedRoi: Number(scaleByYear(3.2, year, 4, 0.15).toFixed(1)),
+    totalTasks: Math.round(lastMonth.tasks * factor),
+    readyTasks: Math.round(lastMonth.readyTasks * factor),
+    pendingTasks: Math.max(
+      0,
+      Math.round((lastMonth.tasks - lastMonth.readyTasks) * factor),
+    ),
+    searchRuns: Math.round(lastMonth.runs * factor),
   };
 };
 

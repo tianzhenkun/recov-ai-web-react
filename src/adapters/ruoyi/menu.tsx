@@ -1,4 +1,12 @@
-import { BarChartOutlined, ExperimentOutlined } from '@ant-design/icons';
+import {
+  ApiOutlined,
+  BarChartOutlined,
+  ExperimentOutlined,
+  GlobalOutlined,
+  MailOutlined,
+  ProfileOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
@@ -32,8 +40,18 @@ export type RuoyiMenuContext = {
 const salesAgentPath = '/sales';
 const salesOverviewPath = '/sales/dashboard';
 const salesOverviewTitle = '数据总览';
+const salesSourceCoveragePath = '/sales/source-coverage';
+const salesSourceCoverageTitle = '来源与字段覆盖';
+const salesProviderSettingsPath = '/sales/provider-settings';
+const salesProviderSettingsTitle = '服务商配置';
 const salesIcpModelingPath = '/sales/icp-modeling';
 const salesIcpModelingTitle = 'ICP 建模';
+const salesIcpAttrsPath = '/sales/icp-attrs';
+const salesIcpAttrsTitle = 'ICP 属性配置';
+const salesLeadsPath = '/sales/leads';
+const salesLeadsTitle = '线索台账';
+const salesEmailOutreachPath = '/sales/email-outreach';
+const salesEmailOutreachTitle = '邮件触达';
 
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
 let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
@@ -66,9 +84,54 @@ const salesIcpModelingMenuItem: RuoyiMenuDataItem = {
   icon: <ExperimentOutlined />,
 };
 
+const salesSourceCoverageMenuItem: RuoyiMenuDataItem = {
+  key: salesSourceCoveragePath,
+  path: salesSourceCoveragePath,
+  name: salesSourceCoverageTitle,
+  locale: false,
+  icon: <GlobalOutlined />,
+};
+
+const salesProviderSettingsMenuItem: RuoyiMenuDataItem = {
+  key: salesProviderSettingsPath,
+  path: salesProviderSettingsPath,
+  name: salesProviderSettingsTitle,
+  locale: false,
+  icon: <ApiOutlined />,
+};
+
+const salesIcpAttrsMenuItem: RuoyiMenuDataItem = {
+  key: salesIcpAttrsPath,
+  path: salesIcpAttrsPath,
+  name: salesIcpAttrsTitle,
+  locale: false,
+  icon: <SettingOutlined />,
+};
+
+const salesLeadsMenuItem: RuoyiMenuDataItem = {
+  key: salesLeadsPath,
+  path: salesLeadsPath,
+  name: salesLeadsTitle,
+  locale: false,
+  icon: <ProfileOutlined />,
+};
+
+const salesEmailOutreachMenuItem: RuoyiMenuDataItem = {
+  key: salesEmailOutreachPath,
+  path: salesEmailOutreachPath,
+  name: salesEmailOutreachTitle,
+  locale: false,
+  icon: <MailOutlined />,
+};
+
 const salesAgentInjectedChildren: RuoyiMenuDataItem[] = [
   salesOverviewMenuItem,
+  salesSourceCoverageMenuItem,
+  salesProviderSettingsMenuItem,
   salesIcpModelingMenuItem,
+  salesIcpAttrsMenuItem,
+  salesLeadsMenuItem,
+  salesEmailOutreachMenuItem,
 ];
 
 const isSalesAgentMenuItem = (item: MenuDataItem) => {

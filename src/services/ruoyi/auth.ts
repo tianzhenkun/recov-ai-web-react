@@ -37,6 +37,15 @@ export type TenantInfo = {
   }>;
 };
 
+export type TenantMode = 'SELECTABLE' | 'FIXED';
+
+export type SiteConfig = {
+  productCode?: string;
+  productName?: string;
+  loginVariant: string;
+  tenantMode: TenantMode;
+};
+
 export const login = (data: LoginData) =>
   ruoyiRequest<LoginResult>('/auth/login', {
     method: 'post',
@@ -86,6 +95,14 @@ export const getTenantList = (isToken: boolean) =>
     method: 'get',
     headers: {
       isToken,
+    },
+  });
+
+export const getSiteConfig = () =>
+  ruoyiRequest<SiteConfig>('/auth/site/config', {
+    method: 'get',
+    headers: {
+      isToken: false,
     },
   });
 

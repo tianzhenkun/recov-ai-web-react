@@ -1,4 +1,5 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
+import { voiceFetch } from '@/adapters/ruoyi/voice';
 
 export type AiCallDashboard = {
   totalCallCount?: number | string;
@@ -246,11 +247,10 @@ export const getAiCallRecordPage = (params: AiCallRecordPageQuery) =>
   });
 
 export const claimAiCallHandoff = async (data: AiCallHandoffClaimRequest) => {
-  const response = await fetch(
-    `/voice-api/calls/${encodeURIComponent(data.gatewayCallId)}/handoff/claim`,
+  const response = await voiceFetch(
+    `/calls/${encodeURIComponent(data.gatewayCallId)}/handoff/claim`,
     {
       method: 'post',
-      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -275,11 +275,10 @@ export const claimAiCallHandoff = async (data: AiCallHandoffClaimRequest) => {
 };
 
 export const hangupGatewayCall = async (data: AiCallHangupRequest) => {
-  const response = await fetch(
-    `/voice-api/calls/${encodeURIComponent(data.gatewayCallId)}/hangup`,
+  const response = await voiceFetch(
+    `/calls/${encodeURIComponent(data.gatewayCallId)}/hangup`,
     {
       method: 'post',
-      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -308,9 +307,8 @@ export const getAiCallAgentWebRtcConfig = () =>
   });
 
 export const getGatewayCalls = async () => {
-  const response = await fetch('/voice-api/calls', {
+  const response = await voiceFetch('/calls', {
     method: 'get',
-    credentials: 'same-origin',
   });
   if (!response.ok) {
     throw new Error(`gateway calls request failed: ${response.status}`);

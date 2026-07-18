@@ -9,7 +9,7 @@ import {
   rsaDecrypt,
   rsaEncrypt,
 } from './crypto';
-import { getAdminApi, getBaseApi, getClientId } from './env';
+import { getBaseApi, getClientId, requireProductApi } from './env';
 import { showRuoyiError } from './message';
 import { normalizeRuoyiParams } from './params';
 import {
@@ -350,7 +350,7 @@ export async function adminRequest<T = unknown>(
   url: string,
   options: RuoyiRequestOptions = {},
 ): Promise<RuoyiResponse<T> | T> {
-  return requestWithBaseApi<T>(getAdminApi(), url, options);
+  return requestWithBaseApi<T>(requireProductApi(), url, options);
 }
 
 export const ruoyiAdminRequest = adminRequest;

@@ -273,10 +273,9 @@ export default [
         component: './account/center',
       },
       {
-        name: 'settings',
-        icon: 'setting',
         path: '/account/settings',
-        component: './account/settings',
+        redirect: '/account/center',
+        hideInMenu: true,
       },
       {
         name: 'credit',
@@ -304,10 +303,40 @@ export default [
         hideInMenu: true,
       },
       {
+        name: 'source-coverage',
+        icon: 'global',
+        path: '/sales/source-coverage',
+        component: './sales/source-coverage',
+      },
+      {
+        name: 'provider-settings',
+        icon: 'api',
+        path: '/sales/provider-settings',
+        component: './sales/provider-settings',
+      },
+      {
         name: 'icp-modeling',
         icon: 'experiment',
         path: '/sales/icp-modeling',
         component: './sales/icp-modeling',
+      },
+      {
+        name: 'icp-attrs',
+        icon: 'setting',
+        path: '/sales/icp-attrs',
+        component: './sales/icp-attrs',
+      },
+      {
+        name: 'leads',
+        icon: 'profile',
+        path: '/sales/leads',
+        component: './sales/leads',
+      },
+      {
+        name: 'email-outreach',
+        icon: 'mail',
+        path: '/sales/email-outreach',
+        component: './sales/email-outreach',
       },
     ],
   },
@@ -408,8 +437,37 @@ export default [
     hideInMenu: true,
   },
   {
+    path: '/sys-conf/integrations',
+    component: './ruoyi/system/integration-center',
+    hideInMenu: true,
+    access: 'isSuperAdmin',
+  },
+  {
     path: '/sys-conf/oss-config/index',
     component: './ruoyi/system/oss-config',
+    hideInMenu: true,
+    access: 'isSuperAdmin',
+  },
+  {
+    path: '/sys-conf/payment-channel-config',
+    component: './ruoyi/system/payment-channel-config',
+    hideInMenu: true,
+    access: 'isSuperAdmin',
+  },
+  {
+    path: '/sys-conf/oauth-providers',
+    component: './ruoyi/system/oauth-provider-config',
+    hideInMenu: true,
+    access: 'canManageOAuthIntegration',
+  },
+  {
+    path: '/sys-conf/products',
+    component: './ruoyi/system/product',
+    hideInMenu: true,
+  },
+  {
+    path: '/sys-conf/license-management',
+    component: './ruoyi/system/license-management',
     hideInMenu: true,
   },
   {

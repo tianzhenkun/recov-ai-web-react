@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "layouts": [
+    {
+      "code": "default",
+      "label": "默认登录页"
+    }
+  ]
+}

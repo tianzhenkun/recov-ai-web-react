@@ -1,6 +1,6 @@
 import {
-  CheckCircleOutlined,
   ClockCircleOutlined,
+  CrownOutlined,
   GiftOutlined,
   HistoryOutlined,
   ReloadOutlined,
@@ -40,6 +40,7 @@ import {
   type CreditAccount,
   type CreditCoupon,
   type CreditCouponTemplate,
+  type CreditEntitlements,
   type CreditGrant,
   type CreditLedger,
   type CreditPackage,
@@ -47,6 +48,7 @@ import {
   claimScopedCreditCoupon,
   createScopedCreditPackageOrder,
   getScopedCreditAccount,
+  getScopedCreditEntitlements,
   getScopedCreditPackageOrder,
   listScopedClaimableCouponTemplates,
   listScopedCreditCoupons,
@@ -58,6 +60,8 @@ import {
   retryScopedCreditPackagePayment,
 } from '@/services/ruoyi/credit-billing';
 import {
+  canRetryPackagePayment,
+  getExpiryRefreshDelay,
   PACKAGE_ORDER_POLL_INTERVAL_MS,
   shouldPollPackageOrder,
 } from '../polling';
@@ -84,18 +88,17 @@ import {
   shortId,
   toNumber,
 } from '../shared';
+import {
+  type CreditWorkspaceScope,
+  type CreditWorkspaceTab,
+  getCreditWorkspaceTabLabels,
+  getCreditWorkspaceTitle,
+} from './creditWorkspaceCopy';
+import { usePurchaseIntentIdempotency } from './usePurchaseIntentIdempotency';
 
 const { Text } = Typography;
 
 const creditGrantField = <K extends keyof CreditGrant>(field: K): K => field;
-
-export type CreditWorkspaceScope = 'tenant' | 'me';
-export type CreditWorkspaceTab =
-  | 'overview'
-  | 'packages'
-  | 'orders'
-  | 'coupons'
-  | 'ledgers';
 
 type CreditWorkspaceProps = {
   scope: CreditWorkspaceScope;
@@ -104,6 +107,7 @@ type CreditWorkspaceProps = {
 };
 
 type PurchaseFormValues = {
+  productCode: string;
   couponId?: string;
   remark?: string;
 };
@@ -164,11 +168,6 @@ const orderPackageName = (record?: CreditPackageOrder) =>
 const orderPackageKind = (record?: CreditPackageOrder) =>
   record?.packageKindSnapshot;
 
-const canRetryPackagePayment = (record?: CreditPackageOrder) =>
-  orderStatus(record) === 'PENDING_PAYMENT' &&
-  !record?.paymentOrderId &&
-  record?.paymentStatus === 'PREPAY_FAILED';
-
 const isPaymentBusinessCallbackPending = (record?: CreditPackageOrder) =>
   orderStatus(record) === 'PENDING_PAYMENT' &&
   record?.paymentStatus === 'SUCCESS';
@@ -192,10 +191,12 @@ export const CreditWorkspace = ({
   const { token } = theme.useToken();
   const { canAccess } = usePermission();
   const [purchaseForm] = Form.useForm<PurchaseFormValues>();
+  const purchaseIntentIdempotency = usePurchaseIntentIdempotency();
   const permissions = scopePermissions[scope];
 
   const [activeTab, setActiveTab] = useState<CreditWorkspaceTab>(initialTab);
   const [account, setAccount] = useState<CreditAccount>();
+  const [entitlements, setEntitlements] = useState<CreditEntitlements>();
   const [grants, setGrants] = useState<CreditGrant[]>([]);
   const [packages, setPackages] = useState<CreditPackage[]>([]);
   const [orders, setOrders] = useState<CreditPackageOrder[]>([]);
@@ -236,12 +237,14 @@ export const CreditWorkspace = ({
 
   const loadAccount = useCallback(async () => {
     if (!canAccess({ permissions: permissions.account })) return;
-    const [nextAccount, nextGrants] = await Promise.all([
+    const [nextAccount, nextGrants, nextEntitlements] = await Promise.all([
       getScopedCreditAccount(scope),
       listScopedCreditGrants(scope),
+      getScopedCreditEntitlements(scope),
     ]);
     setAccount(nextAccount);
     setGrants(nextGrants);
+    setEntitlements(nextEntitlements);
   }, [canAccess, permissions.account, scope]);
 
   const loadPackages = useCallback(async () => {
@@ -316,6 +319,7 @@ export const CreditWorkspace = ({
 
   useEffect(() => {
     setAccount(undefined);
+    setEntitlements(undefined);
     setGrants([]);
     setPackages([]);
     setOrders([]);
@@ -370,8 +374,12 @@ export const CreditWorkspace = ({
   }, [orderOpen, pollSelectedOrder, selectedOrder]);
 
   const openPurchase = async (record: CreditPackage) => {
+    purchaseIntentIdempotency.start();
     setSelectedPackage(record);
     purchaseForm.resetFields();
+    if (record.products?.length === 1 && record.products[0]?.productCode) {
+      purchaseForm.setFieldValue('productCode', record.products[0].productCode);
+    }
     setPurchaseOpen(true);
     if (!canAccess({ permissions: permissions.coupons })) {
       setPurchaseCoupons([]);
@@ -398,18 +406,22 @@ export const CreditWorkspace = ({
     try {
       const order = await createScopedCreditPackageOrder(scope, {
         packageId: selectedPackage.id,
+        productCode: values.productCode,
+        idempotencyKey: purchaseIntentIdempotency.current(),
         couponId:
           values.couponId && values.couponId !== 'none'
             ? values.couponId
             : undefined,
         remark: values.remark,
       });
+      purchaseIntentIdempotency.finish();
       setPurchaseOpen(false);
       setSelectedOrder(order);
       setOrderOpen(true);
       await loadOrders(orderPage.current, orderPage.pageSize);
       message.success('订单已创建');
     } catch (error) {
+      purchaseIntentIdempotency.markFailed();
       message.error(getErrorMessage(error, '创建套餐订单失败'));
     } finally {
       setSubmitting(false);
@@ -467,10 +479,121 @@ export const CreditWorkspace = ({
     outstandingPoints > 0 ||
     account?.status === 'ARREARS_BLOCKED' ||
     accountDisabled;
+  const activeGrants = useMemo(() => {
+    const now = Date.now();
+    return grants.filter((grant) => {
+      if (
+        grant.status !== 'AVAILABLE' ||
+        toNumber(grant.remainingPoints) <= 0
+      ) {
+        return false;
+      }
+      if (!grant.expiresAt) return true;
+      const expiresAt = new Date(grant.expiresAt).getTime();
+      return Number.isFinite(expiresAt) && expiresAt > now;
+    });
+  }, [grants]);
+  const expiringGrants = useMemo(() => {
+    const now = Date.now();
+    const deadline = now + 30 * 24 * 60 * 60 * 1000;
+    return activeGrants.filter((grant) => {
+      if (!grant.expiresAt) return false;
+      const expiresAt = new Date(grant.expiresAt).getTime();
+      return (
+        Number.isFinite(expiresAt) && expiresAt >= now && expiresAt <= deadline
+      );
+    });
+  }, [activeGrants]);
+  const expiringPoints = expiringGrants.reduce(
+    (sum, grant) => sum + toNumber(grant.remainingPoints),
+    0,
+  );
+  const nextAvailableGrantExpiry = activeGrants
+    .map((grant) => grant.expiresAt)
+    .filter((value): value is string => Boolean(value))
+    .sort(
+      (left, right) => new Date(left).getTime() - new Date(right).getTime(),
+    )[0];
+  const activeTermEntitlementGroups = useMemo(() => {
+    const now = Date.now();
+    return (entitlements?.products || [])
+      .map((product) => ({
+        ...product,
+        termPackages: (product.termPackages || []).filter((item) => {
+          if (
+            !['AVAILABLE', 'EXHAUSTED'].includes(String(item.status)) ||
+            !item.expiresAt
+          ) {
+            return false;
+          }
+          const expiresAt = new Date(item.expiresAt).getTime();
+          return Number.isFinite(expiresAt) && expiresAt > now;
+        }),
+      }))
+      .filter((product) => product.termPackages.length > 0);
+  }, [entitlements]);
+  const effectiveEntitlementCount =
+    activeGrants.filter((grant) => grant.packageKind === 'FIXED_POINTS')
+      .length +
+    activeTermEntitlementGroups.reduce(
+      (count, product) => count + product.termPackages.length,
+      0,
+    );
+  const nearestEntitlementExpiry = activeTermEntitlementGroups
+    .flatMap((product) => product.termPackages)
+    .map((item) => item.expiresAt)
+    .filter((value): value is string => Boolean(value))
+    .sort(
+      (left, right) => new Date(left).getTime() - new Date(right).getTime(),
+    )[0];
+  const nextExpiry = [nextAvailableGrantExpiry, nearestEntitlementExpiry]
+    .filter((value): value is string => Boolean(value))
+    .sort(
+      (left, right) => new Date(left).getTime() - new Date(right).getTime(),
+    )[0];
+
+  useEffect(() => {
+    if (!nearestEntitlementExpiry) return undefined;
+    let timer: number | undefined;
+    let cancelled = false;
+    const refreshExpiredEntitlements = () => {
+      void loadAccount().catch((error) => {
+        message.error(getErrorMessage(error, '刷新到期权益失败'));
+      });
+    };
+
+    const scheduleRefresh = () => {
+      const delay = getExpiryRefreshDelay(nearestEntitlementExpiry);
+      if (delay === undefined || cancelled) return;
+      if (delay === 0) {
+        refreshExpiredEntitlements();
+        return;
+      }
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        const nextDelay = getExpiryRefreshDelay(nearestEntitlementExpiry);
+        if (nextDelay === 0) {
+          refreshExpiredEntitlements();
+          return;
+        }
+        scheduleRefresh();
+      }, delay);
+    };
+
+    scheduleRefresh();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [loadAccount, message, nearestEntitlementExpiry]);
+  const tabLabels = getCreditWorkspaceTabLabels(scope);
 
   const visibleTabKeys = useMemo(() => {
     const keys = new Set<CreditWorkspaceTab>();
-    if (canAccess({ permissions: permissions.account })) keys.add('overview');
+    if (canAccess({ permissions: permissions.account })) {
+      keys.add('overview');
+      keys.add('grants');
+    }
     if (canAccess({ permissions: permissions.packages })) keys.add('packages');
     if (canAccess({ permissions: permissions.orders })) keys.add('orders');
     if (canAccess({ permissions: permissions.coupons })) keys.add('coupons');
@@ -549,6 +672,14 @@ export const CreditWorkspace = ({
       width: 180,
       ellipsis: true,
       render: (_, record) => orderPackageName(record),
+    },
+    {
+      title: '购买产品',
+      key: 'productName',
+      width: 180,
+      ellipsis: true,
+      render: (_, record) =>
+        record.productNameSnapshot || record.productCode || '-',
     },
     {
       title: '点数',
@@ -676,7 +807,7 @@ export const CreditWorkspace = ({
         <Alert
           showIcon
           type="error"
-          message={
+          title={
             accountDisabled
               ? '当前信用点账户已停用，无法购买套餐'
               : `当前欠费 ${formatPoints(outstandingPoints)} 点，已暂停购买和新收费业务`
@@ -718,11 +849,12 @@ export const CreditWorkspace = ({
         <Col xs={24} sm={12} xl={6}>
           <ProCard>
             <Statistic
-              title="累计发放"
-              value={toNumber(account?.totalGrantedPoints)}
+              title="有效权益"
+              value={effectiveEntitlementCount}
+              suffix="批"
               prefix={
                 <span style={metricIconStyle('#389e0d', '#f6ffed')}>
-                  <GiftOutlined />
+                  <CrownOutlined />
                 </span>
               }
             />
@@ -731,11 +863,12 @@ export const CreditWorkspace = ({
         <Col xs={24} sm={12} xl={6}>
           <ProCard>
             <Statistic
-              title="累计偿债"
-              value={toNumber(account?.totalSettledPoints)}
+              title="30天内到期"
+              value={expiringPoints}
+              suffix="点"
               prefix={
                 <span style={metricIconStyle('#722ed1', '#f9f0ff')}>
-                  <CheckCircleOutlined />
+                  <ClockCircleOutlined />
                 </span>
               }
             />
@@ -743,7 +876,7 @@ export const CreditWorkspace = ({
         </Col>
       </Row>
       <ProCard
-        title="账户批次"
+        title="权益状态"
         extra={
           account?.status ? (
             <Tag color={accountStatusTone[String(account.status)]}>
@@ -752,16 +885,119 @@ export const CreditWorkspace = ({
           ) : null
         }
       >
-        <Table
-          rowKey={(record) => String(record.id)}
-          columns={grantColumns}
-          dataSource={grants}
-          pagination={{ showTotal: (total) => `共 ${total} 条` }}
-          scroll={{ x: 1120 }}
-          size="middle"
+        <Descriptions
+          column={{ xs: 1, sm: 2, lg: 3 }}
+          items={[
+            {
+              key: 'scope',
+              label: '权益归属',
+              children: scope === 'tenant' ? '当前团队' : '当前账号',
+            },
+            {
+              key: 'granted',
+              label: '累计获得',
+              children: `${formatPoints(account?.totalGrantedPoints)} 点`,
+            },
+            {
+              key: 'fixedPoints',
+              label: '固定点数',
+              children: `${formatPoints(entitlements?.fixedPoints?.remainingPoints)} 点`,
+            },
+            {
+              key: 'charged',
+              label: '累计使用',
+              children: `${formatPoints(account?.totalChargedPoints)} 点`,
+            },
+            {
+              key: 'refunded',
+              label: '累计退回',
+              children: `${formatPoints(account?.totalRefundedPoints)} 点`,
+            },
+            {
+              key: 'settled',
+              label: '累计偿还欠费',
+              children: `${formatPoints(account?.totalSettledPoints)} 点`,
+            },
+            {
+              key: 'nextExpiry',
+              label: '最近到期',
+              children: nextExpiry ? formatDate(nextExpiry) : '暂无到期权益',
+            },
+          ]}
+          size="small"
         />
       </ProCard>
+      <ProCard title={scope === 'tenant' ? '团队有效期套餐' : '个人有效期套餐'}>
+        {activeTermEntitlementGroups.length ? (
+          <Row gutter={[12, 12]}>
+            {activeTermEntitlementGroups.flatMap((product) =>
+              product.termPackages.map((item) => (
+                <Col key={item.grantId || item.packageOrderId} xs={24} lg={12}>
+                  <ProCard
+                    title={item.packageName || '有效期点数套餐'}
+                    style={{
+                      border: `1px solid ${token.colorBorderSecondary}`,
+                    }}
+                    extra={
+                      <Tag color="blue">
+                        {product.productName ||
+                          product.productCode ||
+                          '历史套餐'}
+                      </Tag>
+                    }
+                  >
+                    <Descriptions
+                      column={2}
+                      items={[
+                        {
+                          key: 'remaining',
+                          label: '剩余点数',
+                          children: `${formatPoints(item.remainingPoints)} 点`,
+                        },
+                        {
+                          key: 'total',
+                          label: '套餐点数',
+                          children: `${formatPoints(item.totalPoints)} 点`,
+                        },
+                        {
+                          key: 'status',
+                          label: '权益状态',
+                          children:
+                            toNumber(item.remainingPoints) > 0 ? (
+                              <Tag color="success">有效</Tag>
+                            ) : (
+                              <Tag>有效期内，点数已用完</Tag>
+                            ),
+                        },
+                        {
+                          key: 'expiresAt',
+                          label: '到期时间',
+                          children: formatDate(item.expiresAt),
+                        },
+                      ]}
+                      size="small"
+                    />
+                  </ProCard>
+                </Col>
+              )),
+            )}
+          </Row>
+        ) : (
+          <Empty description="暂无有效期套餐" />
+        )}
+      </ProCard>
     </Space>
+  );
+
+  const grantsContent = (
+    <Table
+      rowKey={(record) => String(record.id)}
+      columns={grantColumns}
+      dataSource={grants}
+      pagination={{ showTotal: (total) => `共 ${total} 条` }}
+      scroll={{ x: 1120 }}
+      size="middle"
+    />
   );
 
   const packagesContent = packages.length ? (
@@ -787,6 +1023,13 @@ export const CreditWorkspace = ({
               }
             >
               <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+                <Space size={[4, 4]} wrap>
+                  {(record.products || []).map((product) => (
+                    <Tag key={product.productCode || product.productName}>
+                      {product.productName || product.productCode}
+                    </Tag>
+                  ))}
+                </Space>
                 <Statistic title="点数" value={toNumber(record.points)} />
                 <Row justify="space-between">
                   <Text type="secondary">有效期</Text>
@@ -886,19 +1129,25 @@ export const CreditWorkspace = ({
   const tabItems = [
     {
       key: 'overview',
-      label: '余额与批次',
+      label: tabLabels.overview,
       icon: <WalletOutlined />,
       children: overviewContent,
     },
     {
       key: 'packages',
-      label: '套餐购买',
+      label: tabLabels.packages,
       icon: <ShoppingCartOutlined />,
       children: packagesContent,
     },
     {
+      key: 'grants',
+      label: tabLabels.grants,
+      icon: <CrownOutlined />,
+      children: grantsContent,
+    },
+    {
       key: 'orders',
-      label: '购买订单',
+      label: tabLabels.orders,
       icon: <ClockCircleOutlined />,
       children: (
         <Table
@@ -919,13 +1168,13 @@ export const CreditWorkspace = ({
     },
     {
       key: 'coupons',
-      label: '优惠券',
+      label: tabLabels.coupons,
       icon: <GiftOutlined />,
       children: couponContent,
     },
     {
       key: 'ledgers',
-      label: '信用点流水',
+      label: tabLabels.ledgers,
       icon: <HistoryOutlined />,
       children: (
         <Table
@@ -960,7 +1209,7 @@ export const CreditWorkspace = ({
   return (
     <PageContainer
       breadcrumbRender={false}
-      title={title || (scope === 'tenant' ? '团队计费中心' : '我的信用点')}
+      title={title || getCreditWorkspaceTitle(scope)}
       extra={
         <Button
           icon={<ReloadOutlined />}
@@ -986,7 +1235,10 @@ export const CreditWorkspace = ({
         title={`购买${selectedPackage?.packageName || '套餐'}`}
         confirmLoading={submitting}
         okText="创建订单"
-        onCancel={() => setPurchaseOpen(false)}
+        onCancel={() => {
+          purchaseIntentIdempotency.finish();
+          setPurchaseOpen(false);
+        }}
         onOk={() => void submitPurchase()}
       >
         <Descriptions
@@ -1008,7 +1260,28 @@ export const CreditWorkspace = ({
             {formatAmount(selectedPackage?.price)}
           </Descriptions.Item>
         </Descriptions>
-        <Form form={purchaseForm} layout="vertical">
+        <Form
+          form={purchaseForm}
+          layout="vertical"
+          onValuesChange={purchaseIntentIdempotency.handleValuesChange}
+        >
+          <Form.Item
+            label="购买产品"
+            name="productCode"
+            rules={[{ required: true, message: '请选择购买产品' }]}
+          >
+            <Select
+              optionFilterProp="label"
+              options={(selectedPackage?.products || [])
+                .filter((product) => product.productCode)
+                .map((product) => ({
+                  label: `${product.productName || product.productCode} · ${product.productCode}`,
+                  value: String(product.productCode),
+                }))}
+              placeholder="选择本次订单归属产品"
+              showSearch
+            />
+          </Form.Item>
           <Form.Item label="优惠券" name="couponId" initialValue="none">
             <Select
               options={[
@@ -1051,6 +1324,11 @@ export const CreditWorkspace = ({
           </Descriptions.Item>
           <Descriptions.Item label="套餐">
             {orderPackageName(selectedOrder)}
+          </Descriptions.Item>
+          <Descriptions.Item label="购买产品">
+            {selectedOrder?.productNameSnapshot ||
+              selectedOrder?.productCode ||
+              '-'}
           </Descriptions.Item>
           <Descriptions.Item label="状态">
             {renderDictTag(
@@ -1104,7 +1382,7 @@ export const CreditWorkspace = ({
           <Alert
             showIcon
             type="info"
-            message={
+            title={
               isPaymentBusinessCallbackPending(selectedOrder)
                 ? '支付已成功，正在等待信用点入账，每 3 秒自动刷新'
                 : '订单处理中，每 3 秒自动刷新'

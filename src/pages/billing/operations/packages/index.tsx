@@ -1,5 +1,6 @@
 import {
   CheckCircleOutlined,
+  EditOutlined,
   PlusCircleOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -42,8 +43,13 @@ import {
   type CreditPackage,
   createCreditPackage,
   listCreditPackages,
+  updateCreditPackage,
   updateCreditPackageStatus,
 } from '@/services/ruoyi/credit-billing';
+import {
+  listEnabledPlatformProducts,
+  type PlatformProduct,
+} from '@/services/ruoyi/product-catalog';
 import OperationsGuard from '../components/OperationsGuard';
 
 type PackageFilterValues = {
@@ -57,6 +63,7 @@ type PackageFormValues = {
   packageKind: 'FIXED_POINTS' | 'TERM_POINTS';
   points: number;
   price: number;
+  productCodes: string[];
   termMonths?: 1 | 3;
   sortOrder?: number;
   remark?: string;
@@ -98,9 +105,13 @@ const CreditPackagePage = () => {
   const currentPackageKind = Form.useWatch('packageKind', packageForm);
 
   const [packages, setPackages] = useState<CreditPackage[]>([]);
+  const [platformProducts, setPlatformProducts] = useState<PlatformProduct[]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<CreditPackage>();
 
   const loadPackages = useCallback(async () => {
     setLoading(true);
@@ -122,9 +133,38 @@ const CreditPackagePage = () => {
     }
   }, [filterForm, messageApi]);
 
+  const loadPlatformProducts = useCallback(async () => {
+    try {
+      const response = await listEnabledPlatformProducts();
+      setPlatformProducts(response.data || []);
+    } catch (error) {
+      messageApi.error(getErrorMessage(error, '加载平台产品失败'));
+    }
+  }, [messageApi]);
+
   useEffect(() => {
-    void loadPackages();
-  }, [loadPackages]);
+    void Promise.all([loadPackages(), loadPlatformProducts()]);
+  }, [loadPackages, loadPlatformProducts]);
+
+  const productOptions = useMemo(() => {
+    const enabled = platformProducts
+      .filter((product) => product.productCode)
+      .map((product) => ({
+        label: `${product.productName || product.productCode} · ${product.productCode}`,
+        value: String(product.productCode),
+      }));
+    const enabledCodes = new Set(enabled.map((option) => option.value));
+    const disabledExisting = (editingPackage?.products || [])
+      .filter(
+        (product) =>
+          product.productCode && !enabledCodes.has(String(product.productCode)),
+      )
+      .map((product) => ({
+        label: `${product.productName || product.productCode} · ${product.productCode}（已停用，请移除）`,
+        value: String(product.productCode),
+      }));
+    return [...enabled, ...disabledExisting];
+  }, [editingPackage?.products, platformProducts]);
 
   const summary = useMemo(
     () =>
@@ -141,18 +181,42 @@ const CreditPackagePage = () => {
   );
 
   const openCreateModal = () => {
+    setEditingPackage(undefined);
     packageForm.setFieldsValue({
       ownerScope: 'USER',
       packageKind: 'FIXED_POINTS',
       points: 100,
       price: 99,
+      productCodes: [],
       sortOrder: 100,
+    });
+    setModalOpen(true);
+  };
+
+  const openEditModal = (record: CreditPackage) => {
+    setEditingPackage(record);
+    packageForm.setFieldsValue({
+      packageName: record.packageName || '',
+      ownerScope: record.ownerScope || 'USER',
+      packageKind: record.packageKind || 'FIXED_POINTS',
+      points: Number(record.points || 0),
+      price: Number(record.price || 0),
+      productCodes: (record.products || [])
+        .map((product) => product.productCode)
+        .filter((code): code is string => Boolean(code)),
+      termMonths:
+        record.packageKind === 'TERM_POINTS'
+          ? (Number(record.termMonths) as 1 | 3)
+          : undefined,
+      sortOrder: Number(record.sortOrder ?? 100),
+      remark: record.remark,
     });
     setModalOpen(true);
   };
 
   const closeCreateModal = () => {
     setModalOpen(false);
+    setEditingPackage(undefined);
     packageForm.resetFields();
   };
 
@@ -163,11 +227,11 @@ const CreditPackagePage = () => {
     }
   };
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     const values = await packageForm.validateFields();
     setSaving(true);
     try {
-      await createCreditPackage({
+      const payload = {
         packageName: values.packageName.trim(),
         ownerScope: values.ownerScope,
         packageKind: values.packageKind,
@@ -175,14 +239,20 @@ const CreditPackagePage = () => {
           values.packageKind === 'TERM_POINTS' ? values.termMonths : undefined,
         points: values.points,
         price: values.price,
+        productCodes: values.productCodes,
         sortOrder: values.sortOrder ?? undefined,
         remark: values.remark?.trim() || undefined,
-      });
-      messageApi.success('套餐已创建');
+      };
+      if (editingPackage?.id) {
+        await updateCreditPackage(String(editingPackage.id), payload);
+      } else {
+        await createCreditPackage(payload);
+      }
+      messageApi.success(editingPackage?.id ? '套餐已更新' : '套餐已创建');
       closeCreateModal();
       await loadPackages();
     } catch (error) {
-      messageApi.error(getErrorMessage(error, '创建套餐失败'));
+      messageApi.error(getErrorMessage(error, '保存套餐失败'));
     } finally {
       setSaving(false);
     }
@@ -230,6 +300,19 @@ const CreditPackagePage = () => {
       dataIndex: 'ownerScope',
       width: 140,
       render: (value) => renderDictTag(value, packageOwnerScopeText, 'blue'),
+    },
+    {
+      title: '适用产品',
+      dataIndex: 'products',
+      width: 260,
+      render: (_, record) =>
+        record.products?.length
+          ? record.products
+              .map(
+                (product) => product.productName || product.productCode || '-',
+              )
+              .join('、')
+          : '未配置（不可售）',
     },
     {
       title: '套餐类型',
@@ -287,10 +370,17 @@ const CreditPackagePage = () => {
       title: '操作',
       key: 'actions',
       fixed: 'right',
-      width: 120,
+      width: 150,
       render: (_, record) => (
         <TableActions
           actions={[
+            {
+              key: 'edit',
+              label: '编辑',
+              icon: <EditOutlined />,
+              permissions: billingPermissions.adminPackageEdit,
+              onClick: () => openEditModal(record),
+            },
             {
               key: 'stop',
               label: record.status === 'ON_SALE' ? '停售' : '上架',
@@ -390,7 +480,7 @@ const CreditPackagePage = () => {
             showTotal: (total) => `共 ${total} 条`,
           }}
           rowKey={(record) => String(record.id)}
-          scroll={{ x: 1700 }}
+          scroll={{ x: 1960 }}
           size="middle"
           style={{ marginTop: token.marginMD }}
         />
@@ -400,12 +490,12 @@ const CreditPackagePage = () => {
         confirmLoading={saving}
         destroyOnHidden
         forceRender
-        okText="确认创建"
+        okText={editingPackage ? '保存修改' : '确认创建'}
         open={modalOpen}
-        title="新增套餐"
+        title={editingPackage ? '编辑套餐' : '新增套餐'}
         width={760}
         onCancel={closeCreateModal}
-        onOk={handleCreate}
+        onOk={handleSave}
       >
         <Form<PackageFormValues>
           form={packageForm}
@@ -429,6 +519,46 @@ const CreditPackagePage = () => {
                 rules={[{ required: true, message: '请选择适用对象' }]}
               >
                 <Select options={packageTypeOptions.slice(1)} />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item
+                label="适用产品"
+                name="productCodes"
+                rules={[
+                  { required: true, message: '请至少选择一个适用产品' },
+                  {
+                    type: 'array',
+                    min: 1,
+                    max: 50,
+                    message: '请选择 1 到 50 个适用产品',
+                  },
+                  {
+                    validator: async (_, values?: string[]) => {
+                      const enabledCodes = new Set(
+                        platformProducts
+                          .map((product) => product.productCode)
+                          .filter((code): code is string => Boolean(code)),
+                      );
+                      const disabledCodes = (values || []).filter(
+                        (code) => !enabledCodes.has(code),
+                      );
+                      if (disabledCodes.length) {
+                        throw new Error(
+                          `已停用产品必须移除：${disabledCodes.join('、')}`,
+                        );
+                      }
+                    },
+                  },
+                ]}
+              >
+                <Select
+                  mode="multiple"
+                  optionFilterProp="label"
+                  options={productOptions}
+                  placeholder="选择套餐允许展示和购买的产品"
+                  showSearch
+                />
               </Form.Item>
             </Col>
             <Col span={12}>

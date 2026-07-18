@@ -1,7 +1,9 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
 import {
   adjustAdminCreditCharge,
+  createCreditPackage,
   createScopedCreditPackageOrder,
+  getScopedCreditEntitlements,
   getScopedCreditPackageOrder,
   grantAdminCredit,
   issueCreditCoupon,
@@ -9,6 +11,7 @@ import {
   pageCreditAccounts,
   pageScopedCreditPackageOrders,
   saveCreditCouponTemplate,
+  updateCreditPackage,
   updateCreditPackageStatus,
 } from './credit-billing';
 
@@ -27,6 +30,8 @@ describe('scoped credit billing service', () => {
   it('creates tenant package orders without client supplied ownership or price', async () => {
     await createScopedCreditPackageOrder('tenant', {
       packageId: '2067000010000000001',
+      productCode: 'RECOV',
+      idempotencyKey: 'tenant-purchase-1',
       couponId: '2067000010000000002',
       remark: '团队购买',
     });
@@ -37,6 +42,8 @@ describe('scoped credit billing service', () => {
         method: 'post',
         data: {
           packageId: '2067000010000000001',
+          productCode: 'RECOV',
+          idempotencyKey: 'tenant-purchase-1',
           couponId: '2067000010000000002',
           remark: '团队购买',
         },
@@ -47,6 +54,54 @@ describe('scoped credit billing service', () => {
     expect(payload).not.toHaveProperty('ownerId');
     expect(payload).not.toHaveProperty('amountFen');
     expect(payload).not.toHaveProperty('bizType');
+  });
+
+  it('creates personal package orders with the caller supplied idempotency key', async () => {
+    await createScopedCreditPackageOrder('me', {
+      packageId: '2067000010000000003',
+      productCode: 'SALES_AGENT',
+      idempotencyKey: 'personal-purchase-1',
+    });
+
+    expect(mockedRequest).toHaveBeenCalledWith(
+      '/system/credit/me/package-orders',
+      expect.objectContaining({
+        method: 'post',
+        data: {
+          packageId: '2067000010000000003',
+          productCode: 'SALES_AGENT',
+          idempotencyKey: 'personal-purchase-1',
+        },
+      }),
+    );
+  });
+
+  it('requires explicit product scope for package maintenance and purchase attribution', async () => {
+    const payload = {
+      packageName: '团队期限包',
+      ownerScope: 'TENANT' as const,
+      packageKind: 'TERM_POINTS' as const,
+      termMonths: 1 as const,
+      points: 1000,
+      price: 399,
+      productCodes: ['RECOV', 'SALES_AGENT'],
+    };
+
+    await createCreditPackage(payload);
+    expect(mockedRequest.mock.calls.at(-1)?.[1].data.productCodes).toEqual([
+      'RECOV',
+      'SALES_AGENT',
+    ]);
+
+    await updateCreditPackage('package-1', payload);
+    expect(mockedRequest.mock.calls.at(-1)?.[0]).toBe(
+      '/system/credit/admin/packages/package-1',
+    );
+
+    await getScopedCreditEntitlements('me');
+    expect(mockedRequest.mock.calls.at(-1)?.[0]).toBe(
+      '/system/credit/me/entitlements',
+    );
   });
 
   it('uses the personal order detail endpoint for polling', async () => {

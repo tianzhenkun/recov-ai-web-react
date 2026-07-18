@@ -73,9 +73,74 @@ export type PaymentOrder = {
   channelTradeNo?: string;
   channelTradeState?: string;
   channelStatus?: PaymentChannelOrderStatus;
+  payScene?: 'web_qr' | 'mini_program';
+  tradeType?: 'NATIVE' | 'JSAPI';
+  payloadType?: 'QR_CODE' | 'MINI_PROGRAM';
   codeUrl?: string;
+  appId?: string;
+  requestPaymentTimestamp?: string;
+  nonceStr?: string;
+  packageValue?: string;
+  signType?: string;
+  paySign?: string;
   createTime?: string;
   updateTime?: string;
+};
+
+export type PaymentChannelConfigStatus = 'DRAFT' | 'ENABLED' | 'DISABLED';
+export type PaymentChannelValidationStatus =
+  | 'UNVALIDATED'
+  | 'VALID'
+  | 'INVALID';
+export type WechatVerificationMode = 'PUBLIC_KEY' | 'PLATFORM_CERTIFICATE';
+
+export type PaymentChannelConfig = {
+  id?: string;
+  channelCode: 'wechat';
+  configName?: string;
+  status: PaymentChannelConfigStatus;
+  version: number;
+  nativeEnabled?: boolean;
+  miniProgramEnabled?: boolean;
+  nativeAppId?: string;
+  miniProgramAppId?: string;
+  merchantId?: string;
+  merchantSerialNumber?: string;
+  verificationMode?: WechatVerificationMode;
+  wechatPayPublicKeyId?: string;
+  paymentNotifyUrl?: string;
+  refundNotifyUrl?: string;
+  merchantPrivateKeyConfigured?: boolean;
+  merchantCertificateConfigured?: boolean;
+  apiV3KeyConfigured?: boolean;
+  wechatPayPublicKeyConfigured?: boolean;
+  validationStatus: PaymentChannelValidationStatus;
+  lastValidatedTime?: string;
+  lastError?: string;
+  lastEnabledTime?: string;
+  remark?: string;
+  createTime?: string;
+  updateTime?: string;
+};
+
+export type PaymentChannelConfigSavePayload = {
+  version: number;
+  configName?: string;
+  nativeEnabled?: boolean;
+  miniProgramEnabled?: boolean;
+  nativeAppId?: string;
+  miniProgramAppId?: string;
+  merchantId?: string;
+  merchantSerialNumber?: string;
+  verificationMode?: WechatVerificationMode;
+  wechatPayPublicKeyId?: string;
+  paymentNotifyUrl?: string;
+  refundNotifyUrl?: string;
+  merchantPrivateKeyPem?: string;
+  merchantCertificatePem?: string;
+  apiV3Key?: string;
+  wechatPayPublicKeyPem?: string;
+  remark?: string;
 };
 
 export type PaymentRefundOrder = {
@@ -291,5 +356,56 @@ export const reconcileAdminPayments = async (
     await ruoyiRequest<PaymentReconcileResult>(
       `${PAYMENT_ADMIN_BASE}/reconcile`,
       { method: 'post', data, repeatSubmit: false },
+    ),
+  );
+
+export const listPaymentChannelConfigs = async () =>
+  unwrapData(
+    await ruoyiRequest<PaymentChannelConfig[]>(
+      `${PAYMENT_ADMIN_BASE}/channel-configs`,
+      { method: 'get' },
+    ),
+  );
+
+export const getPaymentChannelConfig = async (channelCode: 'wechat') =>
+  unwrapData(
+    await ruoyiRequest<PaymentChannelConfig>(
+      `${PAYMENT_ADMIN_BASE}/channel-configs/${channelCode}`,
+      { method: 'get' },
+    ),
+  );
+
+export const savePaymentChannelConfig = async (
+  channelCode: 'wechat',
+  data: PaymentChannelConfigSavePayload,
+) =>
+  unwrapData(
+    await ruoyiRequest<PaymentChannelConfig>(
+      `${PAYMENT_ADMIN_BASE}/channel-configs/${channelCode}`,
+      { method: 'put', data, repeatSubmit: false },
+    ),
+  );
+
+export const validatePaymentChannelConfig = async (channelCode: 'wechat') =>
+  unwrapData(
+    await ruoyiRequest<PaymentChannelConfig>(
+      `${PAYMENT_ADMIN_BASE}/channel-configs/${channelCode}/validate`,
+      { method: 'post', repeatSubmit: false },
+    ),
+  );
+
+export const enablePaymentChannelConfig = async (channelCode: 'wechat') =>
+  unwrapData(
+    await ruoyiRequest<PaymentChannelConfig>(
+      `${PAYMENT_ADMIN_BASE}/channel-configs/${channelCode}/enable`,
+      { method: 'post', repeatSubmit: false },
+    ),
+  );
+
+export const disablePaymentChannelConfig = async (channelCode: 'wechat') =>
+  unwrapData(
+    await ruoyiRequest<PaymentChannelConfig>(
+      `${PAYMENT_ADMIN_BASE}/channel-configs/${channelCode}/disable`,
+      { method: 'post', repeatSubmit: false },
     ),
   );
