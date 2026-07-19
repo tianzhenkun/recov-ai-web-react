@@ -12,7 +12,7 @@ describe('site branding', () => {
     expect(
       resolveSiteBranding({
         loginVariant: 'default',
-        productCode: 'SALES_AGENT',
+        productCode: 'sales',
         productName: 'Sales Agent',
         tenantMode: 'FIXED',
       }),

@@ -126,9 +126,11 @@ describe('local development profile', () => {
   });
 
   it('normalizes an optional local product code without exposing it to browser config', () => {
-    expect(normalizeProductCode(' sales_agent ')).toBe('SALES_AGENT');
+    expect(normalizeProductCode(' sales ')).toBe('sales');
     expect(normalizeProductCode('')).toBe('');
     expect(() => normalizeProductCode('sales-agent')).toThrow('产品编码');
+    expect(() => normalizeProductCode('RECOV')).toThrow('产品编码');
+    expect(() => normalizeProductCode('SALES_AGENT')).toThrow('产品编码');
   });
 
   it('checks every selected backend and treats any HTTP status as reachable', async () => {

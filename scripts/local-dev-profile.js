@@ -246,11 +246,9 @@ const validateRsaPublicKey = (value) => {
 };
 
 const normalizeProductCode = (value) => {
-  const normalized = String(value || '')
-    .trim()
-    .toUpperCase();
-  if (normalized && !/^[A-Z][A-Z0-9_]{1,63}$/.test(normalized)) {
-    throw new Error('产品编码必须为空，或符合 [A-Z][A-Z0-9_]{1,63}。');
+  const normalized = String(value || '').trim();
+  if (normalized && !/^[a-z][a-z0-9_]{1,63}$/.test(normalized)) {
+    throw new Error('产品编码必须使用小写字母、数字或下划线。');
   }
   return normalized;
 };

@@ -27,7 +27,7 @@ describe('license management service contract', () => {
 
   it('uses the product and signed route binding endpoints', async () => {
     await createLicenseProduct({
-      productCode: 'SALES_AGENT',
+      productCode: 'sales',
       productName: '智能销售',
       status: '0',
     });
@@ -45,9 +45,9 @@ describe('license management service contract', () => {
       expect.objectContaining({ method: 'put' }),
     );
 
-    await listLicenseProductRoutes('SALES_AGENT');
+    await listLicenseProductRoutes('sales');
     expect(mockedRequest).toHaveBeenLastCalledWith(
-      '/system/license-management/products/SALES_AGENT/routes',
+      '/system/license-management/products/sales/routes',
       { method: 'get' },
     );
 
@@ -89,7 +89,7 @@ describe('license management service contract', () => {
       issueReason: '首次签发',
       products: [
         {
-          productCode: 'RECOV',
+          productCode: 'recov',
           permanent: true,
           validFrom: '2026-07-13T00:00:00.000Z',
         },

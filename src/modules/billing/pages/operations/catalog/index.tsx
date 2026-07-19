@@ -331,7 +331,7 @@ const CreditRulePage = () => {
     try {
       await saveCreditProduct({
         id: values.id,
-        productCode: values.productCode.trim().toUpperCase(),
+        productCode: values.productCode.trim(),
         productName: values.productName,
         status: values.status || 'ENABLED',
         sortOrder: values.sortOrder,

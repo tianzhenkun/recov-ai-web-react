@@ -46,13 +46,13 @@ describe('license issue form rules', () => {
       issueReason: ' 增加智能销售产品 ',
       products: [
         {
-          productCode: 'RECOV',
+          productCode: 'recov',
           permanent: true,
           validFrom,
           validUntil,
         },
         {
-          productCode: 'SALES_AGENT',
+          productCode: 'sales',
           permanent: false,
           validFrom,
           validUntil,
@@ -65,13 +65,13 @@ describe('license issue form rules', () => {
       issueReason: '增加智能销售产品',
       products: [
         {
-          productCode: 'RECOV',
+          productCode: 'recov',
           permanent: true,
           validFrom: validFrom.toISOString(),
           validUntil: undefined,
         },
         {
-          productCode: 'SALES_AGENT',
+          productCode: 'sales',
           permanent: false,
           validFrom: validFrom.toISOString(),
           validUntil: validUntil.toISOString(),
@@ -89,7 +89,7 @@ describe('license issue form rules', () => {
         issueReason: '续期',
         products: [
           {
-            productCode: 'RECOV',
+            productCode: 'recov',
             permanent: false,
             validFrom,
           },
@@ -103,7 +103,7 @@ describe('license issue form rules', () => {
         issueReason: '续期',
         products: [
           {
-            productCode: 'RECOV',
+            productCode: 'recov',
             permanent: false,
             validFrom,
             validUntil: validFrom,
@@ -119,8 +119,8 @@ describe('license issue form rules', () => {
         issueType: 'INITIAL',
         issueReason: '首次签发',
         products: [
-          { productCode: 'RECOV', permanent: true, validFrom },
-          { productCode: 'RECOV', permanent: true, validFrom },
+          { productCode: 'recov', permanent: true, validFrom },
+          { productCode: 'recov', permanent: true, validFrom },
         ],
       }),
     ).toThrow('不能重复选择同一产品');
@@ -140,12 +140,12 @@ describe('license issue form rules', () => {
   it('restores the complete previous product snapshot for later issues', () => {
     const products = toIssueProductFormValues([
       {
-        productCode: 'RECOV',
+        productCode: 'recov',
         validFrom: '2026-07-13T02:00:00.000Z',
         validUntil: null,
       },
       {
-        productCode: 'SALES_AGENT',
+        productCode: 'sales',
         validFrom: '2026-07-13T02:00:00.000Z',
         validUntil: '2027-07-13T02:00:00.000Z',
       },
@@ -153,7 +153,7 @@ describe('license issue form rules', () => {
 
     expect(products).toHaveLength(2);
     expect(products[0]).toMatchObject({
-      productCode: 'RECOV',
+      productCode: 'recov',
       permanent: true,
     });
     expect(products[0].validFrom?.toISOString()).toBe(
@@ -161,7 +161,7 @@ describe('license issue form rules', () => {
     );
     expect(products[0].validUntil).toBeUndefined();
     expect(products[1]).toMatchObject({
-      productCode: 'SALES_AGENT',
+      productCode: 'sales',
       permanent: false,
     });
     expect(products[1].validUntil?.toISOString()).toBe(
@@ -191,12 +191,12 @@ describe('license issue form rules', () => {
     expect(() =>
       toIssueProductFormValues([
         {
-          productCode: 'RECOV',
+          productCode: 'recov',
           validFrom: 'not-a-date',
           validUntil: null,
         },
       ]),
-    ).toThrow('RECOV的上一版生效时间无效');
+    ).toThrow('recov的上一版生效时间无效');
   });
 
   it('lists every previous product omitted by the next full snapshot', () => {
@@ -204,19 +204,19 @@ describe('license issue form rules', () => {
       getRemovedProductCodes(
         [
           {
-            productCode: 'RECOV',
+            productCode: 'recov',
             validFrom: '2026-07-13T02:00:00.000Z',
             validUntil: null,
           },
           {
-            productCode: 'SALES_AGENT',
+            productCode: 'sales',
             validFrom: '2026-07-13T02:00:00.000Z',
             validUntil: null,
           },
         ],
-        [{ productCode: 'SALES_AGENT' }],
+        [{ productCode: 'sales' }],
       ),
-    ).toEqual(['RECOV']);
+    ).toEqual(['recov']);
   });
 
   it('forces replacement to submit the unchanged previous snapshot', () => {
@@ -226,7 +226,7 @@ describe('license issue form rules', () => {
         issueReason: '许可证文件替换',
         products: [
           {
-            productCode: 'SALES_AGENT',
+            productCode: 'sales',
             permanent: true,
             validFrom,
           },
@@ -234,7 +234,7 @@ describe('license issue form rules', () => {
       },
       [
         {
-          productCode: 'RECOV',
+          productCode: 'recov',
           validFrom: '2026-07-13T02:00:00.000Z',
           validUntil: '2027-07-13T02:00:00.000Z',
         },
@@ -243,7 +243,7 @@ describe('license issue form rules', () => {
 
     expect(request.products).toEqual([
       {
-        productCode: 'RECOV',
+        productCode: 'recov',
         permanent: false,
         validFrom: '2026-07-13T02:00:00.000Z',
         validUntil: '2027-07-13T02:00:00.000Z',
@@ -259,7 +259,7 @@ describe('license issue form rules', () => {
           issueReason: '仅续期智能销售',
           products: [
             {
-              productCode: 'SALES_AGENT',
+              productCode: 'sales',
               permanent: false,
               validFrom,
               validUntil,
@@ -268,12 +268,12 @@ describe('license issue form rules', () => {
         },
         [
           {
-            productCode: 'RECOV',
+            productCode: 'recov',
             validFrom: validFrom.toISOString(),
             validUntil: null,
           },
           {
-            productCode: 'SALES_AGENT',
+            productCode: 'sales',
             validFrom: validFrom.toISOString(),
             validUntil: validUntil.toISOString(),
           },
@@ -290,7 +290,7 @@ describe('license issue form rules', () => {
           issueReason: '误选产品调整',
           products: [
             {
-              productCode: 'RECOV',
+              productCode: 'recov',
               permanent: false,
               validFrom,
               validUntil,
@@ -299,7 +299,7 @@ describe('license issue form rules', () => {
         },
         [
           {
-            productCode: 'RECOV',
+            productCode: 'recov',
             validFrom: validFrom.toISOString(),
             validUntil: null,
           },

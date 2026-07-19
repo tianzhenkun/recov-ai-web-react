@@ -57,13 +57,9 @@ const validateSameOriginPath = (value: string) => {
 };
 
 export const createProxy = (env: ProxyEnv = process.env) => {
-  const productCode = (
-    read(env, 'LINGCHEN_LOCAL_PRODUCT_CODE') || ''
-  ).toUpperCase();
-  if (productCode && !/^[A-Z][A-Z0-9_]{1,63}$/.test(productCode)) {
-    throw new Error(
-      'LINGCHEN_LOCAL_PRODUCT_CODE 必须为空，或符合 [A-Z][A-Z0-9_]{1,63}。',
-    );
+  const productCode = read(env, 'LINGCHEN_LOCAL_PRODUCT_CODE') || '';
+  if (productCode && !/^[a-z][a-z0-9_]{1,63}$/.test(productCode)) {
+    throw new Error('产品编码必须使用小写字母、数字或下划线。');
   }
   const productHeaders = {
     'X-Lingchen-Product-Code': productCode,

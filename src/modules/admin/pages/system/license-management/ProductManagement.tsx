@@ -46,7 +46,8 @@ const statusOptions = [
   { label: '停用', value: '1' },
 ];
 
-const productCodePattern = /^[A-Z][A-Z0-9_]{1,63}$/i;
+const productCodePattern = /^[a-z][a-z0-9_]{1,63}$/;
+const trimProductCode = (value: unknown) => String(value || '').trim();
 const routeIdPattern = /^lingchen-[a-z0-9-]+-app$/;
 
 const ProductManagement = () => {
@@ -292,7 +293,7 @@ const ProductManagement = () => {
             await updateLicenseProduct(String(editingProduct.id), payload);
           } else {
             await createLicenseProduct({
-              productCode: values.productCode.trim().toUpperCase(),
+              productCode: values.productCode.trim(),
               productName: values.productName.trim(),
               status: values.status || '0',
               remark: values.remark?.trim(),
@@ -308,12 +309,16 @@ const ProductManagement = () => {
           name="productCode"
           label="产品编码"
           disabled={Boolean(editingProduct?.id)}
-          fieldProps={{ style: { textTransform: 'uppercase' } }}
           rules={[
-            { required: true, message: '请输入产品编码' },
+            {
+              required: true,
+              message: '请输入产品编码',
+              transform: trimProductCode,
+            },
             {
               pattern: productCodePattern,
-              message: '编码需以英文字母开头，仅使用英文字母、数字和下划线',
+              message: '编码需以小写英文字母开头，仅使用小写字母、数字和下划线',
+              transform: trimProductCode,
             },
           ]}
         />

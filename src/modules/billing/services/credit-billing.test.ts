@@ -30,7 +30,7 @@ describe('scoped credit billing service', () => {
   it('creates tenant package orders without client supplied ownership or price', async () => {
     await createScopedCreditPackageOrder('tenant', {
       packageId: '2067000010000000001',
-      productCode: 'RECOV',
+      productCode: 'recov',
       idempotencyKey: 'tenant-purchase-1',
       couponId: '2067000010000000002',
       remark: '团队购买',
@@ -42,7 +42,7 @@ describe('scoped credit billing service', () => {
         method: 'post',
         data: {
           packageId: '2067000010000000001',
-          productCode: 'RECOV',
+          productCode: 'recov',
           idempotencyKey: 'tenant-purchase-1',
           couponId: '2067000010000000002',
           remark: '团队购买',
@@ -59,7 +59,7 @@ describe('scoped credit billing service', () => {
   it('creates personal package orders with the caller supplied idempotency key', async () => {
     await createScopedCreditPackageOrder('me', {
       packageId: '2067000010000000003',
-      productCode: 'SALES_AGENT',
+      productCode: 'sales',
       idempotencyKey: 'personal-purchase-1',
     });
 
@@ -69,7 +69,7 @@ describe('scoped credit billing service', () => {
         method: 'post',
         data: {
           packageId: '2067000010000000003',
-          productCode: 'SALES_AGENT',
+          productCode: 'sales',
           idempotencyKey: 'personal-purchase-1',
         },
       }),
@@ -84,13 +84,13 @@ describe('scoped credit billing service', () => {
       termMonths: 1 as const,
       points: 1000,
       price: 399,
-      productCodes: ['RECOV', 'SALES_AGENT'],
+      productCodes: ['recov', 'sales'],
     };
 
     await createCreditPackage(payload);
     expect(mockedRequest.mock.calls.at(-1)?.[1].data.productCodes).toEqual([
-      'RECOV',
-      'SALES_AGENT',
+      'recov',
+      'sales',
     ]);
 
     await updateCreditPackage('package-1', payload);

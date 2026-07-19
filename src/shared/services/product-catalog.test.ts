@@ -46,7 +46,7 @@ describe('platform product catalog service', () => {
     await createPlatformProduct({
       fixedTenantId: '720978',
       loginVariant: 'default',
-      productCode: 'RECOV',
+      productCode: 'recov',
       productName: '智能催收',
       status: '0',
       tenantMode: 'FIXED',

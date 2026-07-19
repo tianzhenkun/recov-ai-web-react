@@ -46,19 +46,30 @@ describe('proxy config', () => {
 
   it('overrides the local product code on the main proxy and SSE channels', () => {
     const configured = createProxy({
-      LINGCHEN_LOCAL_PRODUCT_CODE: 'sales_agent',
+      LINGCHEN_LOCAL_PRODUCT_CODE: ' sales ',
       UMI_APP_API_TARGET: 'http://gateway.test.invalid',
       UMI_APP_VOICE_API: '/voice-api',
       UMI_APP_VOICE_API_TARGET: 'http://voice.test.invalid',
     }) as Record<string, ProxyRule & { headers?: Record<string, string> }>;
 
-    expect(configured['/dev-api'].headers).toMatchObject({
-      'X-Lingchen-Product-Code': 'SALES_AGENT',
+    expect(configured['/dev-api'].headers).toEqual({
+      'X-Lingchen-Product-Code': 'sales',
     });
-    expect(configured['/dev-api/resource/sse'].headers).toMatchObject({
-      'X-Lingchen-Product-Code': 'SALES_AGENT',
+    expect(configured['/dev-api/resource/sse'].headers).toEqual({
+      'X-Lingchen-Product-Code': 'sales',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
     });
     expect(configured['/voice-api']).toBeUndefined();
+  });
+
+  it.each([
+    'RECOV',
+    'SALES_AGENT',
+  ])('rejects non-canonical local product code: %s', (productCode) => {
+    expect(() =>
+      createProxy({ LINGCHEN_LOCAL_PRODUCT_CODE: productCode }),
+    ).toThrow('小写');
   });
 
   it.each([

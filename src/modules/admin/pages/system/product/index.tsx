@@ -45,8 +45,9 @@ const statusOptions = [
   { label: '停用', value: '1' },
 ];
 
-// 与后端保持一致：表单允许输入大小写，提交时统一规范为大写。
-const productCodePattern = /^[A-Za-z][A-Za-z0-9_]{1,63}$/;
+// 与后端保持一致：产品编码去除首尾空格后仅允许小写字母、数字和下划线。
+const productCodePattern = /^[a-z][a-z0-9_]{1,63}$/;
+const trimProductCode = (value: unknown) => String(value || '').trim();
 const registeredLoginLayoutHint = listLoginLayoutOptions()
   .map((layout) => `${layout.value}（${layout.label}）`)
   .join('、');
@@ -279,7 +280,7 @@ const PlatformProductPage = () => {
               });
             } else {
               await createPlatformProduct({
-                productCode: values.productCode.trim().toUpperCase(),
+                productCode: values.productCode.trim(),
                 productName: values.productName.trim(),
                 ...siteContract,
                 status: values.status || '0',
@@ -300,19 +301,19 @@ const PlatformProductPage = () => {
           name="productCode"
           label="产品编码"
           disabled={Boolean(editingProduct?.id)}
-          fieldProps={{ style: { textTransform: 'uppercase' } }}
           rules={[
-            { required: true, message: '请输入产品编码' },
+            {
+              required: true,
+              message: '请输入产品编码',
+              transform: trimProductCode,
+            },
             {
               pattern: productCodePattern,
-              message: '编码需以英文字母开头，仅使用字母、数字和下划线',
+              message: '编码需以小写英文字母开头，仅使用小写字母、数字和下划线',
+              transform: trimProductCode,
             },
           ]}
-          transform={(value) =>
-            String(value || '')
-              .trim()
-              .toUpperCase()
-          }
+          transform={trimProductCode}
         />
         <ProFormText
           name="productName"
