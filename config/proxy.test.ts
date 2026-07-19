@@ -3,6 +3,7 @@ import proxy from './proxy';
 type ProxyRule = {
   target?: string;
   changeOrigin?: boolean;
+  secure?: boolean;
   ws?: boolean;
   pathRewrite?: Record<string, string>;
 };
@@ -28,6 +29,17 @@ describe('proxy config', () => {
       changeOrigin: true,
       ws: true,
       pathRewrite: { '^/voice-api': '' },
+    });
+  });
+
+  it('proxies legal system requests through an independent law prefix', () => {
+    const devProxy = proxy.dev as Record<string, ProxyRule>;
+
+    expect(devProxy['/law-dev-api']).toMatchObject({
+      target: 'https://law.lingchen-ai.com',
+      changeOrigin: true,
+      secure: true,
+      pathRewrite: { '^/law-dev-api': '/dev-api' },
     });
   });
 });

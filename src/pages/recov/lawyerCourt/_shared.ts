@@ -8,11 +8,7 @@ import {
 } from '@ant-design/icons';
 import { createElement, type ReactNode } from 'react';
 import type { MetricTone } from '@/pages/recov/components/MetricIcon';
-import {
-  formatCompactCurrencyDisplay,
-  formatCurrencyDisplay,
-  toNumber,
-} from '@/pages/recov/settle/_shared';
+import { toNumber } from '@/pages/recov/settle/_shared';
 import type {
   LawyerCourtOverviewVO,
   LawyerCourtTab,
@@ -99,9 +95,10 @@ export const formatOverviewValue = (
   unit?: string,
 ) => {
   if (format === 'currency') {
+    const primary = `${toNumber(value).toLocaleString('zh-CN')}元`;
     return {
-      primary: formatCompactCurrencyDisplay(value),
-      tooltip: formatCurrencyDisplay(value),
+      primary,
+      tooltip: primary,
       unit: undefined,
     };
   }
@@ -113,4 +110,4 @@ export const formatOverviewValue = (
 };
 
 export const formatDisplayMoney = (value: unknown) =>
-  formatCurrencyDisplay(value);
+  `${toNumber(value).toLocaleString('zh-CN')}元`;

@@ -219,6 +219,7 @@ const recovListPagePaths = new Set([
   '/flow-manager',
   '/instrument-list',
   '/litigation-process',
+  '/lawyerCourtIndex',
   '/reconciliation',
   '/sys/instrument-standing',
   '/sys/instrument-template',

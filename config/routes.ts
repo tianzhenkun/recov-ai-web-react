@@ -537,7 +537,7 @@ export default [
     hideInMenu: true,
   },
   {
-    path: '/test11',
+    path: '/lawyerCourtIndex',
     component: './recov/lawyerCourt',
     hideInMenu: true,
   },

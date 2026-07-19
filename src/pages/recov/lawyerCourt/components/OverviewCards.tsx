@@ -1,6 +1,6 @@
 import { ProCard } from '@ant-design/pro-components';
-import { Space, Tooltip, Typography } from 'antd';
-import MetricIcon from '@/pages/recov/components/MetricIcon';
+import { Typography } from 'antd';
+import React from 'react';
 import { RecovStatsStrip } from '@/pages/recov/components/RecovListLayout';
 import type { LawyerCourtOverviewVO } from '@/services/ruoyi/lawyer-court';
 import { formatOverviewValue, OVERVIEW_CARD_METAS } from '../_shared';
@@ -9,9 +9,18 @@ const { Text } = Typography;
 
 const statCardStyles = {
   body: {
-    padding: 12,
+    padding: '16px 20px',
   },
 };
+
+const toneColorMap = {
+  primary: '#4f46e5',
+  info: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f97316',
+  error: '#ff4d4f',
+  neutral: '#f43f5e',
+} as const;
 
 type OverviewCardsProps = {
   overview: LawyerCourtOverviewVO;
@@ -19,61 +28,37 @@ type OverviewCardsProps = {
 };
 
 const OverviewCards = ({ overview, loading }: OverviewCardsProps) => (
-  <RecovStatsStrip className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+  <RecovStatsStrip className="lawyer-court-overview-grid">
     {OVERVIEW_CARD_METAS.map((meta) => {
       const raw = overview[meta.key];
       const display = formatOverviewValue(raw, meta.format, meta.unit);
-      const hasTooltip = Boolean(
-        display.tooltip && display.tooltip !== display.primary,
-      );
-
-      const valueNode = (
-        <Space align="baseline" size={4} wrap={false}>
-          <Text
-            strong
-            style={{ fontSize: 22, lineHeight: 1.2, whiteSpace: 'nowrap' }}
-          >
-            {display.primary}
-          </Text>
-          {display.unit ? (
-            <Text
-              type="secondary"
-              style={{ fontSize: 12, whiteSpace: 'nowrap' }}
-            >
-              {display.unit}
-            </Text>
-          ) : null}
-        </Space>
-      );
+      const color = toneColorMap[meta.tone] || toneColorMap.primary;
 
       return (
         <ProCard
           key={meta.key}
           size="small"
+          className="lawyer-court-stat-card"
           style={{ minWidth: 0, height: '100%' }}
           styles={statCardStyles}
         >
           <div
             aria-busy={loading || undefined}
-            style={{
-              minHeight: 62,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              gap: 8,
-            }}
+            className="lawyer-court-stat-card-inner"
           >
-            <Space align="center" size={8}>
-              <MetricIcon icon={meta.icon} tone={meta.tone} />
-              <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.3 }}>
+            <span
+              className="lawyer-court-stat-accent"
+              style={{ background: color }}
+            />
+            <div className="lawyer-court-stat-content">
+              <Text type="secondary" className="lawyer-court-stat-label">
                 {meta.label}
               </Text>
-            </Space>
-            {hasTooltip ? (
-              <Tooltip title={display.tooltip}>{valueNode}</Tooltip>
-            ) : (
-              valueNode
-            )}
+              <div className="lawyer-court-stat-value" style={{ color }}>
+                {display.primary}
+                {display.unit ? display.unit : null}
+              </div>
+            </div>
           </div>
         </ProCard>
       );

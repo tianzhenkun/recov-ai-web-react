@@ -302,8 +302,7 @@ const MatchListSection = ({
             <Select
               allowClear
               placeholder="城市"
-              showSearch
-              optionFilterProp="label"
+              showSearch={{ optionFilterProp: 'label' }}
               style={RECOV_FILTER_CONTROL_STYLE}
               options={cityOptions}
               value={cityFilter || undefined}
@@ -312,8 +311,7 @@ const MatchListSection = ({
             <Select
               allowClear
               placeholder="项目"
-              showSearch
-              optionFilterProp="label"
+              showSearch={{ optionFilterProp: 'label' }}
               optionRender={(option) =>
                 renderRecovSelectOptionLabel(option.label)
               }

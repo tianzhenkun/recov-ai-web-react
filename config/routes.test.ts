@@ -24,4 +24,23 @@ describe('routes', () => {
       hideInMenu: true,
     });
   });
+
+  it('routes the legal court menu path to the migrated lawyer court page', () => {
+    const lawyerCourtRoute = flattenRoutes(routes).find(
+      (item) => item.path === '/lawyerCourtIndex',
+    );
+
+    expect(lawyerCourtRoute).toMatchObject({
+      component: './recov/lawyerCourt',
+      hideInMenu: true,
+    });
+  });
+
+  it('does not keep the temporary test11 lawyer court route', () => {
+    const legacyRoute = flattenRoutes(routes).find(
+      (item) => item.path === '/test11',
+    );
+
+    expect(legacyRoute).toBeUndefined();
+  });
 });

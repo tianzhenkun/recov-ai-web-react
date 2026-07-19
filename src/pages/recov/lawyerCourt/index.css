@@ -1,0 +1,349 @@
+.lawyer-court-page {
+  --lawyer-court-primary: #4f46e5;
+  --lawyer-court-primary-dark: #4338ca;
+  --lawyer-court-text: #111827;
+  --lawyer-court-muted: #8b95a7;
+  --lawyer-court-border: #eef1f6;
+}
+
+.lawyer-court-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.lawyer-court-stat-card {
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.lawyer-court-stat-card-inner {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  gap: 14px;
+}
+
+.lawyer-court-stat-accent {
+  display: inline-block;
+  width: 3px;
+  height: 38px;
+  border-radius: 999px;
+  opacity: 0.16;
+}
+
+.lawyer-court-stat-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lawyer-court-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lawyer-court-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.lawyer-court-main-card {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--lawyer-court-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.lawyer-court-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 96px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px;
+}
+
+.lawyer-court-match-button,
+.lawyer-court-row-action-button {
+  border-color: var(--lawyer-court-primary);
+  background: var(--lawyer-court-primary);
+  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.28);
+  font-weight: 700;
+}
+
+.lawyer-court-match-button:hover,
+.lawyer-court-row-action-button:hover {
+  border-color: var(--lawyer-court-primary-dark);
+  background: var(--lawyer-court-primary-dark);
+}
+
+.lawyer-court-match-button {
+  min-width: 150px;
+  height: 44px;
+}
+
+.lawyer-court-strategy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 24px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lawyer-court-strategy-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 20px;
+  border-right: 1px solid #e5e7eb;
+  color: var(--lawyer-court-text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.lawyer-court-strategy-icon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: var(--lawyer-court-primary);
+}
+
+.lawyer-court-strategy-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.lawyer-court-list-header {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #f4f6fa;
+  border-bottom: 1px solid #f0f2f5;
+  padding: 14px 20px;
+}
+
+.lawyer-court-tabs {
+  display: inline-flex;
+  gap: 2px;
+  border-radius: 10px;
+  background: #f3f4f8;
+  padding: 3px;
+}
+
+.lawyer-court-tab {
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #7b8496;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 30px;
+  padding: 0 16px;
+}
+
+.lawyer-court-tab.active {
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  color: var(--lawyer-court-primary);
+}
+
+.lawyer-court-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.lawyer-court-case-row {
+  display: flex;
+  min-height: 118px;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid #edf0f5;
+  padding: 22px 24px;
+}
+
+.lawyer-court-case-row:nth-child(odd) {
+  background: #fafbfe;
+}
+
+.lawyer-court-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.lawyer-court-avatar-matched {
+  background: #e9edff;
+  color: var(--lawyer-court-primary);
+}
+
+.lawyer-court-avatar-unmatched {
+  background: #fff1f2;
+  color: #ff4d4f;
+  font-size: 22px;
+}
+
+.lawyer-court-case-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lawyer-court-case-line,
+.lawyer-court-lawyer-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 28px;
+  row-gap: 8px;
+}
+
+.lawyer-court-case-meta {
+  color: var(--lawyer-court-muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lawyer-court-case-meta strong {
+  color: #5b6678;
+}
+
+.lawyer-court-amount-blue {
+  color: #4f46e5;
+  font-weight: 800;
+}
+
+.lawyer-court-amount-red {
+  color: #ff2d38;
+  font-weight: 800;
+}
+
+.lawyer-court-firm {
+  color: #4f46e5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lawyer-court-row-status {
+  display: flex;
+  width: 100px;
+  justify-content: flex-end;
+}
+
+.lawyer-court-unmatched-reason {
+  color: #ff4d4f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lawyer-court-row-action-button {
+  flex: 0 0 auto;
+  min-width: 88px;
+}
+
+.lawyer-court-list-loading,
+.lawyer-court-list-empty {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  color: #8b95a7;
+}
+
+.lawyer-court-pagination {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #edf0f5;
+  padding: 14px 24px;
+  background: #fff;
+}
+
+.lawyer-court-page-input {
+  width: 44px;
+}
+
+@media (max-width: 1400px) {
+  .lawyer-court-overview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .lawyer-court-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lawyer-court-toolbar,
+  .lawyer-court-list-header,
+  .lawyer-court-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lawyer-court-strategy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .lawyer-court-strategy-title {
+    border-right: 0;
+    padding-right: 0;
+  }
+
+  .lawyer-court-case-row {
+    align-items: flex-start;
+  }
+
+  .lawyer-court-row-status {
+    width: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .lawyer-court-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lawyer-court-case-row {
+    flex-direction: column;
+  }
+}
