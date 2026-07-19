@@ -1,140 +1,50 @@
-Language : [🇺🇸](./README.md) | 🇨🇳
+# 灵辰多产品前端
 
-<h1 align="center">Ant Design Pro</h1>
+[English](./README.md) | 简体中文
 
-<div align="center">
+基于 React、Ant Design Pro 和 Umi Max 的统一前端源码。当前一份源码生成一份 `dist/`，承载公共管理、Recov、Sales 和 Billing 能力；产品站点、登录布局、菜单、权限及部署拓扑分别配置，不通过源码目录一一绑定。
 
-开箱即用的中台前端/设计解决方案。
-
-[![CI](https://github.com/ant-design/ant-design-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/ant-design/ant-design-pro/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/ant-design/ant-design-pro.svg)](https://github.com/ant-design/ant-design-pro/releases)
-[![Build With Utoo](https://img.shields.io/badge/build%20with-utoo-028fe4.svg)](https://utoo.land)
-[![Build With Umi](https://img.shields.io/badge/build%20with-umi-028fe4.svg)](https://umijs.org/)
-[![Checked with Biome](https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome)](https://biomejs.dev)
-[![Ant Design](https://badgen.net/badge/icon/Ant%20Design?icon=https://gw.alipayobjects.com/zos/antfincdn/Pp4WPgVDB3/KDpgvguMpGfqaHPjicRK.svg&label)](https://ant.design/)
-
-![](https://github.com/user-attachments/assets/fde29061-3d9a-4397-8ac2-397b0e033ef5)
-
-</div>
-
-- 预览：https://preview.pro.ant.design
-- 使用文档：[docs/cheatsheet.zh-CN.md](./docs/cheatsheet.zh-CN.md)
-- 更新日志: https://github.com/ant-design/ant-design-pro/releases
-- 常见问题：[docs/cheatsheet.zh-CN.md#faq](./docs/cheatsheet.zh-CN.md#faq)
-- **v6 正式发布！** — [查看 v6 更新内容](https://github.com/ant-design/ant-design-pro/releases/tag/v6.0.0)
-
-## 特性
-
-- :bulb: **TypeScript**: 应用程序级 JavaScript 的语言
-- :scroll: **区块**: 通过区块模板快速构建页面
-- :gem: **优雅美观**：基于 [Ant Design 6](https://ant.design/) 体系精心设计
-- :triangular_ruler: **常见设计模式**：提炼自中后台应用的典型页面和场景
-- :rocket: **最新技术栈**：使用 React 19/[Umi Max 4](https://umijs.org/)/[antd 6](https://ant.design/)/[utoopack](https://utoo.land) 等前端前沿技术开发
-- :iphone: **响应式**：针对不同屏幕大小设计
-- :art: **主题**：基于 [Tailwind CSS v4](https://tailwindcss.com/) + [antd-style](https://github.com/ant-design/antd-style) 的可配置主题满足多样化品牌诉求
-- :globe_with_meridians: **国际化**：内建业界通用的国际化方案
-- :gear: **最佳实践**：良好的工程实践助您持续产出高质量代码
-- :1234: **Mock 数据**：实用的本地数据调试方案
-- :robot: **AI 助手**：内置 AI 聊天助手页面，基于 [Ant Design X](https://x.ant.design/)
-- :white_check_mark: **UI 测试**：自动化测试保障前端产品质量
-
-## 模板
-
-```
-- 欢迎页
-- Dashboard
-  - 分析页
-  - 监控页
-  - 工作台
-- 表单页
-  - 基础表单页
-  - 分步表单页
-  - 高级表单页
-- 列表页
-  - 搜索列表（文章/项目/应用）
-  - 查询表格
-  - 标准列表
-  - 卡片列表
-- 详情页
-  - 基础详情页
-  - 高级详情页
-- 结果
-  - 成功页
-  - 失败页
-- 异常
-  - 403 无权限
-  - 404 找不到
-  - 500 服务器出错
-- 用户
-  - 用户中心页
-  - 用户设置页
-- AI 助手
-- 账户
-  - 登录
-  - 注册
-  - 注册成功
-```
-
-## 使用
-
-### 开始使用
-
-克隆或下载本项目到本地：
-
-```bash
-git clone --depth=1 https://github.com/ant-design/ant-design-pro.git myapp
-cd myapp
-```
-
-### 安装依赖
+## 开发
 
 ```bash
 npm install
+npm run configure:local
+PORT=8001 npm run dev
 ```
 
-### 开发
+项目仅提供真实后端联调方式，不提供运行时 Mock。运行前请确认 8001 端口可用，并通过本地配置向导选择唯一主 Gateway。当前所有浏览器业务请求都通过主 API，智能外呼数据和 `/sys/voice` 业务配置也不使用独立 Voice 直连。
+
+## 验证与构建
 
 ```bash
-# 启动开发服务器（默认为完整版）
-npm start
-```
-
-### 精简为简单版本
-
-本项目默认包含所有区块。如果你需要一个最小化的版本，运行：
-
-```bash
-npm run simple
-```
-
-这将会：
-- 删除多余的页面目录（dashboard、form、list/*、profile、result、exception、account 等）
-- 删除多余的 mock 文件
-- 替换路由为简单版本
-- 从 package.json 中移除多余的依赖
-
-**注意**：此操作不可逆，将永久删除文件。
-
-### 构建
-
-```bash
+npm run lint
+npm test -- --runInBand
 npm run build
 ```
 
-更多信息请参考 [使用文档](./docs/cheatsheet.zh-CN.md)。
+`npm run build` 生成唯一的 `dist/` 产物。正式发布由 release 仓把该产物固化进 Web Docker 镜像。
 
-## 支持环境
+## 代码结构
 
-现代浏览器。
+```text
+config/routes/          admin、recov、sales、billing 等路由聚合
+src/api/                主 API、运行时配置和请求安全边界
+src/app/                应用壳、鉴权、菜单和全局扩展
+src/branding/           默认品牌与主题
+src/login-layouts/      可复用登录布局及注册表
+src/modules/admin/      公共平台管理模块
+src/modules/recov/      Recov 业务模块
+src/modules/sales/      Sales 业务模块
+src/modules/billing/    可被多个产品复用的 Billing 能力
+src/pages/              Umi 路由薄入口及少量待迁移的公共页面
+src/shared/             跨模块稳定类型和共享平台服务
+src/site-profiles/      服务端站点配置解析
+```
 
-| [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png" alt="Edge" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Edge | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png" alt="Firefox" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Firefox | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png" alt="Chrome" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Chrome | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png" alt="Safari" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Safari |
-| --- | --- | --- | --- |
-| Edge | last 2 versions | last 2 versions | last 2 versions |
+业务模块页面实现放在所属模块中，`src/pages/` 负责 Umi 文件入口，并暂时保留少量尚未迁移的公共页面。已登录用户访问普通业务页面时，路径必须匹配后端 `/system/menu/getRouters` 返回的原始完整授权路由树，包括 `hidden` 路由；加载失败时 fail-closed。`hideInMenu` 和 `activeMenu` 只影响展示，不等于权限控制，前端不得补齐后端没有返回的菜单或路由。
 
-## 参与贡献
+## 文档
 
-我们非常欢迎你的贡献，你可以通过以下方式和我们一起共建 :smiley:：
-
-- 在你的公司或个人项目中使用 Ant Design Pro。
-- 通过 [Issue](http://github.com/ant-design/ant-design-pro/issues) 报告 bug 或进行咨询。
-- 提交 [Pull Request](http://github.com/ant-design/ant-design-pro/pulls) 改进 Pro 的代码。
+- [前端模块规范](./docs/前端模块规范.md)
+- [本地与正式部署说明](./docs/部署说明.md)
+- [项目速查](./docs/cheatsheet.zh-CN.md)

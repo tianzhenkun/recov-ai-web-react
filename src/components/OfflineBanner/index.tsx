@@ -40,7 +40,7 @@ const OfflineBanner: React.FC = () => {
         zIndex: 10,
         maxWidth: 480,
       }}
-      message={getIntl().formatMessage({
+      title={getIntl().formatMessage({
         id: 'app.network.offline',
         defaultMessage:
           'You are currently offline. Some features may be unavailable.',

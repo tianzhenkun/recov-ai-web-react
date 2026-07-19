@@ -17,9 +17,17 @@ const useStyles = createStyles(({ token }) => {
       },
     },
     trigger: {
+      appearance: 'none',
       position: 'absolute',
       top: '0',
       right: '0',
+      padding: 0,
+      border: 0,
+      color: token.colorLink,
+      background: 'transparent',
+      cursor: 'pointer',
+      font: 'inherit',
+      lineHeight: 'inherit',
       'span.anticon': { fontSize: '12px' },
     },
     expanded: {

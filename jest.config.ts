@@ -18,7 +18,6 @@ export default async (): Promise<any> => {
     moduleNameMapper: {
       '\\.md$': '<rootDir>/tests/__mocks__/raw.js',
       ...(config.moduleNameMapper || {}),
-      '^mermaid$': '<rootDir>/tests/__mocks__/mermaid.js',
     },
     testEnvironmentOptions: {
       ...(config?.testEnvironmentOptions || {}),

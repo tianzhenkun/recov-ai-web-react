@@ -1,17 +1,8 @@
-import {
-  ApiOutlined,
-  BarChartOutlined,
-  ExperimentOutlined,
-  GlobalOutlined,
-  MailOutlined,
-  ProfileOutlined,
-  SettingOutlined,
-} from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
-import type { RuoyiRoute } from '@/services/ruoyi/menu';
-import { getRouters } from '@/services/ruoyi/menu';
+import { getRouters, type RuoyiRoute } from '@/app/menu';
+import { normalizeSafeExternalUrl } from '@/shared/security/url';
 import { toRuoyiMenuIcon } from '@/utils/ruoyiIcons';
 
 export type RuoyiMenuDataItem = MenuDataItem & {
@@ -37,158 +28,46 @@ export type RuoyiMenuContext = {
   matchedMenuItem?: RuoyiMenuDataItem;
 };
 
-const salesAgentPath = '/sales';
-const salesOverviewPath = '/sales/dashboard';
-const salesOverviewTitle = '数据总览';
-const salesSourceCoveragePath = '/sales/source-coverage';
-const salesSourceCoverageTitle = '来源与字段覆盖';
-const salesProviderSettingsPath = '/sales/provider-settings';
-const salesProviderSettingsTitle = '服务商配置';
-const salesIcpModelingPath = '/sales/icp-modeling';
-const salesIcpModelingTitle = 'ICP 建模';
-const salesIcpAttrsPath = '/sales/icp-attrs';
-const salesIcpAttrsTitle = 'ICP 属性配置';
-const salesLeadsPath = '/sales/leads';
-const salesLeadsTitle = '线索台账';
-const salesEmailOutreachPath = '/sales/email-outreach';
-const salesEmailOutreachTitle = '邮件触达';
+export type RuoyiMenuCatalog = {
+  routes: RuoyiRoute[];
+  menuData: RuoyiMenuDataItem[];
+};
+
+type RuoyiMenuCatalogListener = (routes: RuoyiRoute[]) => void;
 
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
-let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
+let cachedRuoyiMenuCatalog: RuoyiMenuCatalog | undefined;
+let cachedRuoyiMenuRequest: Promise<RuoyiMenuCatalog> | undefined;
+let cachedRuoyiMenuGeneration = 0;
+const ruoyiMenuCatalogListeners = new Set<RuoyiMenuCatalogListener>();
 
-const isExternal = (path?: string) =>
-  /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
+const publishRuoyiMenuCatalog = (routes: RuoyiRoute[]) => {
+  ruoyiMenuCatalogListeners.forEach((listener) => {
+    listener(routes);
+  });
+};
+
+const hasUrlScheme = (path?: string) => /^[a-z][a-z\d+\-.]*:/i.test(path || '');
+
+const isExternal = (path?: string) => Boolean(normalizeSafeExternalUrl(path));
 
 const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
 
 const normalizePath = (path?: string) => {
   const value = (path || '').trim();
   if (!value) return '';
-  if (isExternal(value)) return value;
+  const externalUrl = normalizeSafeExternalUrl(value);
+  if (externalUrl) return externalUrl;
+  if (hasUrlScheme(value) || value.startsWith('//')) return '';
   return value.startsWith('/') ? value : `/${value}`;
 };
-
-const salesOverviewMenuItem: RuoyiMenuDataItem = {
-  key: salesOverviewPath,
-  path: salesOverviewPath,
-  name: salesOverviewTitle,
-  locale: false,
-  icon: <BarChartOutlined />,
-};
-
-const salesIcpModelingMenuItem: RuoyiMenuDataItem = {
-  key: salesIcpModelingPath,
-  path: salesIcpModelingPath,
-  name: salesIcpModelingTitle,
-  locale: false,
-  icon: <ExperimentOutlined />,
-};
-
-const salesSourceCoverageMenuItem: RuoyiMenuDataItem = {
-  key: salesSourceCoveragePath,
-  path: salesSourceCoveragePath,
-  name: salesSourceCoverageTitle,
-  locale: false,
-  icon: <GlobalOutlined />,
-};
-
-const salesProviderSettingsMenuItem: RuoyiMenuDataItem = {
-  key: salesProviderSettingsPath,
-  path: salesProviderSettingsPath,
-  name: salesProviderSettingsTitle,
-  locale: false,
-  icon: <ApiOutlined />,
-};
-
-const salesIcpAttrsMenuItem: RuoyiMenuDataItem = {
-  key: salesIcpAttrsPath,
-  path: salesIcpAttrsPath,
-  name: salesIcpAttrsTitle,
-  locale: false,
-  icon: <SettingOutlined />,
-};
-
-const salesLeadsMenuItem: RuoyiMenuDataItem = {
-  key: salesLeadsPath,
-  path: salesLeadsPath,
-  name: salesLeadsTitle,
-  locale: false,
-  icon: <ProfileOutlined />,
-};
-
-const salesEmailOutreachMenuItem: RuoyiMenuDataItem = {
-  key: salesEmailOutreachPath,
-  path: salesEmailOutreachPath,
-  name: salesEmailOutreachTitle,
-  locale: false,
-  icon: <MailOutlined />,
-};
-
-const salesAgentInjectedChildren: RuoyiMenuDataItem[] = [
-  salesOverviewMenuItem,
-  salesSourceCoverageMenuItem,
-  salesProviderSettingsMenuItem,
-  salesIcpModelingMenuItem,
-  salesIcpAttrsMenuItem,
-  salesLeadsMenuItem,
-  salesEmailOutreachMenuItem,
-];
-
-const isSalesAgentMenuItem = (item: MenuDataItem) => {
-  const path = normalizePath(item.path);
-  if (path === salesAgentPath) return true;
-  const name = String(item.name || '');
-  return /sales\s*agent/i.test(name) || name.includes('获客');
-};
-
-const hasSalesAgentChild = (
-  children: RuoyiMenuDataItem[],
-  menuItem: RuoyiMenuDataItem,
-) =>
-  children.some(
-    (child) =>
-      normalizePath(child.path) === normalizePath(menuItem.path) ||
-      child.name === menuItem.name,
-  );
-
-const mergeSalesAgentChildren = (children: RuoyiMenuDataItem[]) => {
-  const nextChildren = [...children];
-  for (const menuItem of salesAgentInjectedChildren) {
-    if (!hasSalesAgentChild(nextChildren, menuItem)) {
-      nextChildren.push(menuItem);
-    }
-  }
-  return nextChildren;
-};
-
-/** 若依 Sales Agent 常为叶子菜单直达 /sales，补前端子菜单以展示二级导航 */
-export const attachSalesAgentOverviewMenu = (
-  menuData: RuoyiMenuDataItem[],
-): RuoyiMenuDataItem[] =>
-  menuData.map((item) => {
-    const children = item.children
-      ? attachSalesAgentOverviewMenu(item.children as RuoyiMenuDataItem[])
-      : [];
-
-    if (!isSalesAgentMenuItem(item)) {
-      return children.length > 0 ? { ...item, children } : item;
-    }
-
-    const nextChildren = mergeSalesAgentChildren(children);
-
-    const { redirect: _redirect, ...rest } = item;
-
-    return {
-      ...rest,
-      children: nextChildren,
-    };
-  });
 
 const joinPath = (parentPath: string, childPath?: string) => {
   const child = (childPath || '').trim();
   if (!child) return normalizePath(parentPath) || '/';
-  if (isExternal(child)) return child;
-  if (child.startsWith('/')) return child;
+  if (isExternal(child)) return normalizeSafeExternalUrl(child) || '';
+  if (hasUrlScheme(child) || child.startsWith('//')) return '';
+  if (child.startsWith('/')) return normalizePath(child);
 
   const parent = normalizePath(parentPath);
   if (!parent || parent === '/') return `/${trimSlashes(child)}`;
@@ -244,8 +123,9 @@ const toRuoyiMenuItem = (
     ruoyiName: route.name,
   };
 
-  if (route.meta?.link) {
-    item.path = route.meta.link;
+  const safeMetaLink = normalizeSafeExternalUrl(route.meta?.link || undefined);
+  if (safeMetaLink) {
+    item.path = safeMetaLink;
     item.target = '_blank';
   }
 
@@ -274,20 +154,31 @@ export const buildRuoyiMenuData = (routes: RuoyiRoute[] = []) =>
 export const buildLayoutMenuData = (
   ruoyiMenuData: RuoyiMenuDataItem[],
   _defaultMenuData: MenuDataItem[],
-) => {
-  return attachSalesAgentOverviewMenu(ruoyiMenuData);
-};
+) => ruoyiMenuData;
 
 export const setCachedRuoyiMenuData = (menuData: RuoyiMenuDataItem[]) => {
   cachedRuoyiMenuData = menuData;
 };
 
 export const clearCachedRuoyiMenuData = () => {
+  cachedRuoyiMenuGeneration += 1;
   cachedRuoyiMenuData = undefined;
+  cachedRuoyiMenuCatalog = undefined;
   cachedRuoyiMenuRequest = undefined;
+  publishRuoyiMenuCatalog([]);
 };
 
 export const getCachedRuoyiMenuData = () => cachedRuoyiMenuData || [];
+export const getCachedRuoyiRoutes = () => cachedRuoyiMenuCatalog?.routes || [];
+
+export const subscribeRuoyiMenuCatalog = (
+  listener: RuoyiMenuCatalogListener,
+) => {
+  ruoyiMenuCatalogListeners.add(listener);
+  return () => {
+    ruoyiMenuCatalogListeners.delete(listener);
+  };
+};
 
 export const resolveRuoyiMenuWorkspaces = (
   menuData = getCachedRuoyiMenuData(),
@@ -428,24 +319,41 @@ export const getScopedRuoyiMenuData = (
   );
 };
 
-export const loadRuoyiMenuData = async () => {
-  if (cachedRuoyiMenuData) return cachedRuoyiMenuData;
+export const loadRuoyiMenuCatalog = async () => {
+  if (cachedRuoyiMenuCatalog) return cachedRuoyiMenuCatalog;
   if (cachedRuoyiMenuRequest) return cachedRuoyiMenuRequest;
 
-  cachedRuoyiMenuRequest = getRouters({ skipErrorHandler: true })
+  const requestGeneration = cachedRuoyiMenuGeneration;
+  const request = getRouters({ skipErrorHandler: true })
     .then((response) => {
-      const menuData = attachSalesAgentOverviewMenu(
-        buildRuoyiMenuData(response.data || []),
-      );
-      setCachedRuoyiMenuData(menuData);
-      return menuData;
+      if (!Array.isArray(response.data)) {
+        throw new Error('授权路由数据格式无效。');
+      }
+      const routes = response.data;
+      const menuData = buildRuoyiMenuData(routes);
+      const catalog = { menuData, routes };
+      if (requestGeneration === cachedRuoyiMenuGeneration) {
+        cachedRuoyiMenuCatalog = catalog;
+        setCachedRuoyiMenuData(menuData);
+        publishRuoyiMenuCatalog(routes);
+      }
+      return catalog;
     })
     .finally(() => {
-      cachedRuoyiMenuRequest = undefined;
+      if (
+        requestGeneration === cachedRuoyiMenuGeneration &&
+        cachedRuoyiMenuRequest === request
+      ) {
+        cachedRuoyiMenuRequest = undefined;
+      }
     });
 
-  return cachedRuoyiMenuRequest;
+  cachedRuoyiMenuRequest = request;
+  return request;
 };
+
+export const loadRuoyiMenuData = async () =>
+  (await loadRuoyiMenuCatalog()).menuData;
 
 const flattenMenuData = (menuData: RuoyiMenuDataItem[]): RuoyiMenuDataItem[] =>
   menuData.flatMap((item) => [

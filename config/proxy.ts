@@ -7,36 +7,53 @@ type ProxyEnv = Record<string, string | undefined>;
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/g, '');
 const read = (env: ProxyEnv, key: string) => env[key]?.trim();
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const hasForbiddenPathCharacters = (value: string) =>
+  value.includes('?') ||
+  value.includes('#') ||
+  Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) || 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
 
-const readOptionalChannel = (
-  env: ProxyEnv,
-  pathKey: string,
-  targetKey: string,
-  options: {
-    fallbackPath?: string;
-    legacyPathKey?: string;
-    legacyTargetKey?: string;
-  } = {},
-) => {
-  const explicitPath = env[pathKey];
-  const explicitTarget = env[targetKey];
-  const legacyPath = options.legacyPathKey
-    ? read(env, options.legacyPathKey)
-    : undefined;
-  const legacyTarget = options.legacyTargetKey
-    ? read(env, options.legacyTargetKey)
-    : undefined;
-  const target = explicitTarget?.trim() || legacyTarget;
-  const path =
-    explicitPath !== undefined
-      ? explicitPath.trim()
-      : legacyPath || (target ? options.fallbackPath : undefined);
-
-  if (!path) return undefined;
-  if (!target) {
-    throw new Error(`${pathKey} 已启用，但未配置 ${targetKey}。`);
+const validateSameOriginPath = (value: string) => {
+  const invalid = () => {
+    throw new Error('UMI_APP_BASE_API 必须是安全的同源绝对路径。');
+  };
+  if (
+    !value.startsWith('/') ||
+    value === '/' ||
+    value.startsWith('//') ||
+    value.includes('\\') ||
+    hasForbiddenPathCharacters(value)
+  ) {
+    invalid();
   }
-  return { path: trimTrailingSlash(path), target };
+  const segments = value.split('/');
+  segments.slice(1).forEach((segment, index) => {
+    const isTrailingSlash = index === segments.length - 2 && segment === '';
+    if (segment === '' && !isTrailingSlash) invalid();
+    let decoded = segment;
+    for (let round = 0; segment && round < 4; round += 1) {
+      try {
+        decoded = decodeURIComponent(decoded);
+      } catch {
+        invalid();
+      }
+      if (
+        decoded === '.' ||
+        decoded === '..' ||
+        decoded.includes('/') ||
+        decoded.includes('\\') ||
+        hasForbiddenPathCharacters(decoded)
+      ) {
+        invalid();
+      }
+    }
+    if (/%(?:2e|2f|5c)/i.test(decoded)) invalid();
+  });
+  return trimTrailingSlash(value);
 };
 
 export const createProxy = (env: ProxyEnv = process.env) => {
@@ -51,38 +68,19 @@ export const createProxy = (env: ProxyEnv = process.env) => {
   const productHeaders = {
     'X-Lingchen-Product-Code': productCode,
   };
-  const baseApi = trimTrailingSlash(
+  const baseApi = validateSameOriginPath(
     read(env, 'UMI_APP_BASE_API') || '/dev-api',
   );
   const apiTarget = read(env, 'UMI_APP_API_TARGET') || 'http://localhost:8080';
   const sseProxyPath = `${baseApi}/resource/sse`;
-  const product = readOptionalChannel(
-    env,
-    'UMI_APP_PRODUCT_API',
-    'UMI_APP_PRODUCT_TARGET',
-    {
-      fallbackPath: '/admin-api',
-      legacyPathKey: 'UMI_APP_ADMIN_API',
-      legacyTargetKey: 'UMI_APP_ADMIN_TARGET',
-    },
-  );
-  const voice = readOptionalChannel(
-    env,
-    'UMI_APP_VOICE_API',
-    'UMI_APP_VOICE_API_TARGET',
-    { fallbackPath: '/voice-api' },
-  );
-
-  const paths = [baseApi, product?.path, voice?.path].filter(Boolean);
-  if (new Set(paths).size !== paths.length) {
-    throw new Error('本地 API 通道路径不能重复。');
-  }
 
   const configured: Record<string, Record<string, unknown>> = {
     [sseProxyPath]: {
       target: apiTarget,
       changeOrigin: true,
-      pathRewrite: { [`^${sseProxyPath}`]: '/resource/sse' },
+      pathRewrite: {
+        [`^${escapeRegExp(sseProxyPath)}`]: '/resource/sse',
+      },
       proxyTimeout: 0,
       timeout: 0,
       headers: {
@@ -96,28 +94,10 @@ export const createProxy = (env: ProxyEnv = process.env) => {
       changeOrigin: true,
       ws: true,
       headers: productHeaders,
-      pathRewrite: { [`^${baseApi}`]: '' },
+      pathRewrite: { [`^${escapeRegExp(baseApi)}`]: '' },
     },
   };
 
-  if (product) {
-    configured[product.path] = {
-      target: product.target,
-      changeOrigin: true,
-      ws: true,
-      headers: productHeaders,
-      pathRewrite: { [`^${product.path}`]: '' },
-    };
-  }
-  if (voice) {
-    configured[voice.path] = {
-      target: voice.target,
-      changeOrigin: true,
-      ws: true,
-      headers: productHeaders,
-      pathRewrite: { [`^${voice.path}`]: '' },
-    };
-  }
   return configured;
 };
 

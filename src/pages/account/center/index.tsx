@@ -34,7 +34,7 @@ import {
   updateCurrentPassword,
   updateCurrentProfile,
   uploadCurrentAvatar,
-} from '@/services/ruoyi/profile';
+} from '@/app/auth/profile';
 import useStyles from './Center.style';
 
 type PasswordFormValues = CurrentPasswordUpdate & {

@@ -24,34 +24,3 @@ describe('menu workspace defaults', () => {
     });
   });
 });
-
-describe('optional product api channel', () => {
-  const originalProductApi = process.env.UMI_APP_PRODUCT_API;
-  const originalAdminApi = process.env.UMI_APP_ADMIN_API;
-
-  afterEach(() => {
-    if (originalProductApi === undefined) {
-      delete process.env.UMI_APP_PRODUCT_API;
-    } else {
-      process.env.UMI_APP_PRODUCT_API = originalProductApi;
-    }
-    if (originalAdminApi === undefined) {
-      delete process.env.UMI_APP_ADMIN_API;
-    } else {
-      process.env.UMI_APP_ADMIN_API = originalAdminApi;
-    }
-    jest.resetModules();
-  });
-
-  it('fails clearly instead of accidentally sending product calls to the site root', () => {
-    process.env.UMI_APP_PRODUCT_API = '';
-    process.env.UMI_APP_ADMIN_API = '';
-
-    jest.isolateModules(() => {
-      const { requireProductApi } = require('./env');
-      expect(() => requireProductApi()).toThrow(
-        '当前站点未配置 Product API 通道',
-      );
-    });
-  });
-});

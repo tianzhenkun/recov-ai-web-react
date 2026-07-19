@@ -37,11 +37,19 @@ import {
 } from '@/adapters/ruoyi/menu';
 import { setRuoyiMessage } from '@/adapters/ruoyi/message';
 import { RuoYiCode, RuoyiError } from '@/adapters/ruoyi/response';
-import { subscribeSseMessage } from '@/adapters/ruoyi/sse';
+import { getSiteConfig } from '@/app/auth';
+import { AuthorizedRouteBoundary } from '@/app/authorization';
+import {
+  AppExtensions,
+  type FloatingProcessPanelDefaultMode,
+  getStoredFloatingProcessPanelDefaultMode,
+  setStoredFloatingProcessPanelDefaultMode,
+} from '@/app/extensions';
+import { resolveSiteBranding } from '@/branding';
+import defaultSettings from '@/branding/base';
 import {
   AvatarDropdown,
   ErrorBoundary,
-  FloatingProcessPanel,
   Footer,
   NotificationCenter,
   OfflineBanner,
@@ -49,41 +57,25 @@ import {
   SseBootstrap,
   TenantSwitch,
 } from '@/components';
-import type {
-  FloatingProcessPanelDefaultMode,
-  FlowProcessChannel,
-  FlowProcessIconKind,
-  FlowProcessItem,
-  FlowProcessStatus,
-} from '@/components/FloatingProcessPanel';
-import type { FlowEventPageItem } from '@/services/ruoyi/flowEvent';
-import {
-  buildFlowEventDisplaySummary,
-  getFlowEventPage,
-  getFlowEventUnreadCount,
-  markAllFlowEventsRead,
-  normalizeFlowEventPageResult,
-  normalizeFlowEventUnreadCount,
-} from '@/services/ruoyi/flowEvent';
-import { dynamicTenant } from '@/services/ruoyi/tenant';
-import { getInfo, type UserInfo } from '@/services/ruoyi/user';
-import defaultSettings from '../config/defaultSettings';
+import { normalizeSafeExternalUrl } from '@/shared/security/url';
+import { dynamicTenant } from '@/shared/services/tenant';
+import { getInfo, type UserInfo } from '@/shared/services/user';
+import type { CurrentUser } from '@/shared/types';
+import { parseSiteProfile, type SiteProfile } from '@/site-profiles';
 import { errorConfig } from './requestErrorConfig';
 
 const loginPath = '/user/login';
-const isExternalPath = (path?: string) =>
-  /^[a-z][a-z\d+\-.]*:\/\//i.test(path || '');
 
-type RecovColorTheme = 'default' | 'layeredDarkNav';
-type RecovLayoutSettings = Partial<LayoutSettings> & {
+type AppColorTheme = 'default' | 'layeredDarkNav';
+type AppLayoutSettings = Partial<LayoutSettings> & {
   bgLayoutImgList?: ProLayoutProps['bgLayoutImgList'];
   className?: ProLayoutProps['className'];
-  recovColorTheme?: RecovColorTheme;
+  colorTheme?: AppColorTheme;
   token?: ProLayoutProps['token'];
 };
 
 const layeredDarkNavTheme = 'layeredDarkNav';
-const layeredDarkNavLayoutClass = 'recov-layout-theme-layered-dark-nav';
+const layeredDarkNavLayoutClass = 'app-layout-theme-layered-dark-nav';
 const layeredDarkNavBgColor = '#1a1d24';
 const layeredDarkNavSurfaceColor = '#252934';
 const layeredDarkNavAccentColor = '#9254de';
@@ -116,10 +108,8 @@ const layeredDarkNavLayoutToken: NonNullable<ProLayoutProps['token']> = {
   },
 };
 
-const resolveRecovColorTheme = (
-  settings?: RecovLayoutSettings,
-): RecovColorTheme =>
-  settings?.recovColorTheme === layeredDarkNavTheme
+const resolveAppColorTheme = (settings?: AppLayoutSettings): AppColorTheme =>
+  settings?.colorTheme === layeredDarkNavTheme
     ? layeredDarkNavTheme
     : 'default';
 
@@ -139,16 +129,16 @@ const mergeLayeredDarkNavToken = (
 });
 
 const buildRuntimeLayoutSettings = (
-  settings?: RecovLayoutSettings,
+  settings?: AppLayoutSettings,
 ): Partial<LayoutSettings> & Partial<ProLayoutProps> => {
   const {
     bgLayoutImgList,
     className,
-    recovColorTheme: _recovColorTheme,
+    colorTheme: _colorTheme,
     token,
     ...restSettings
   } = settings || {};
-  const colorTheme = resolveRecovColorTheme(settings);
+  const colorTheme = resolveAppColorTheme(settings);
 
   if (colorTheme !== layeredDarkNavTheme) {
     return {
@@ -220,198 +210,10 @@ const recovListPagePaths = new Set([
   '/sys/instrument-standing',
   '/sys/instrument-template',
   '/sys/project',
-  '/test11',
 ]);
-
-const floatingProcessPanelDefaultModeStorageKey =
-  'recov:floating-process-panel-default-mode';
-const canUseStorage = () =>
-  typeof window !== 'undefined' && typeof localStorage !== 'undefined';
-const isFloatingProcessPanelDefaultMode = (
-  value: string | null,
-): value is FloatingProcessPanelDefaultMode =>
-  value === 'normal' || value === 'docked';
-const getStoredFloatingProcessPanelDefaultMode =
-  (): FloatingProcessPanelDefaultMode => {
-    if (!canUseStorage()) return 'normal';
-    const storedValue = localStorage.getItem(
-      floatingProcessPanelDefaultModeStorageKey,
-    );
-    return isFloatingProcessPanelDefaultMode(storedValue)
-      ? storedValue
-      : 'normal';
-  };
-const setStoredFloatingProcessPanelDefaultMode = (
-  value: FloatingProcessPanelDefaultMode,
-) => {
-  if (!canUseStorage()) return;
-  localStorage.setItem(floatingProcessPanelDefaultModeStorageKey, value);
-};
 
 const isRecovListPagePath = (pathname: string) =>
   recovListPagePaths.has(pathname);
-
-const floatingProcessPanelPageSize = 10;
-const flowEventSseType = 'recov.flow_event.changed';
-
-const resolveFlowProcessStatus = (eventType?: string): FlowProcessStatus => {
-  if (!eventType) return 'running';
-  if (eventType.includes('failed')) return 'warning';
-  if (eventType.includes('completed')) return 'success';
-  if (eventType.includes('terminated') || eventType.includes('skipped')) {
-    return 'waiting';
-  }
-  return 'running';
-};
-
-const resolveFlowProcessChannel = (
-  event: FlowEventPageItem,
-): FlowProcessChannel => {
-  const sourceType = String(event.sourceType || '').toLowerCase();
-  const eventType = String(event.eventType || '').toLowerCase();
-
-  if (
-    sourceType.includes('sms') ||
-    sourceType.includes('message') ||
-    eventType.includes('sms') ||
-    eventType.includes('message')
-  ) {
-    return 'message';
-  }
-
-  if (
-    sourceType.includes('call') ||
-    sourceType.includes('phone') ||
-    eventType.includes('call') ||
-    eventType.includes('phone')
-  ) {
-    return 'phone';
-  }
-
-  return 'system';
-};
-
-const resolveFlowProcessIconKind = (
-  event: FlowEventPageItem,
-): FlowProcessIconKind => {
-  const nodeCode = String(event.nodeCode || '').toLowerCase();
-  const sourceType = String(event.sourceType || '').toLowerCase();
-  const searchText = [
-    event.nodeCode,
-    event.nodeName,
-    event.eventType,
-    event.eventTitle,
-    event.eventContent,
-    event.reasonText,
-    event.sourceType,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  if (nodeCode === 'ai_call') return 'phone';
-  if (nodeCode === 'corp_letter') return 'corp-letter';
-  if (nodeCode === 'law_letter') return 'law-letter';
-  if (
-    nodeCode === 'filing_material_submit' ||
-    nodeCode === 'litigation_screenshot'
-  ) {
-    return 'litigation';
-  }
-  if (nodeCode === 'litigation_result') return 'litigation-result';
-  if (nodeCode === 'lawyer_court') return 'workflow';
-  if (nodeCode === 'enforcement_screenshot') return 'litigation';
-  if (nodeCode === 'enforcement_result') return 'litigation-result';
-  if (nodeCode === 'restrict_consumption') return 'warning';
-  if (nodeCode === 'credit_blacklist') return 'blacklist';
-
-  if (searchText.includes('律师函') || searchText.includes('law_letter')) {
-    return 'law-letter';
-  }
-  if (
-    searchText.includes('企业催收函') ||
-    searchText.includes('催收函') ||
-    searchText.includes('corp_letter')
-  ) {
-    return 'corp-letter';
-  }
-  if (
-    searchText.includes('申请诉讼') ||
-    searchText.includes('诉讼') ||
-    searchText.includes('立案') ||
-    searchText.includes('filing') ||
-    searchText.includes('litigation')
-  ) {
-    return 'litigation';
-  }
-  if (
-    searchText.includes('快递') ||
-    searchText.includes('express') ||
-    searchText.includes('delivery')
-  ) {
-    return 'express';
-  }
-  if (
-    sourceType.includes('email') ||
-    sourceType.includes('mail') ||
-    sourceType.includes('sms') ||
-    sourceType.includes('message') ||
-    searchText.includes('邮件') ||
-    searchText.includes('email') ||
-    searchText.includes('mail') ||
-    searchText.includes('sms') ||
-    searchText.includes('message')
-  ) {
-    return 'email';
-  }
-  if (
-    searchText.includes('盖章') ||
-    searchText.includes('seal') ||
-    searchText.includes('签章')
-  ) {
-    return 'seal';
-  }
-  if (
-    sourceType.includes('call') ||
-    sourceType.includes('phone') ||
-    searchText.includes('外呼') ||
-    searchText.includes('电话') ||
-    searchText.includes('call') ||
-    searchText.includes('phone')
-  ) {
-    return 'phone';
-  }
-
-  return 'system';
-};
-
-const toFlowProcessItem = (event: FlowEventPageItem): FlowProcessItem => ({
-  id: String(
-    event.id ??
-      `${event.instanceId ?? 'instance'}-${event.createTime ?? 'time'}-${event.eventType ?? 'event'}`,
-  ),
-  title: String(event.eventTitle || event.eventType || '流程事件更新'),
-  summary: buildFlowEventDisplaySummary(event),
-  time: event.createTime || new Date().toISOString(),
-  status: resolveFlowProcessStatus(event.eventType),
-  channel: resolveFlowProcessChannel(event),
-  iconKind: resolveFlowProcessIconKind(event),
-  detail: {
-    createTime: event.createTime,
-    debtNumber: event.debtNumber,
-    eventContent: event.eventContent,
-    eventTitle: event.eventTitle,
-    eventType: event.eventType,
-    instanceId: event.instanceId,
-    nodeName: event.nodeName,
-    reasonText: event.reasonText,
-    taskId: event.taskId,
-  },
-  read: event.read,
-});
-
-const isFlowEventSseMessage = (message: { event?: string; type?: string }) =>
-  message.type === flowEventSseType || message.event === flowEventSseType;
 
 type LayoutBreadcrumbItem = NonNullable<BreadcrumbProps['items']>[number] & {
   linkPath?: string;
@@ -446,7 +248,7 @@ const RuoyiAppBridge = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-export type RuoyiCurrentUser = API.CurrentUser & {
+export type RuoyiCurrentUser = CurrentUser & {
   roles?: string[];
   permissions?: string[];
   rawUser?: UserInfo['user'];
@@ -455,9 +257,11 @@ export type RuoyiCurrentUser = API.CurrentUser & {
 const toCurrentUser = (info?: UserInfo): RuoyiCurrentUser | undefined => {
   const user = info?.user;
   if (!user) return undefined;
+  const userId = String(user.userId ?? '').trim();
+  if (!userId || userId === '0') return undefined;
   const roles = info?.roles || [];
   return {
-    userid: String(user.userId || ''),
+    userid: userId,
     name: user.nickName || user.userName || '用户',
     avatar: user.avatar,
     email: user.email,
@@ -500,11 +304,20 @@ const restoreDynamicTenantContext = async (currentUser?: RuoyiCurrentUser) => {
   }
 };
 
+const loadSiteProfile = async (): Promise<SiteProfile | undefined> => {
+  try {
+    const response = await getSiteConfig();
+    return parseSiteProfile(response.data);
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * @see https://umijs.org/docs/api/runtime-config#getinitialstate
  * */
 export async function getInitialState(): Promise<{
-  settings?: RecovLayoutSettings;
+  settings?: AppLayoutSettings;
   currentUser?: RuoyiCurrentUser;
   loading?: boolean;
   fetchUserInfo?: () => Promise<RuoyiCurrentUser | undefined>;
@@ -515,11 +328,14 @@ export async function getInitialState(): Promise<{
   activeMenuWorkspaceKey?: string;
   menuWorkspaceMode?: RuoyiMenuWorkspaceMode;
   menuContextPathname?: string;
+  siteProfile?: SiteProfile;
 }> {
   const fetchUserInfo = async () => {
     try {
       const response = await getInfo({ skipErrorHandler: true });
-      return toCurrentUser(response.data);
+      const currentUser = toCurrentUser(response.data);
+      if (!currentUser) throw new Error('当前用户信息缺少有效标识。');
+      return currentUser;
     } catch (_error) {
       const { pathname, search, hash } = history.location;
       history.replace(
@@ -532,12 +348,11 @@ export async function getInitialState(): Promise<{
   const { location } = history;
   const floatingProcessPanelDefaultMode =
     getStoredFloatingProcessPanelDefaultMode();
-  if (
-    ![loginPath, '/user/register', '/user/register-result'].includes(
-      location.pathname,
-    )
-  ) {
-    const currentUser = await fetchUserInfo();
+  if (location.pathname !== loginPath) {
+    const [currentUser, siteProfile] = await Promise.all([
+      fetchUserInfo(),
+      loadSiteProfile(),
+    ]);
     const dynamicTenantId = await restoreDynamicTenantContext(currentUser);
     let menuWorkspaceMode: RuoyiMenuWorkspaceMode = 'default';
     let activeMenuWorkspaceKey: string | undefined;
@@ -560,7 +375,7 @@ export async function getInitialState(): Promise<{
     return {
       fetchUserInfo,
       currentUser,
-      settings: defaultSettings as RecovLayoutSettings,
+      settings: defaultSettings as AppLayoutSettings,
       floatingProcessPanelDefaultMode,
       settingDrawerOpen: false,
       dynamicTenantId,
@@ -568,11 +383,12 @@ export async function getInitialState(): Promise<{
       activeMenuWorkspaceKey,
       menuWorkspaceMode,
       menuContextPathname: location.pathname,
+      siteProfile,
     };
   }
   return {
     fetchUserInfo,
-    settings: defaultSettings as RecovLayoutSettings,
+    settings: defaultSettings as AppLayoutSettings,
     floatingProcessPanelDefaultMode,
     settingDrawerOpen: false,
     dynamicTenantId: getStoredDynamicTenantId(),
@@ -600,202 +416,22 @@ const AppLayoutChildren = ({
   initialState,
   setInitialState,
 }: AppLayoutChildrenProps) => {
-  const recovColorTheme = resolveRecovColorTheme(initialState?.settings);
+  const colorTheme = resolveAppColorTheme(initialState?.settings);
   const backgroundFeaturesEnabled = Boolean(initialState?.currentUser?.userid);
   const sseConnectionKey = [
     initialState?.currentUser?.userid || 'anonymous',
     initialState?.dynamicTenantId || 'default',
     initialState?.tenantSwitchVersion || 0,
   ].join(':');
-  const [flowProcessItems, setFlowProcessItems] = React.useState<
-    FlowProcessItem[]
-  >([]);
-  const [flowProcessItemsLoading, setFlowProcessItemsLoading] =
-    React.useState(false);
-  const [flowEventUnreadCount, setFlowEventUnreadCount] = React.useState(0);
-  const flowProcessRequestSeqRef = React.useRef(0);
-  const flowEventUnreadRequestSeqRef = React.useRef(0);
-  const flowProcessPanelExpandedRef = React.useRef(false);
-  const flowEventUnreadCountRef = React.useRef(0);
-  const shouldMarkFlowProcessReadOnCollapseRef = React.useRef(false);
-
-  React.useEffect(() => {
-    flowEventUnreadCountRef.current = flowEventUnreadCount;
-  }, [flowEventUnreadCount]);
-
-  const loadFlowProcessItems = React.useCallback(
-    async (silent = false) => {
-      if (!backgroundFeaturesEnabled) {
-        setFlowProcessItems([]);
-        setFlowProcessItemsLoading(false);
-        return false;
-      }
-
-      flowProcessRequestSeqRef.current += 1;
-      const seq = flowProcessRequestSeqRef.current;
-      if (!silent) {
-        setFlowProcessItemsLoading(true);
-      }
-
-      try {
-        const response = await getFlowEventPage({
-          pageNum: 1,
-          pageSize: floatingProcessPanelPageSize,
-        });
-        if (seq !== flowProcessRequestSeqRef.current) return false;
-        const pageResult = normalizeFlowEventPageResult(response);
-        if (
-          flowProcessPanelExpandedRef.current &&
-          pageResult.rows.some((item) => item.read === false)
-        ) {
-          shouldMarkFlowProcessReadOnCollapseRef.current = true;
-        }
-        setFlowProcessItems(pageResult.rows.map(toFlowProcessItem));
-        return true;
-      } catch {
-        if (seq !== flowProcessRequestSeqRef.current) return false;
-        setFlowProcessItems([]);
-        return false;
-      } finally {
-        if (seq === flowProcessRequestSeqRef.current && !silent) {
-          setFlowProcessItemsLoading(false);
-        }
-      }
-    },
-    [
-      backgroundFeaturesEnabled,
-      initialState?.currentUser?.userid,
-      initialState?.dynamicTenantId,
-      initialState?.tenantSwitchVersion,
-    ],
-  );
-
-  const loadFlowEventUnreadCount = React.useCallback(async () => {
-    if (!backgroundFeaturesEnabled) {
-      setFlowEventUnreadCount(0);
-      return;
-    }
-
-    flowEventUnreadRequestSeqRef.current += 1;
-    const seq = flowEventUnreadRequestSeqRef.current;
-
-    try {
-      const response = await getFlowEventUnreadCount();
-      if (seq !== flowEventUnreadRequestSeqRef.current) return;
-      const nextUnreadCount = normalizeFlowEventUnreadCount(response);
-      flowEventUnreadCountRef.current = nextUnreadCount;
-      setFlowEventUnreadCount(nextUnreadCount);
-    } catch {
-      if (seq !== flowEventUnreadRequestSeqRef.current) return;
-      flowEventUnreadCountRef.current = 0;
-      setFlowEventUnreadCount(0);
-    }
-  }, [
-    backgroundFeaturesEnabled,
-    initialState?.currentUser?.userid,
-    initialState?.dynamicTenantId,
-    initialState?.tenantSwitchVersion,
-  ]);
-
-  const markFlowProcessItemsRead = React.useCallback(async () => {
-    if (!backgroundFeaturesEnabled) return;
-
-    try {
-      await markAllFlowEventsRead();
-      setFlowProcessItems((currentItems) =>
-        currentItems.map((item) =>
-          item.read === false ? { ...item, read: true } : item,
-        ),
-      );
-      flowEventUnreadCountRef.current = 0;
-      shouldMarkFlowProcessReadOnCollapseRef.current = false;
-      setFlowEventUnreadCount(0);
-      void loadFlowEventUnreadCount();
-    } catch {
-      void loadFlowEventUnreadCount();
-    }
-  }, [
-    backgroundFeaturesEnabled,
-    initialState?.currentUser?.userid,
-    initialState?.dynamicTenantId,
-    initialState?.tenantSwitchVersion,
-    loadFlowEventUnreadCount,
-  ]);
-
-  const loadFlowProcessItemsForViewing = React.useCallback(
-    async (silent = false) => {
-      const loaded = await loadFlowProcessItems(silent);
-      if (loaded) {
-        if (flowEventUnreadCountRef.current > 0) {
-          shouldMarkFlowProcessReadOnCollapseRef.current = true;
-        }
-        return;
-      }
-      void loadFlowEventUnreadCount();
-    },
-    [loadFlowEventUnreadCount, loadFlowProcessItems],
-  );
-
-  React.useEffect(() => {
-    flowProcessPanelExpandedRef.current = false;
-    shouldMarkFlowProcessReadOnCollapseRef.current = false;
-    setFlowProcessItems([]);
-    void loadFlowEventUnreadCount();
-  }, [loadFlowEventUnreadCount]);
-
-  React.useEffect(() => {
-    if (!backgroundFeaturesEnabled) return;
-
-    return subscribeSseMessage((message) => {
-      if (!isFlowEventSseMessage(message)) return;
-      if (flowProcessPanelExpandedRef.current) {
-        shouldMarkFlowProcessReadOnCollapseRef.current = true;
-        flowEventUnreadCountRef.current = Math.max(
-          flowEventUnreadCountRef.current,
-          1,
-        );
-        setFlowEventUnreadCount((current) => Math.max(current, 1));
-        void loadFlowProcessItemsForViewing(true);
-        return;
-      }
-      flowEventUnreadCountRef.current = Math.max(
-        flowEventUnreadCountRef.current,
-        1,
-      );
-      setFlowEventUnreadCount((current) => Math.max(current, 1));
-      void loadFlowEventUnreadCount();
-    });
-  }, [
-    backgroundFeaturesEnabled,
-    initialState?.currentUser?.userid,
-    initialState?.dynamicTenantId,
-    initialState?.tenantSwitchVersion,
-    loadFlowEventUnreadCount,
-    loadFlowProcessItemsForViewing,
-  ]);
-
-  const handleFlowProcessPanelExpandedChange = React.useCallback(
-    (nextExpanded: boolean) => {
-      flowProcessPanelExpandedRef.current = nextExpanded;
-      if (nextExpanded) {
-        void loadFlowProcessItemsForViewing();
-        return;
-      }
-      if (shouldMarkFlowProcessReadOnCollapseRef.current) {
-        void markFlowProcessItemsRead();
-      }
-    },
-    [loadFlowProcessItemsForViewing, markFlowProcessItemsRead],
-  );
-  const handleRecovColorThemeChange = React.useCallback(
-    (nextTheme: RecovColorTheme) => {
+  const handleAppColorThemeChange = React.useCallback(
+    (nextTheme: AppColorTheme) => {
       setInitialState((state) =>
         state
           ? {
               ...state,
               settings: {
                 ...state.settings,
-                recovColorTheme: nextTheme,
+                colorTheme: nextTheme,
                 ...(nextTheme === layeredDarkNavTheme
                   ? { navTheme: 'light' as const }
                   : {}),
@@ -816,19 +452,17 @@ const AppLayoutChildren = ({
       <React.Fragment
         key={`${initialState?.dynamicTenantId || 'default'}-${initialState?.tenantSwitchVersion || 0}`}
       >
-        {children}
+        <AuthorizedRouteBoundary
+          contextKey={sseConnectionKey}
+          signedIn={backgroundFeaturesEnabled}
+        >
+          {children}
+        </AuthorizedRouteBoundary>
       </React.Fragment>
-      <FloatingProcessPanel
-        defaultMode={floatingProcessPanelDefaultMode}
-        enabled={backgroundFeaturesEnabled}
-        hasUnread={flowEventUnreadCount > 0}
-        items={flowProcessItems}
-        loading={flowProcessItemsLoading}
-        onExpandedChange={handleFlowProcessPanelExpandedChange}
-        onViewAllLogs={() => {
-          void markFlowProcessItemsRead();
-          history.push('/flow-events');
-        }}
+      <AppExtensions
+        contextKey={sseConnectionKey}
+        floatingProcessPanelDefaultMode={floatingProcessPanelDefaultMode}
+        signedIn={backgroundFeaturesEnabled}
       />
       <SettingDrawer
         disableUrlParams
@@ -866,10 +500,10 @@ const AppLayoutChildren = ({
                     value: layeredDarkNavTheme,
                   },
                 ]}
-                value={recovColorTheme}
+                value={colorTheme}
                 onChange={(event) => {
-                  handleRecovColorThemeChange(
-                    event.target.value as RecovColorTheme,
+                  handleAppColorThemeChange(
+                    event.target.value as AppColorTheme,
                   );
                 }}
               />
@@ -927,6 +561,7 @@ export const layout: RunTimeLayoutConfig = ({
     initialState?.dynamicTenantId || 'default',
     initialState?.tenantSwitchVersion || 0,
   ].join(':');
+  const branding = resolveSiteBranding(initialState?.siteProfile);
   const syncMenuContextFromPath = async (pathname: string) => {
     if (!initialState?.currentUser) return;
 
@@ -962,11 +597,12 @@ export const layout: RunTimeLayoutConfig = ({
     siderWidth: defaultSettings.siderWidth,
     menuItemRender: (item, dom) => {
       if (item.path) {
-        if (isExternalPath(item.path)) {
+        const externalPath = normalizeSafeExternalUrl(item.path);
+        if (externalPath) {
           return (
             <a
-              href={item.path}
-              rel="noreferrer"
+              href={externalPath}
+              rel="noopener noreferrer"
               target={item.target || '_blank'}
             >
               {dom}
@@ -1019,6 +655,8 @@ export const layout: RunTimeLayoutConfig = ({
       },
     },
     breadcrumbRender,
+    // 禁用 Umi 旧版右侧内容兜底，避免注入模板头像和外部资源。
+    rightContentRender: false,
     actionsRender: isSideLayout
       ? false
       : (layoutProps) => {
@@ -1043,10 +681,10 @@ export const layout: RunTimeLayoutConfig = ({
           ];
         },
     headerTitleRender: (logo, title) => (
-      <a
-        href="/"
-        onClick={(event) => {
-          event.preventDefault();
+      <button
+        type="button"
+        aria-label="返回首页"
+        onClick={() => {
           const nextPath = getFirstVisibleRuoyiPath(
             getVisibleRuoyiMenuData(getCachedRuoyiMenuData(), {
               menuMode: 'default',
@@ -1060,11 +698,19 @@ export const layout: RunTimeLayoutConfig = ({
           }));
           history.push(nextPath || '/');
         }}
-        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: 0,
+          border: 0,
+          background: 'transparent',
+          cursor: 'pointer',
+        }}
       >
         {logo}
         {title}
-      </a>
+      </button>
     ),
     avatarProps: isSideLayout
       ? false
@@ -1081,7 +727,9 @@ export const layout: RunTimeLayoutConfig = ({
     //   content: initialState?.currentUser?.name,
     // },
     footerRender: () =>
-      isRecovListPagePath(history.location.pathname) ? null : <Footer />,
+      isRecovListPagePath(history.location.pathname) ? null : (
+        <Footer title={branding.title} />
+      ),
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
@@ -1094,33 +742,14 @@ export const layout: RunTimeLayoutConfig = ({
 
       void syncMenuContextFromPath(location.pathname);
     },
-    bgLayoutImgList: [
-      {
-        src: 'https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/D2LWSqNny4sAAAAAAAAAAAAAFl94AQBr',
-        left: 85,
-        bottom: 100,
-        height: '303px',
-      },
-      {
-        src: 'https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/C2TWRpJpiC0AAAAAAAAAAAAAFl94AQBr',
-        bottom: -68,
-        right: -45,
-        height: '303px',
-      },
-      {
-        src: 'https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/F6vSTbj8KpYAAAAAAAAAAAAAFl94AQBr',
-        bottom: 0,
-        left: 0,
-        width: '331px',
-      },
-    ],
+    bgLayoutImgList: [],
     links: isSideLayout
       ? undefined
       : [
           <a
             href="https://lingchen-ai.com/"
             key="lingchen-website"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             target="_blank"
           >
             <GlobalOutlined />
@@ -1155,6 +784,8 @@ export const layout: RunTimeLayoutConfig = ({
       );
     },
     ...buildRuntimeLayoutSettings(initialState?.settings),
+    logo: branding.logo,
+    title: branding.title,
   };
 };
 

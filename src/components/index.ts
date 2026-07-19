@@ -9,7 +9,7 @@
 import FloatingProcessPanel from './FloatingProcessPanel';
 import Footer from './Footer';
 import NotificationCenter from './NotificationCenter';
-import { DocLink, LangDropdown, VersionDropdown } from './RightContent';
+import { LangDropdown } from './RightContent';
 import { AvatarDropdown } from './RightContent/AvatarDropdown';
 import SafeHtml from './SafeHtml';
 import SiderFooterAction from './SiderFooterAction';
@@ -30,7 +30,6 @@ export { default as TagSelect } from './TagSelect';
 
 export {
   AvatarDropdown,
-  DocLink,
   FloatingProcessPanel,
   Footer,
   LangDropdown,
@@ -39,5 +38,4 @@ export {
   SiderFooterAction,
   SseBootstrap,
   TenantSwitch,
-  VersionDropdown,
 };

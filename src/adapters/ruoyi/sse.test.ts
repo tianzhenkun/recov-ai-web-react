@@ -1,6 +1,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { history } from '@umijs/max';
-import { startSse, stopSse, subscribeSseMessage } from './sse';
+import { getBaseApi, getSseApi } from './env';
+import { getSseUrl, startSse, stopSse, subscribeSseMessage } from './sse';
 
 jest.mock('@umijs/max', () => ({
   history: {
@@ -19,9 +20,9 @@ jest.mock('@microsoft/fetch-event-source', () => ({
 }));
 
 jest.mock('./env', () => ({
-  getBaseApi: () => '/dev-api',
+  getBaseApi: jest.fn(() => '/dev-api'),
   getClientId: () => 'test-client',
-  getSseApi: () => '/resource/sse',
+  getSseApi: jest.fn(() => '/resource/sse'),
 }));
 
 jest.mock('./message', () => ({
@@ -29,6 +30,8 @@ jest.mock('./message', () => ({
 }));
 
 const getFetchOptions = () => (fetchEventSource as jest.Mock).mock.calls[0][1];
+const getBaseApiMock = getBaseApi as jest.Mock;
+const getSseApiMock = getSseApi as jest.Mock;
 
 const createMockResponse = ({
   contentType,
@@ -54,6 +57,11 @@ const createMockResponse = ({
   }) as Response;
 
 describe('ruoyi sse adapter', () => {
+  beforeEach(() => {
+    getBaseApiMock.mockReturnValue('/dev-api');
+    getSseApiMock.mockReturnValue('/resource/sse');
+  });
+
   afterEach(() => {
     stopSse();
     localStorage.clear();
@@ -97,6 +105,19 @@ describe('ruoyi sse adapter', () => {
       }),
     );
     unsubscribe();
+  });
+
+  it.each([
+    'https://evil.invalid/events',
+    '//evil.invalid/events',
+    '/resource/../events',
+    '/resource/%2e%2e/events',
+    '/resource/a%2fb',
+    '/resource\\events',
+  ])('rejects unsafe SSE paths: %s', (ssePath) => {
+    getSseApiMock.mockReturnValue(ssePath);
+
+    expect(() => getSseUrl()).toThrow();
   });
 
   it('treats ruoyi json unauthorized response as fatal', async () => {

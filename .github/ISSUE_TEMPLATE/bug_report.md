@@ -1,6 +1,6 @@
 ---
 name: '报告 Bug | Report bug 🐛'
-about: 报告 Ant Design Pro 的 bug
+about: 报告 LingChen 前端的缺陷
 title: '🐛 [BUG]'
 labels: '🐛 bug'
 assignees: ''
@@ -34,10 +34,11 @@ Describe what you expected to see
 Provide reproducible code, warehouse, or online examples
 -->
 
-### © 版本信息
+### © 环境信息
 
-- Ant Design Pro 版本: [e.g. 4.0.0]
-- umi 版本
+- 前端分支或提交
+- 站点与产品编码（如适用）
+- 后端环境
 - 浏览器环境
 - 开发环境 [e.g. mac OS]
 

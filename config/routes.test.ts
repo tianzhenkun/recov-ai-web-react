@@ -15,6 +15,33 @@ const flattenRoutes = (items: RouteLike[]): RouteLike[] =>
   ]);
 
 describe('routes', () => {
+  it('does not ship Ant Design Pro example routes', () => {
+    const paths = new Set(flattenRoutes(routes).map((item) => item.path));
+
+    [
+      '/welcome',
+      '/admin',
+      '/dashboard',
+      '/form',
+      '/list',
+      '/profile',
+      '/result',
+      '/chatbot',
+      '/test11',
+      '/user/register',
+      '/user/register-result',
+    ].forEach((path) => {
+      expect(paths.has(path)).toBe(false);
+    });
+  });
+
+  it('keeps tenant billing and platform billing operations as independent route spaces', () => {
+    const paths = new Set(flattenRoutes(routes).map((item) => item.path));
+
+    expect(paths.has('/billing')).toBe(true);
+    expect(paths.has('/billing-operations')).toBe(true);
+  });
+
   it('exposes the standard flow events page as a hidden route', () => {
     const flowEventsRoute = flattenRoutes(routes).find(
       (item) => item.path === '/flow-events',

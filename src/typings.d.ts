@@ -15,8 +15,6 @@ declare module '*.md' {
   export default content;
 }
 declare module 'omit.js';
-declare module 'mockjs';
-
 declare const __APP_VERSION__: string;
 declare const __UMI_VERSION__: string;
 declare const __UTOO_VERSION__: string;

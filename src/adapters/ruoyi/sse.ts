@@ -4,6 +4,7 @@ import {
   fetchEventSource,
 } from '@microsoft/fetch-event-source';
 import { history } from '@umijs/max';
+import { assertSafeSameOriginPath } from '@/api/pathSafety';
 import { getBaseApi, getClientId, getSseApi } from './env';
 import { showRuoyiHtmlInfo } from './message';
 import { getToken, removeToken } from './token';
@@ -43,8 +44,6 @@ const isBrowser = () =>
 
 const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
 
-const isAbsoluteUrl = (url: string) => /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
-
 const isAuthFailureCode = (code: unknown) =>
   code === 401 || code === 403 || code === '401' || code === '403';
 
@@ -61,7 +60,8 @@ const readRuoyiResponseCode = async (response: Response) => {
 };
 
 const withBaseApi = (url: string, baseApi: string) => {
-  if (isAbsoluteUrl(url)) return url;
+  assertSafeSameOriginPath(baseApi, '主 API 基础路径');
+  assertSafeSameOriginPath(url, 'SSE 请求路径');
 
   const base = trimSlashes(baseApi);
   const normalizedBaseApi = base ? `/${base}` : '';
@@ -193,13 +193,14 @@ export const subscribeSseMessage = (listener: RuoyiSseMessageListener) => {
 
 export const startSse = () => {
   if (!isBrowser() || abortController) return;
+  const sseUrl = getSseUrl();
   if (!getToken()) return;
 
   const controller = new AbortController();
   abortController = controller;
   reconnectAttempt = 0;
 
-  void fetchEventSource(getSseUrl(), {
+  void fetchEventSource(sseUrl, {
     method: 'GET',
     headers: buildHeaders(),
     signal: controller.signal,

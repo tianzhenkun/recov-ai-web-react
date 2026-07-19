@@ -136,18 +136,12 @@ const TagSelect: FC<TagSelectProps> & {
           return child;
         })}
       {expandable && (
-        <a
+        <button
+          type="button"
           className={styles.trigger}
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
+          aria-expanded={expand}
+          onClick={() => {
             setExpand(!expand);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              setExpand(!expand);
-            }
           }}
         >
           {expand ? (
@@ -160,7 +154,7 @@ const TagSelect: FC<TagSelectProps> & {
               <DownOutlined />
             </>
           )}
-        </a>
+        </button>
       )}
     </div>
   );

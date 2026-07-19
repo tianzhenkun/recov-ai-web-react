@@ -1,5 +1,1 @@
-import FlowEventCenter from './components/FlowEventCenter';
-
-const FlowEventsPage = () => <FlowEventCenter />;
-
-export default FlowEventsPage;
+export { default } from '@/modules/recov/pages/flowEvents';

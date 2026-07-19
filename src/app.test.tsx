@@ -25,6 +25,7 @@ const mockGetStoredDynamicTenantId = jest.fn();
 const mockClearStoredDynamicTenantId = jest.fn();
 const mockDynamicTenant = jest.fn();
 const mockGetInfo = jest.fn();
+const mockGetSiteConfig = jest.fn();
 const mockLoadRuoyiMenuData = jest.fn();
 const mockResolveRuoyiMenuContext = jest.fn();
 const mockSettingDrawerProps: any[] = [];
@@ -54,11 +55,24 @@ jest.mock('@/adapters/ruoyi/dynamicTenant', () => ({
 jest.mock('@/adapters/ruoyi/menu', () => ({
   buildLayoutMenuData: jest.fn(() => []),
   getCachedRuoyiMenuData: jest.fn(() => []),
+  getCachedRuoyiRoutes: jest.fn(() => [{ path: '/flow-events' }]),
   getFirstVisibleRuoyiPath: jest.fn(() => '/index'),
   getVisibleRuoyiMenuData: jest.fn(() => []),
   isRuoyiDirectoryMenuPath: jest.fn(() => false),
   loadRuoyiMenuData: mockLoadRuoyiMenuData,
   resolveRuoyiMenuContext: mockResolveRuoyiMenuContext,
+  subscribeRuoyiMenuCatalog: jest.fn(() => jest.fn()),
+}));
+
+jest.mock('@/modules/recov/extensions/loadFlowEventExtension', () => ({
+  loadFlowEventExtension: async () => {
+    const module = require('@/modules/recov/extensions/FlowEventExtension');
+    return { default: module.FlowEventExtension };
+  },
+}));
+
+jest.mock('@/app/auth', () => ({
+  getSiteConfig: mockGetSiteConfig,
 }));
 
 jest.mock('@/adapters/ruoyi/message', () => ({
@@ -70,6 +84,14 @@ jest.mock('@/adapters/ruoyi/sse', () => ({
     mockSseListeners.push(listener);
     return jest.fn();
   }),
+}));
+
+jest.mock('@/app/authorization', () => ({
+  AuthorizedRouteBoundary: ({ children }: { children: any }) => children,
+  resolveRouteAuthorization: (_pathname: string, routes: any[]) =>
+    routes.some((route) => route.path === '/flow-events')
+      ? 'allowed'
+      : 'denied',
 }));
 
 jest.mock('@/components', () => ({
@@ -159,7 +181,7 @@ jest.mock('@/components', () => ({
   },
 }));
 
-jest.mock('@/services/ruoyi/flowEvent', () => ({
+jest.mock('@/modules/recov/services/flowEvent', () => ({
   buildFlowEventDisplaySummary: (event: any) => {
     const accountPrefix =
       event.debtNumber === null || event.debtNumber === undefined
@@ -174,11 +196,11 @@ jest.mock('@/services/ruoyi/flowEvent', () => ({
   normalizeFlowEventUnreadCount: jest.fn(() => 0),
 }));
 
-jest.mock('@/services/ruoyi/tenant', () => ({
+jest.mock('@/shared/services/tenant', () => ({
   dynamicTenant: mockDynamicTenant,
 }));
 
-jest.mock('@/services/ruoyi/user', () => ({
+jest.mock('@/shared/services/user', () => ({
   getInfo: mockGetInfo,
 }));
 
@@ -202,6 +224,13 @@ describe('getInitialState dynamic tenant restore', () => {
           },
         },
       };
+    });
+    mockGetSiteConfig.mockResolvedValue({
+      data: {
+        loginVariant: 'default',
+        productName: 'LingChen AI',
+        tenantMode: 'SELECTABLE',
+      },
     });
     mockDynamicTenant.mockImplementation(async () => {
       mockCallOrder.push('dynamicTenant');
@@ -241,6 +270,28 @@ describe('getInitialState dynamic tenant restore', () => {
     expect(initialState.dynamicTenantId).toBeUndefined();
     expect(mockClearStoredDynamicTenantId).not.toHaveBeenCalled();
   });
+
+  it('treats a profile without a valid user id as unauthenticated', async () => {
+    mockGetInfo.mockResolvedValueOnce({
+      data: {
+        permissions: [],
+        roles: ['admin'],
+        user: {
+          nickName: '缺少标识的用户',
+          userName: 'invalid-user',
+        },
+      },
+    });
+    const { getInitialState } = require('./app');
+
+    const initialState = await getInitialState();
+
+    expect(initialState.currentUser).toBeUndefined();
+    expect(mockLoadRuoyiMenuData).not.toHaveBeenCalled();
+    expect(mockHistory.replace).toHaveBeenCalledWith(
+      expect.stringContaining('/user/login?redirect='),
+    );
+  });
 });
 
 describe('layout floating process panel read state', () => {
@@ -252,7 +303,7 @@ describe('layout floating process panel read state', () => {
   });
 
   it('keeps unread dot on first open and marks visible events read after collapsing the floating panel', async () => {
-    const flowEventService = require('@/services/ruoyi/flowEvent');
+    const flowEventService = require('@/modules/recov/services/flowEvent');
     flowEventService.getFlowEventUnreadCount.mockResolvedValue({ data: 1 });
     flowEventService.normalizeFlowEventUnreadCount
       .mockReturnValueOnce(1)
@@ -281,7 +332,9 @@ describe('layout floating process panel read state', () => {
 
     render(config.childrenRender(createElement('div')));
 
-    fireEvent.click(screen.getByTestId('mock-flow-process-panel-expand'));
+    fireEvent.click(
+      await screen.findByTestId('mock-flow-process-panel-expand'),
+    );
 
     await waitFor(() => {
       expect(flowEventService.getFlowEventPage).toHaveBeenCalledWith({
@@ -302,7 +355,7 @@ describe('layout floating process panel read state', () => {
   });
 
   it('shows the unread dot immediately after a flow-event SSE signal while unread count refresh is pending', async () => {
-    const flowEventService = require('@/services/ruoyi/flowEvent');
+    const flowEventService = require('@/modules/recov/services/flowEvent');
     flowEventService.getFlowEventUnreadCount
       .mockResolvedValueOnce({ data: 0 })
       .mockImplementationOnce(() => new Promise(() => {}));
@@ -319,6 +372,7 @@ describe('layout floating process panel read state', () => {
 
     render(config.childrenRender(createElement('div')));
 
+    await screen.findByTestId('mock-flow-process-panel-expand');
     await waitFor(() => {
       expect(mockSseListeners).toHaveLength(1);
     });
@@ -340,7 +394,7 @@ describe('layout floating process panel read state', () => {
   });
 
   it('routes all flow logs to the standard flow events page', async () => {
-    const flowEventService = require('@/services/ruoyi/flowEvent');
+    const flowEventService = require('@/modules/recov/services/flowEvent');
     flowEventService.getFlowEventUnreadCount.mockResolvedValue({ data: 1 });
     flowEventService.normalizeFlowEventUnreadCount
       .mockReturnValueOnce(1)
@@ -358,7 +412,9 @@ describe('layout floating process panel read state', () => {
 
     render(config.childrenRender(createElement('div')));
 
-    fireEvent.click(screen.getByTestId('mock-flow-process-panel-view-all'));
+    fireEvent.click(
+      await screen.findByTestId('mock-flow-process-panel-view-all'),
+    );
 
     expect(mockHistory.push).toHaveBeenCalledWith('/flow-events');
     await waitFor(() => {
@@ -371,6 +427,25 @@ describe('layout color theme settings', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSettingDrawerProps.length = 0;
+  });
+
+  it('uses the active site profile as the authenticated shell brand', () => {
+    const { layout } = require('./app');
+    const config = layout({
+      initialState: {
+        currentUser: { userid: '7' },
+        settings: {},
+        siteProfile: {
+          loginVariant: 'default',
+          productName: 'Sales Agent',
+          tenantMode: 'FIXED',
+        },
+      },
+      setInitialState: jest.fn(),
+    });
+
+    expect(config.title).toBe('Sales Agent');
+    expect(config.logo).toBe('/brand/lingchen-icon.png');
   });
 
   it('adds a layered dark navigation theme entry to the preference drawer', () => {
@@ -397,13 +472,13 @@ describe('layout color theme settings', () => {
         currentUser: { userid: '7' },
         settings: {
           colorPrimary: '#722ED1',
-          recovColorTheme: 'layeredDarkNav',
+          colorTheme: 'layeredDarkNav',
         },
       },
       setInitialState: jest.fn(),
     });
 
-    expect(config.className).toContain('recov-layout-theme-layered-dark-nav');
+    expect(config.className).toContain('app-layout-theme-layered-dark-nav');
     expect(config.bgLayoutImgList).toEqual([]);
     expect(config.token?.bgLayout).toContain('#f7f8fa');
     expect(config.token?.header?.colorBgHeader).toBeUndefined();
@@ -424,7 +499,7 @@ describe('layout color theme settings', () => {
         currentUser: { userid: '7' },
         settings: {
           layout: 'side',
-          recovColorTheme: 'layeredDarkNav',
+          colorTheme: 'layeredDarkNav',
         },
       },
       setInitialState: jest.fn(),
@@ -440,13 +515,14 @@ describe('layout color theme settings', () => {
         currentUser: { name: '超级管理员', userid: '7' },
         settings: {
           layout: 'side',
-          recovColorTheme: 'layeredDarkNav',
+          colorTheme: 'layeredDarkNav',
         },
       },
       setInitialState: jest.fn(),
     });
 
     expect(config.links).toBeUndefined();
+    expect(config.rightContentRender).toBe(false);
     expect(config.actionsRender).toBe(false);
     expect(config.avatarProps).toBe(false);
     expect(typeof config.menuFooterRender).toBe('function');
@@ -496,7 +572,7 @@ describe('layout color theme settings', () => {
         currentUser: { userid: '7' },
         settings: {
           layout: 'mix',
-          recovColorTheme: 'layeredDarkNav',
+          colorTheme: 'layeredDarkNav',
         },
       },
       setInitialState: jest.fn(),
@@ -507,6 +583,7 @@ describe('layout color theme settings', () => {
     const staleSideActions = config.actionsRender({ layout: 'side' }) as any[];
 
     expect(config.links).toHaveLength(1);
+    expect(config.rightContentRender).toBe(false);
     expect(config.avatarProps).toBeTruthy();
     expect(mixSiderActions[0].props.variant).toBe('select');
     expect(mixSiderActions[1].props.variant).toBe('icon');
@@ -523,7 +600,7 @@ describe('layout color theme settings', () => {
         currentUser: { name: '超级管理员', userid: '7' },
         settings: {
           layout: 'mix',
-          recovColorTheme: 'layeredDarkNav',
+          colorTheme: 'layeredDarkNav',
         },
       },
       setInitialState: jest.fn(),
@@ -558,7 +635,7 @@ describe('layout color theme settings', () => {
     });
 
     expect(config.className || '').not.toContain(
-      'recov-layout-theme-layered-dark-nav',
+      'app-layout-theme-layered-dark-nav',
     );
     expect(config.token?.sider?.colorMenuBackground).toBeUndefined();
   });

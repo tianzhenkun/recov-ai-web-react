@@ -33,9 +33,8 @@ const filterIconOption: SelectProps<string>['filterOption'] = (
 const RuoyiIconSelect = (props: SelectProps<string>) => (
   <Select
     allowClear
-    showSearch
+    showSearch={{ filterOption: filterIconOption }}
     placeholder="请选择菜单图标"
-    filterOption={filterIconOption}
     options={iconOptions}
     {...props}
   />

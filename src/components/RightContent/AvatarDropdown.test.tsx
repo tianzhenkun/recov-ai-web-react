@@ -40,7 +40,7 @@ jest.mock('@/components/Permission', () => ({
   usePermission: () => ({ hasPermission: () => true }),
 }));
 
-jest.mock('@/services/ruoyi/auth', () => ({
+jest.mock('@/app/auth', () => ({
   logout: jest.fn(() => Promise.resolve()),
 }));
 

@@ -2,6 +2,12 @@ import { buildRuoyiMenuData } from '@/adapters/ruoyi/menu';
 import { resolveTenantSwitchNextPath } from './navigation';
 
 describe('resolveTenantSwitchNextPath', () => {
+  it('keeps account pages because they are independent from business menus', () => {
+    expect(resolveTenantSwitchNextPath('/account/center', [])).toBe(
+      '/account/center',
+    );
+  });
+
   it('keeps the concrete current path when it matches a dynamic menu route', () => {
     const menuData = buildRuoyiMenuData([
       {

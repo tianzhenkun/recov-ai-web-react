@@ -27,7 +27,7 @@ import {
   type MessageItem,
   readAllMessages,
   readMessage,
-} from '@/services/ruoyi/message';
+} from '@/app/shell/services/message';
 import SafeHtml from '../SafeHtml';
 import SiderFooterAction from '../SiderFooterAction';
 
@@ -137,10 +137,13 @@ const useStyles = createStyles(({ token, css }) => ({
   item: css`
     display: block;
     width: 100%;
+    appearance: none;
     padding: 12px 16px;
     color: ${token.colorText};
+    font: inherit;
     text-align: left;
     background: ${token.colorBgElevated};
+    border: 0;
     border-bottom: 1px solid ${token.colorBorderSecondary};
     cursor: pointer;
     transition:
@@ -551,11 +554,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
           {messages.map((item) => {
             const unread = isUnread(item);
             return (
-              <div
+              <button
                 className={
                   unread ? `${styles.item} ${styles.unreadItem}` : styles.item
                 }
                 key={String(item.messageId)}
+                type="button"
                 onClick={() => {
                   void markMessageRead(item);
                 }}
@@ -572,7 +576,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                   </span>
                 </div>
                 <SafeHtml className={styles.content} html={item.contentHtml} />
-              </div>
+              </button>
             );
           })}
         </div>
@@ -659,7 +663,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
           open={open}
           placement="right"
           styles={{ body: { padding: 0 } }}
-          width={360}
+          size={360}
           onClose={() => setOpen(false)}
         >
           {renderPanel(true)}

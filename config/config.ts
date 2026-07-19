@@ -2,29 +2,14 @@
 
 import { join } from 'node:path';
 import { defineConfig } from '@umijs/max';
+import { buildClientEnvDefines } from './clientDefines';
 import defaultSettings from './defaultSettings';
 import proxy from './proxy';
 
 import routes from './routes';
 
 const { UMI_ENV = 'dev' } = process.env;
-
-// Compute commit hash: env vars take precedence, fall back to git at build time
-const commitHash =
-  process.env.COMMIT_HASH ||
-  process.env.CF_PAGES_COMMIT_SHA ||
-  (() => {
-    try {
-      return require('node:child_process')
-        .execSync('git rev-parse HEAD', {
-          stdio: ['ignore', 'pipe', 'ignore'],
-          encoding: 'utf-8',
-        })
-        .trim();
-    } catch {
-      return '';
-    }
-  })();
+const isProductionBuild = process.env.NODE_ENV === 'production';
 
 /**
  * @name 使用公共路径
@@ -33,43 +18,7 @@ const commitHash =
  */
 const PUBLIC_PATH: string = '/';
 
-const clientEnvKeys = [
-  'UMI_APP_TITLE',
-  'UMI_APP_LOGO_TITLE',
-  'UMI_APP_ENV',
-  'UMI_APP_BASE_API',
-  'UMI_APP_ADMIN_API',
-  'UMI_APP_PRODUCT_API',
-  'UMI_APP_VOICE_API',
-  'UMI_APP_CONTEXT_PATH',
-  'UMI_APP_ENCRYPT',
-  'UMI_APP_RSA_PUBLIC_KEY',
-  'UMI_APP_CLIENT_ID',
-  'UMI_APP_LOGIN_VARIANT',
-  'UMI_APP_WEBSOCKET',
-  'UMI_APP_SSE',
-  'UMI_APP_MENU_WORKSPACE_NAMES',
-] as const;
-
-const normalizeEnvValue = (value?: string) => {
-  const trimmed = (value || '').trim();
-  const quote = trimmed[0];
-
-  if (
-    trimmed.length >= 2 &&
-    (quote === '"' || quote === "'") &&
-    trimmed[trimmed.length - 1] === quote
-  ) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
-};
-
-const clientEnv: Record<string, string> = {};
-for (const key of clientEnvKeys) {
-  clientEnv[`process.env.${key}`] = normalizeEnvValue(process.env[key]);
-}
+const clientEnv = buildClientEnvDefines(process.env, isProductionBuild);
 
 export default defineConfig({
   alias: {
@@ -152,7 +101,7 @@ export default defineConfig({
    * @name layout 插件
    * @doc https://umijs.org/docs/max/layout-menu
    */
-  title: 'Recov Agent',
+  title: 'LingChen AI',
   layout: {
     locale: true,
     ...defaultSettings,
@@ -189,7 +138,8 @@ export default defineConfig({
         token: {
           colorPrimary: defaultSettings.colorPrimary,
           colorInfo: defaultSettings.colorPrimary,
-          fontFamily: 'AlibabaSans, sans-serif',
+          fontFamily:
+            "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif",
         },
       },
     },
@@ -213,14 +163,6 @@ export default defineConfig({
    */
   access: {},
   /**
-   * @name Google Analytics
-   * @description 使用 GA4 (gtag.js) 进行站点分析
-   * @doc https://umijs.org/docs/max/analytics
-   */
-  analytics: {
-    ga_v2: 'G-59NF1VHHPF',
-  },
-  /**
    * @name <head> 中额外的 script
    * @description 配置 <head> 中额外的 script
    */
@@ -231,28 +173,6 @@ export default defineConfig({
     { src: join(PUBLIC_PATH, 'scripts/loading.js'), async: true },
   ],
 
-  //================ pro 插件配置 =================
-  plugins: ['@umijs/max-plugin-openapi', '@umijs/request-record'],
-
-  /**
-   * @name openAPI 插件的配置
-   * @description 基于 openapi 的规范生成serve 和mock，能减少很多样板代码
-   * @doc https://pro.ant.design/zh-cn/docs/openapi/
-   */
-  openAPI: [
-    {
-      requestLibPath: "import { request } from '@umijs/max'",
-      // 或者使用在线的版本
-      // schemaPath: "https://gw.alipayobjects.com/os/antfincdn/M%24jrzTTYJN/oneapi.json"
-      schemaPath: join(__dirname, 'oneapi.json'),
-      mock: false,
-    },
-  ],
-
-  mock: {
-    include: ['src/pages/**/_mock.ts'],
-    exclude: ['mock/requestRecord.mock.js'],
-  },
   utoopack: {
     persistentCaching: false,
     module: {
@@ -264,11 +184,8 @@ export default defineConfig({
       },
     },
   },
-  requestRecord: {},
   exportStatic: {},
   define: {
-    'process.env.CI': process.env.CI,
-    'process.env.COMMIT_HASH': commitHash,
     ...clientEnv,
     __APP_VERSION__: require('./../package.json').version,
     __UMI_VERSION__: require('@umijs/max/package.json').version,

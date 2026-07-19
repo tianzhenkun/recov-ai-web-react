@@ -2,47 +2,45 @@
 
 ## Project
 
-Ant Design Pro — React enterprise boilerplate on Umi Max v4, antd v6, ProComponents v3.
+LingChen multi-product frontend on React, Umi Max v4, antd v6 and ProComponents v3. One source tree produces one `dist`; product sites, login layouts, modules, routes, menus and permissions are separate dimensions.
 
 ## Commands
 
-`npm start` (dev+mock), `npm run dev` (no mock), `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Jest), `npx antd lint ./src` (antd-specific checks).
+`npm run configure:local` (configure the real backend), `PORT=8001 npm run dev` (real backend development), `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Jest), `npx antd lint ./src` (antd-specific checks).
 
-Other: `npm run openapi` (regenerate `src/services/`), `npm run simple` (**irreversible** — commit first), `npm run biome` (auto-fix), `npm run tsc` (type-check only).
+Other: `npm run biome` (auto-fix), `npm run tsc` (type-check only). Runtime mocks and the Ant Design Pro demo/simple workflow have been removed.
 
 ## Critical Rules
 
-- **Never edit `src/services/ant-design-pro/`** — auto-generated, regenerate with `npm run openapi`
 - **Biome only** — no ESLint, no Prettier. Both `npm run lint` and `npx antd lint ./src` must pass before commit
 - **Always `npx antd info <Component>` before writing antd code** — don't guess APIs from memory
-- **`npm run simple` is irreversible** — always commit/branch first
 - **Conventional commits** required (commitlint enforced)
 - **TypeScript strict** · **Node ≥ 20** · **`package-lock.json`** (not yarn/pnpm)
 - **`.umi` dir is auto-generated** — delete `src/.umi` and restart if dev server acts up
 
 ## Architecture Essentials
 
-**Config**: `config/config.ts` (defineConfig), `config/routes.ts` (declarative routes). Route `name` → `menu.xxx` i18n key; `access` field gates visibility.
+**Config**: `config/config.ts` (defineConfig), `config/routes/` (module route registration), `config/routes.ts` (compatibility export). Backend menus, route declarations and permission checks are independent controls. The complete raw tree returned by `/system/menu/getRouters`, including hidden routes, is the allowlist for ordinary signed-in business pages; authorization-load failures fail closed.
 
 **Convention files** (`src/`): `app.tsx` (runtime config + `getInitialState`), `access.ts` (permissions), `global.tsx` (side effects), `loading.tsx`, `typings.d.ts`.
 
-**Auth**: `getInitialState()` → `GET /api/currentUser`; 401 → redirect login. `access.ts`: `canAdmin = currentUser.access === 'admin'`. Mock creds: `admin`/`ant.design` or `user`/`ant.design`.
+**Auth**: `getInitialState()` loads the current user through the main API; 401 redirects to login. `src/access.ts` is a thin Umi entry backed by `src/app/access/`.
 
 **State**: `useModel('filename')` for global hooks (`src/models/`). `useModel('@@initialState')` for currentUser/settings. ProTable `request` prop for most data loading. `@tanstack/react-query` for complex server state.
 
 **Styling priority**: Tailwind CSS v4 (layout) → antd-style v4 / `createStyles` (theme tokens) → CSS Modules → Less (legacy only).
 
-**Request**: built-in `request` from `@umijs/max`, configured in `src/requestErrorConfig.ts`. Per-page `service.ts` for non-generated APIs.
+**Request**: all current business calls use `src/api/main.ts`. The runtime `adminApi` field is parsed only for formal-release compatibility and is ignored by business requests. There is no browser direct API today; do not pre-create channel types for products. A future upstream may add an explicitly owned direct API only after the main Gateway is proven unable to carry it and the security and deployment contracts are implemented together.
+
+**Authorization**: `hideInMenu` and backend `activeMenu` only affect presentation. The backend route allowlist admits ordinary business pages; Umi `access` may only narrow that result. Button permission codes and backend endpoint authorization remain separate controls, with the backend making the final decision.
 
 **i18n**: 8 locales in `src/locales/`. `useIntl().formatMessage({ id, defaultMessage })`.
 
-**Mock**: `mock/` (global) + `src/pages/**/_mock.ts` (co-located). Express-style handlers.
+**Runtime mock**: removed. Jest mocks are allowed only inside tests.
 
-**Cloudflare Worker**: `cloudflare-worker/` — separate Hono app, own `package.json`, not an npm workspace.
+## Module Co-location
 
-## Page Co-location
-
-Each page dir: `index.tsx`, optional `service.ts`, `_mock.ts`, `data.d.ts`, style files. Keep page-specific code with the page.
+Business implementations live under `src/modules/{admin,recov,sales,billing}/`. Keep module-owned pages, components, services and tests together. `src/pages/` contains Umi-compatible thin entries plus a small number of shared public pages not yet migrated. Shared app-shell concerns belong in `src/app/`; do not infer module ownership from product codes.
 
 <!-- superpowers-zh:begin (do not edit between these markers) -->
 # Superpowers-ZH 中文增强版

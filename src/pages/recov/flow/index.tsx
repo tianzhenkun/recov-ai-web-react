@@ -1,5 +1,1 @@
-import FlowWorkbench from './components/FlowWorkbench';
-
-const FlowPage = () => <FlowWorkbench />;
-
-export default FlowPage;
+export { default } from '@/modules/recov/pages/flow';

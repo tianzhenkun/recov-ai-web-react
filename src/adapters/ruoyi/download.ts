@@ -1,13 +1,17 @@
 import { serializeRuoyiParams } from './params';
 import {
-  adminRequest,
   type RuoyiRawRequestOptions,
   type RuoyiRequestOptions,
   ruoyiRequest,
 } from './request';
 import type { RuoyiResponse } from './response';
 
-const isJsonBlob = (blob: Blob) => blob.type === 'application/json';
+export const isJsonContentType = (contentType: string) => {
+  const mimeType = contentType.split(';', 1)[0]?.trim().toLowerCase() || '';
+  return mimeType === 'application/json' || mimeType.endsWith('+json');
+};
+
+const isJsonBlob = (blob: Blob) => isJsonContentType(blob.type);
 
 const saveBlob = (blob: Blob, filename: string) => {
   const url = window.URL.createObjectURL(blob);
@@ -58,10 +62,3 @@ export const ruoyiDownload = (
   filename: string,
   options: RuoyiRequestOptions = {},
 ) => downloadWithRequest(ruoyiRequest, url, data, filename, options);
-
-export const adminDownload = (
-  url: string,
-  data: Record<string, unknown>,
-  filename: string,
-  options: RuoyiRequestOptions = {},
-) => downloadWithRequest(adminRequest, url, data, filename, options);

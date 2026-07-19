@@ -1,4 +1,5 @@
 import { history, request as umiRequest } from '@umijs/max';
+import { assertSafeSameOriginPath } from '@/api/pathSafety';
 import {
   decryptBase64,
   decryptWithAes,
@@ -9,7 +10,7 @@ import {
   rsaDecrypt,
   rsaEncrypt,
 } from './crypto';
-import { getBaseApi, getClientId, requireProductApi } from './env';
+import { getBaseApi, getClientId } from './env';
 import { showRuoyiError } from './message';
 import { normalizeRuoyiParams } from './params';
 import {
@@ -85,10 +86,9 @@ const normalizeMethod = (method?: string) => (method || 'get').toLowerCase();
 
 const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
 
-const isAbsoluteUrl = (url: string) => /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
-
 const withBaseApi = (url: string, baseApi: string) => {
-  if (isAbsoluteUrl(url)) return url;
+  assertSafeSameOriginPath(baseApi, '主 API 基础路径');
+  assertSafeSameOriginPath(url, '主 API 请求路径');
 
   const base = trimSlashes(baseApi);
   const normalizedBaseApi = base ? `/${base}` : '';
@@ -209,6 +209,7 @@ const requestWithBaseApi = async <T = unknown>(
   url: string,
   options: RuoyiRequestOptions = {},
 ): Promise<RuoyiResponse<T> | T> => {
+  const requestUrl = withBaseApi(url, baseApi);
   const {
     headers: inputHeaders,
     isEncrypt: optionIsEncrypt,
@@ -298,7 +299,7 @@ const requestWithBaseApi = async <T = unknown>(
 
   const request = umiRequest as unknown as UmiRequest;
   try {
-    const response = await request(withBaseApi(url, baseApi), requestOptions);
+    const response = await request(requestUrl, requestOptions);
     return handleResponseData(
       readResponseData(response),
       response.request?.responseType,
@@ -337,20 +338,3 @@ export async function ruoyiRequest<T = unknown>(
 ): Promise<RuoyiResponse<T> | T> {
   return requestWithBaseApi<T>(getBaseApi(), url, options);
 }
-
-export async function adminRequest<T = unknown>(
-  url: string,
-  options: RuoyiRawRequestOptions,
-): Promise<T>;
-export async function adminRequest<T = unknown>(
-  url: string,
-  options?: RuoyiRequestOptions,
-): Promise<RuoyiResponse<T>>;
-export async function adminRequest<T = unknown>(
-  url: string,
-  options: RuoyiRequestOptions = {},
-): Promise<RuoyiResponse<T> | T> {
-  return requestWithBaseApi<T>(requireProductApi(), url, options);
-}
-
-export const ruoyiAdminRequest = adminRequest;

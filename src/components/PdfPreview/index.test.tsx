@@ -13,8 +13,9 @@ describe('PdfPreview component conventions', () => {
       "import { getToken } from '@/adapters/ruoyi/token'",
     );
     expect(source).toContain(
-      "import { getOssBlob } from '@/services/ruoyi/oss'",
+      "import { getOssBlob } from '@/shared/services/oss'",
     );
+    expect(source).toContain('shouldAttachPdfAuthorization');
     expect(source).toContain('httpHeaders');
     expect(source).toContain('<Document');
     expect(source).toContain('<Page');
@@ -26,7 +27,7 @@ describe('PdfPreview component conventions', () => {
     expect(source).toContain('setFileBlob(blob)');
     expect(source).toContain('const file = useMemo(');
     expect(source).toContain('fileBlob ||');
-    expect(source).toContain('!normalizedOssId && url');
+    expect(source).toContain('!normalizedOssId && safeUrl');
   });
 
   it('provides the shared controls expected by Recov PDF previews', () => {

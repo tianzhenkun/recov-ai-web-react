@@ -318,6 +318,7 @@ const useStyles = createStyles(({ token, css }) => ({
     pointer-events: auto;
   `,
   shell: css`
+    position: relative;
     width: ${expandedPanelWidth}px;
     border: 1px solid rgba(95, 108, 255, 0.16);
     border-radius: 20px;
@@ -365,6 +366,20 @@ const useStyles = createStyles(({ token, css }) => ({
   dockedRightShell: css`
     border-top-left-radius: ${token.borderRadiusLG}px;
     border-bottom-left-radius: ${token.borderRadiusLG}px;
+  `,
+  dockedExpandButton: css`
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+
+    &:active {
+      cursor: grabbing;
+    }
   `,
   header: css`
     display: flex;
@@ -1180,7 +1195,7 @@ const FloatingProcessPanel: React.FC<FloatingProcessPanelProps> = ({
   useEffect(() => stopDragging, [stopDragging]);
 
   const handleDragStart = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: React.PointerEvent<HTMLElement>) => {
       if (event.button !== 0 || !shellRef.current) return;
 
       const { left, top } = shellRef.current.getBoundingClientRect();
@@ -1237,15 +1252,22 @@ const FloatingProcessPanel: React.FC<FloatingProcessPanelProps> = ({
                   }`
                 : ''
             }`}
-            onClick={() => {
-              if (!isDockedCollapsed) return;
-              if (ignoreDockedClickRef.current) {
-                ignoreDockedClickRef.current = false;
-                return;
-              }
-              setExpanded(true);
-            }}
           >
+            {isDockedCollapsed ? (
+              <button
+                type="button"
+                aria-label="展开流程面板"
+                className={styles.dockedExpandButton}
+                onPointerDown={handleDragStart}
+                onClick={() => {
+                  if (ignoreDockedClickRef.current) {
+                    ignoreDockedClickRef.current = false;
+                    return;
+                  }
+                  setExpanded(true);
+                }}
+              />
+            ) : null}
             <div
               className={
                 isDockedCollapsed

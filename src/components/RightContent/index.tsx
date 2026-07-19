@@ -1,12 +1,7 @@
-import {
-  BookOutlined,
-  CheckOutlined,
-  ForkOutlined,
-  GlobalOutlined,
-} from '@ant-design/icons';
-import { getAllLocales, getLocale, history, setLocale } from '@umijs/max';
+import { CheckOutlined, GlobalOutlined } from '@ant-design/icons';
+import { getAllLocales, getLocale, setLocale } from '@umijs/max';
 import type { MenuProps } from 'antd';
-import { Button, Tooltip } from 'antd';
+import { Button } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { useMemo } from 'react';
 import HeaderDropdown from '../HeaderDropdown';
@@ -35,54 +30,6 @@ const useStyles = createStyles(({ token, css }) => ({
     border-radius: ${token.borderRadius}px !important;
   `,
 }));
-
-export const DocLink: React.FC = () => {
-  const { styles } = useStyles();
-  return (
-    <Tooltip title="使用文档">
-      <Button
-        type="text"
-        className={styles.action}
-        icon={<BookOutlined />}
-        aria-label="使用文档"
-        onClick={() => {
-          history.push('/welcome');
-        }}
-      />
-    </Tooltip>
-  );
-};
-
-const versionItems: MenuProps['items'] = [
-  { key: 'https://v5.pro.ant.design', label: 'v5' },
-  { key: 'https://v4.pro.ant.design', label: 'v4' },
-  { key: 'https://v2.pro.ant.design', label: 'v2' },
-  { key: 'https://v1.pro.ant.design', label: 'v1' },
-];
-
-const onVersionClick: MenuProps['onClick'] = ({ key }) => {
-  window.open(key, '_blank', 'noopener,noreferrer');
-};
-
-export const VersionDropdown: React.FC = () => {
-  const { styles } = useStyles();
-  return (
-    <HeaderDropdown
-      placement="bottomRight"
-      arrow
-      menu={{
-        selectedKeys: [],
-        onClick: onVersionClick,
-        items: versionItems,
-        style: { minWidth: 100 },
-      }}
-    >
-      <Button type="text" className={styles.action} aria-label="历史版本">
-        <ForkOutlined />
-      </Button>
-    </HeaderDropdown>
-  );
-};
 
 export const LangDropdown: React.FC = () => {
   const { styles } = useStyles();

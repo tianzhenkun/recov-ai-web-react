@@ -1,0 +1,85 @@
+export default [
+  {
+    path: '/sys-conf/payment-channel-config',
+    component: './ruoyi/system/payment-channel-config',
+    hideInMenu: true,
+    access: 'isSuperAdmin',
+  },
+  {
+    path: '/billing-operations',
+    redirect: '/billing-operations/catalog',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.catalog',
+    path: '/billing-operations/catalog',
+    component: './billing/operations/catalog',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.packages',
+    path: '/billing-operations/packages',
+    component: './billing/operations/packages',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.coupons',
+    path: '/billing-operations/coupons',
+    component: './billing/operations/coupons',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.accounts',
+    path: '/billing-operations/accounts',
+    component: './billing/operations/accounts',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.charges',
+    path: '/billing-operations/charges',
+    component: './billing/operations/charges',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.payments',
+    path: '/billing-operations/payments',
+    component: './billing/operations/payments',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing-operations.reliability',
+    path: '/billing-operations/reliability',
+    component: './billing/operations/reliability',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing.overview',
+    path: '/billing/overview',
+    component: './billing',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing.packages',
+    path: '/billing/packages',
+    component: './billing/packages',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing.orders',
+    path: '/billing/orders',
+    component: './billing/orders',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing.coupons',
+    path: '/billing/coupons',
+    component: './billing/coupons',
+    hideInMenu: true,
+  },
+  {
+    name: 'billing',
+    path: '/billing',
+    redirect: '/billing/overview',
+    hideInMenu: true,
+  },
+];

@@ -4,6 +4,7 @@ import {
   type RuoyiMenuDataItem,
   resolveRuoyiMenuContext,
 } from '@/adapters/ruoyi/menu';
+import { resolveRouteAuthorization } from '@/app/authorization';
 
 export const resolveTenantSwitchNextPath = (
   currentPath: string,
@@ -13,6 +14,7 @@ export const resolveTenantSwitchNextPath = (
     menuData,
   ),
 ) =>
+  resolveRouteAuthorization(currentPath, []) === 'allowed' ||
   findRuoyiMenuByPath(currentPath, menuData)
     ? currentPath
     : menuContext.homePath || '/';

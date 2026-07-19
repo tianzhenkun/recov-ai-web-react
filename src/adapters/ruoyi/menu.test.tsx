@@ -1,20 +1,25 @@
+import { getRouters } from '@/app/menu';
 import {
-  attachSalesAgentOverviewMenu,
   buildLayoutMenuData,
   buildRuoyiMenuData,
+  clearCachedRuoyiMenuData,
   findRuoyiMenuByPath,
+  getCachedRuoyiRoutes,
   getFirstVisibleRuoyiPath,
   getScopedRuoyiMenuData,
   getVisibleRuoyiMenuData,
   isRuoyiDirectoryMenuPath,
+  loadRuoyiMenuCatalog,
   omitWorkspaceRootMenus,
   resolveRuoyiMenuContext,
   resolveRuoyiMenuWorkspaces,
 } from './menu';
 
-jest.mock('@/services/ruoyi/menu', () => ({
+jest.mock('@/app/menu', () => ({
   getRouters: jest.fn(),
 }));
+
+const getRoutersMock = getRouters as jest.Mock;
 
 const ruoyiRoutes = [
   {
@@ -73,6 +78,63 @@ const ruoyiRoutes = [
 ];
 
 describe('RuoYi menu transform', () => {
+  beforeEach(() => {
+    clearCachedRuoyiMenuData();
+    getRoutersMock.mockReset();
+  });
+
+  it('loads one raw authorization catalog and shares concurrent requests', async () => {
+    getRoutersMock.mockResolvedValue({ data: ruoyiRoutes });
+
+    const [first, second] = await Promise.all([
+      loadRuoyiMenuCatalog(),
+      loadRuoyiMenuCatalog(),
+    ]);
+
+    expect(getRoutersMock).toHaveBeenCalledTimes(1);
+    expect(first).toBe(second);
+    expect(first.routes).toBe(ruoyiRoutes);
+    expect(first.menuData).toEqual(buildRuoyiMenuData(ruoyiRoutes));
+    expect(getCachedRuoyiRoutes()).toBe(ruoyiRoutes);
+  });
+
+  it('does not let an invalidated in-flight request overwrite a newer catalog', async () => {
+    const oldRoutes = [{ path: '/old-tenant', component: 'Layout' }];
+    const newRoutes = [{ path: '/new-tenant', component: 'Layout' }];
+    let resolveOldRequest:
+      | ((response: { data: typeof oldRoutes }) => void)
+      | undefined;
+
+    getRoutersMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOldRequest = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ data: newRoutes });
+
+    const oldRequest = loadRuoyiMenuCatalog();
+    clearCachedRuoyiMenuData();
+    const newCatalog = await loadRuoyiMenuCatalog();
+
+    resolveOldRequest?.({ data: oldRoutes });
+    await oldRequest;
+
+    expect(newCatalog.routes).toBe(newRoutes);
+    expect(getCachedRuoyiRoutes()).toBe(newRoutes);
+    expect(getRoutersMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects malformed router payloads instead of treating them as empty authorization', async () => {
+    getRoutersMock.mockResolvedValue({ data: { rows: [] } });
+
+    await expect(loadRuoyiMenuCatalog()).rejects.toThrow(
+      '授权路由数据格式无效',
+    );
+    expect(getCachedRuoyiRoutes()).toEqual([]);
+  });
+
   it('promotes Layout root menus with only one child', () => {
     const menuData = buildRuoyiMenuData(ruoyiRoutes);
 
@@ -106,6 +168,34 @@ describe('RuoYi menu transform', () => {
     });
   });
 
+  it('keeps non-HTTP backend links from becoming executable menu targets', () => {
+    const [unsafeItem, safeItem] = buildRuoyiMenuData([
+      {
+        component: 'help/index',
+        path: '/unsafe-help',
+        meta: {
+          title: '不安全帮助',
+          link: 'javascript://example.test/alert',
+        },
+      },
+      {
+        component: 'help/index',
+        path: '/safe-help',
+        meta: {
+          title: '安全帮助',
+          link: 'https://docs.example.test/help',
+        },
+      },
+    ]);
+
+    expect(unsafeItem).toMatchObject({ path: '/unsafe-help' });
+    expect(unsafeItem.target).toBeUndefined();
+    expect(safeItem).toMatchObject({
+      path: 'https://docs.example.test/help',
+      target: '_blank',
+    });
+  });
+
   it('matches dynamic menu paths', () => {
     const menuData = buildRuoyiMenuData(ruoyiRoutes);
     const matched = findRuoyiMenuByPath('/system/user-auth/role/100', menuData);
@@ -126,49 +216,17 @@ describe('RuoYi menu transform', () => {
     expect(getFirstVisibleRuoyiPath(menuData)).toBe('/datelligence');
   });
 
-  it('adds overview and ICP children under Sales Agent leaf menu', () => {
-    const menuData = attachSalesAgentOverviewMenu([
+  it('does not synthesize Sales children that are absent from the backend menu', () => {
+    const backendMenuData = [
       {
         path: '/sales',
         name: 'Sales Agent',
       },
-    ]);
+    ];
+    const menuData = buildLayoutMenuData(backendMenuData, []);
 
-    expect(menuData[0]).toMatchObject({
-      path: '/sales',
-      name: 'Sales Agent',
-    });
-    expect(menuData[0].children).toEqual([
-      expect.objectContaining({
-        path: '/sales/dashboard',
-        name: '数据总览',
-      }),
-      expect.objectContaining({
-        path: '/sales/source-coverage',
-        name: '来源与字段覆盖',
-      }),
-      expect.objectContaining({
-        path: '/sales/provider-settings',
-        name: '服务商配置',
-      }),
-      expect.objectContaining({
-        path: '/sales/icp-modeling',
-        name: 'ICP 建模',
-      }),
-      expect.objectContaining({
-        path: '/sales/icp-attrs',
-        name: 'ICP 属性配置',
-      }),
-      expect.objectContaining({
-        path: '/sales/leads',
-        name: '线索台账',
-      }),
-      expect.objectContaining({
-        path: '/sales/email-outreach',
-        name: '邮件触达',
-      }),
-    ]);
-    expect(menuData[0].redirect).toBeUndefined();
+    expect(menuData).toEqual(backendMenuData);
+    expect(menuData[0].children).toBeUndefined();
   });
 
   it('does not append template example menus to business navigation', () => {

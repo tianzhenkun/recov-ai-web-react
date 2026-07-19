@@ -19,8 +19,8 @@ import {
 } from '@/adapters/ruoyi/menu';
 import { stopSse } from '@/adapters/ruoyi/sse';
 import { removeToken } from '@/adapters/ruoyi/token';
+import { logout } from '@/app/auth';
 import { usePermission } from '@/components/Permission';
-import { logout } from '@/services/ruoyi/auth';
 import HeaderDropdown from '../HeaderDropdown';
 
 type GlobalHeaderRightProps = {

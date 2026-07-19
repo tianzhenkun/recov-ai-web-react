@@ -1,5 +1,1 @@
-import { CreditWorkspace } from './components/CreditWorkspace';
-
-const TenantBillingPage = () => <CreditWorkspace scope="tenant" />;
-
-export default TenantBillingPage;
+export { default } from '@/modules/billing/pages/tenant';

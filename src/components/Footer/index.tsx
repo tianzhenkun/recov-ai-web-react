@@ -17,13 +17,15 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
 }));
 
-const Footer: React.FC = () => {
+const Footer: React.FC<{ title?: string }> = ({ title = 'LingChen AI' }) => {
   const { styles } = useStyles();
   const year = new Date().getFullYear();
 
   return (
     <div className={styles.footer}>
-      <div className={styles.copyright}>Recov Agent &copy; {year}</div>
+      <div className={styles.copyright}>
+        {title} &copy; {year}
+      </div>
     </div>
   );
 };

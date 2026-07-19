@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { type DictDataItem, getDicts } from '@/services/ruoyi/dict';
+import { type DictDataItem, getDicts } from '@/shared/services/dict';
 
 export type RuoyiDictOption = {
   label: string;

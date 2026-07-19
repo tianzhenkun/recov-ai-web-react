@@ -8,6 +8,7 @@ _roadhog-api-doc
 
 # production
 /dist
+/dist*.zip
 
 # misc
 .DS_Store
@@ -16,7 +17,13 @@ yarn-error.log
 .env
 .env.local
 .env.*.local
+
+# local AI tool state
 .codex/
+.reasonix/
+.superpowers/
+.trae/
+.zed/
 
 # Cursor IDE
 .cursor/
@@ -46,10 +53,10 @@ functions/*
 
 # screenshot
 screenshot
+/captcha*.png
 .firebase
 
 build
-deploy/artifacts/
 
 # worktrees
 .worktrees
@@ -59,5 +66,4 @@ docs/superpowers
 
 # cloudflare wrangler
 .wrangler
-requestRecord.mock.js
 .codegraph/

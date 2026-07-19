@@ -10,7 +10,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { getToken } from '@/adapters/ruoyi/token';
-import { getOssBlob } from '@/services/ruoyi/oss';
+import { getOssBlob } from '@/shared/services/oss';
+import { normalizeSafePdfUrl, shouldAttachPdfAuthorization } from './security';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import './index.css';
@@ -38,26 +39,6 @@ export type PdfPreviewProps = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
-const shouldAttachAuthorization = (value?: string) => {
-  if (!value || typeof window === 'undefined') return false;
-
-  try {
-    const target = new URL(value, window.location.origin);
-    const currentHostname = window.location.hostname.toLowerCase();
-    const targetHostname = target.hostname.toLowerCase();
-
-    return (
-      target.origin === window.location.origin ||
-      targetHostname === currentHostname ||
-      targetHostname === 'localhost' ||
-      targetHostname === '127.0.0.1' ||
-      target.pathname.includes('/resource/oss/')
-    );
-  } catch {
-    return false;
-  }
-};
-
 const PdfPreview = ({
   url,
   ossId,
@@ -78,24 +59,34 @@ const PdfPreview = ({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [fileBlob, setFileBlob] = useState<Blob | undefined>();
+  const safeUrl =
+    typeof window === 'undefined'
+      ? undefined
+      : normalizeSafePdfUrl(url, window.location.origin);
 
   const normalizedOssId =
     ossId === undefined || ossId === null || ossId === '' ? '' : String(ossId);
   const file = useMemo(
     () =>
       fileBlob ||
-      (!normalizedOssId && url
+      (!normalizedOssId && safeUrl
         ? {
-            url,
+            url: safeUrl,
           }
         : undefined),
-    [fileBlob, normalizedOssId, url],
+    [fileBlob, normalizedOssId, safeUrl],
   );
   const documentOptions = useMemo(() => {
     if (normalizedOssId) return undefined;
 
     const token = getToken();
-    if (!token || !shouldAttachAuthorization(url)) return undefined;
+    if (
+      !token ||
+      typeof window === 'undefined' ||
+      !shouldAttachPdfAuthorization(safeUrl, window.location.origin)
+    ) {
+      return undefined;
+    }
 
     return {
       httpHeaders: {
@@ -103,7 +94,7 @@ const PdfPreview = ({
       },
       withCredentials: true,
     };
-  }, [normalizedOssId, url]);
+  }, [normalizedOssId, safeUrl]);
   const pageWidth = Math.round(
     clamp((containerWidth || maxPageWidth) - 48, 320, maxPageWidth) * scale,
   );
@@ -114,8 +105,8 @@ const PdfPreview = ({
     setNumPages(0);
     setScale(1);
     setLoadError(false);
-    setLoading(Boolean(url || normalizedOssId));
-  }, [normalizedOssId, url]);
+    setLoading(Boolean(safeUrl || normalizedOssId));
+  }, [normalizedOssId, safeUrl]);
 
   useEffect(() => {
     if (!normalizedOssId) return undefined;
@@ -156,8 +147,8 @@ const PdfPreview = ({
   }, []);
 
   const openInNewWindow = () => {
-    if (!url) return;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    if (!safeUrl) return;
+    window.open(safeUrl, '_blank', 'noopener,noreferrer');
   };
 
   const rootStyle = useMemo<CSSProperties>(
@@ -168,7 +159,7 @@ const PdfPreview = ({
     [height, style],
   );
 
-  if (!url && !normalizedOssId) {
+  if (!safeUrl && !normalizedOssId) {
     return (
       <div className={`pdf-preview ${className || ''}`} style={rootStyle}>
         <Empty description={emptyDescription} />

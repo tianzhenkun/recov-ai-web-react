@@ -1,25 +1,42 @@
+const { createPublicKey } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const MANAGED_BLOCK_START = '# >>> lingchen local profile >>>';
 const MANAGED_BLOCK_END = '# <<< lingchen local profile <<<';
+const DEFAULT_WEB_CLIENT_ID = 'e5cd7e4891bf95d1d19206ce24a7b32e';
 const MANAGED_ENV_KEYS = new Set([
   'UMI_APP_LOGIN_VARIANT',
   'UMI_APP_BASE_API',
   'UMI_APP_API_TARGET',
+  'UMI_APP_CLIENT_ID',
+  'UMI_APP_ENCRYPT',
+  'UMI_APP_RSA_PUBLIC_KEY',
+  'LINGCHEN_LOCAL_PRODUCT_CODE',
+]);
+const REMOVED_ENV_KEYS = new Set([
   'UMI_APP_PRODUCT_API',
   'UMI_APP_PRODUCT_TARGET',
   'UMI_APP_VOICE_API',
   'UMI_APP_VOICE_API_TARGET',
-  'LINGCHEN_LOCAL_PRODUCT_CODE',
-  // Remove legacy aliases only when the operator explicitly applies a profile.
   'UMI_APP_ADMIN_API',
   'UMI_APP_ADMIN_TARGET',
+  'UMI_APP_RSA_PRIVATE_KEY',
 ]);
 
 const readEnvKey = (line) => {
   const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/);
   return match?.[1];
+};
+
+const normalizeEnvScalar = (value) => {
+  const normalized = String(value || '').trim();
+  const quote = normalized[0];
+  return normalized.length >= 2 &&
+    (quote === '"' || quote === "'") &&
+    normalized.at(-1) === quote
+    ? normalized.slice(1, -1)
+    : normalized;
 };
 
 const readEnvValues = (content) => {
@@ -28,7 +45,7 @@ const readEnvValues = (content) => {
     const key = readEnvKey(line);
     if (!key) continue;
     const separator = line.indexOf('=');
-    result[key] = line.slice(separator + 1).trim();
+    result[key] = normalizeEnvScalar(line.slice(separator + 1));
   }
   return result;
 };
@@ -47,7 +64,9 @@ const updateManagedEnvContent = (currentContent, managedValues) => {
     }
     if (insideManagedBlock) continue;
     const key = readEnvKey(line);
-    if (key && MANAGED_ENV_KEYS.has(key)) continue;
+    if (key && (MANAGED_ENV_KEYS.has(key) || REMOVED_ENV_KEYS.has(key))) {
+      continue;
+    }
     retained.push(line);
   }
 
@@ -122,11 +141,50 @@ const buildLoginVariantChoices = (catalog) => {
   return [{ code: 'AUTO', label: '自动（跟随后端站点配置）' }, ...layouts];
 };
 
+const hasForbiddenPathCharacters = (value) =>
+  value.includes('?') ||
+  value.includes('#') ||
+  Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) || 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
+
 const validateSameOriginPath = (value) => {
   const normalized = String(value || '').trim();
-  if (!/^\/(?:[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*)?$/.test(normalized)) {
+  const invalid = () => {
     throw new Error('必须是以 / 开头的同源绝对路径。');
+  };
+  if (
+    !normalized.startsWith('/') ||
+    normalized.startsWith('//') ||
+    normalized.includes('\\') ||
+    hasForbiddenPathCharacters(normalized)
+  ) {
+    invalid();
   }
+  const segments = normalized.split('/');
+  segments.slice(1).forEach((segment, index) => {
+    const isTrailingSlash = index === segments.length - 2 && segment === '';
+    if (segment === '' && !isTrailingSlash) invalid();
+    let decoded = segment;
+    for (let round = 0; segment && round < 4; round += 1) {
+      try {
+        decoded = decodeURIComponent(decoded);
+      } catch {
+        invalid();
+      }
+      if (
+        decoded === '.' ||
+        decoded === '..' ||
+        decoded.includes('/') ||
+        decoded.includes('\\') ||
+        hasForbiddenPathCharacters(decoded)
+      ) {
+        invalid();
+      }
+    }
+    if (/%(?:2e|2f|5c)/i.test(decoded)) invalid();
+  });
   if (normalized === '/') throw new Error('API 通道不能使用站点根路径。');
   return normalized.length > 1 ? normalized.replace(/\/$/, '') : normalized;
 };
@@ -148,6 +206,43 @@ const validateBackendTarget = (value) => {
     throw new Error('后端目标只允许配置 Origin，不允许携带路径。');
   }
   return parsed.origin;
+};
+
+const validateClientId = (value) => {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized.length > 128 || /\s/.test(normalized)) {
+    throw new Error('clientId 不能为空、不能包含空白且长度不能超过 128。');
+  }
+  return normalized;
+};
+
+const validateRsaPublicKey = (value) => {
+  const normalized = String(value || '').trim();
+  if (
+    !normalized ||
+    normalized.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)
+  ) {
+    throw new Error('RSA 公钥必须是 Base64 编码的 DER SPKI 公钥。');
+  }
+
+  try {
+    const publicKey = createPublicKey({
+      format: 'der',
+      key: Buffer.from(normalized, 'base64'),
+      type: 'spki',
+    });
+    if (
+      publicKey.asymmetricKeyType !== 'rsa' ||
+      (publicKey.asymmetricKeyDetails?.modulusLength || 0) < 2048
+    ) {
+      throw new Error('invalid RSA key');
+    }
+  } catch {
+    throw new Error('RSA 公钥必须是至少 2048 位的 DER SPKI 公钥。');
+  }
+
+  return normalized;
 };
 
 const normalizeProductCode = (value) => {
@@ -190,6 +285,7 @@ const checkBackendTargets = async (
   );
 
 module.exports = {
+  DEFAULT_WEB_CLIENT_ID,
   MANAGED_ENV_KEYS,
   buildLoginVariantChoices,
   checkBackendTargets,
@@ -197,6 +293,8 @@ module.exports = {
   readEnvValues,
   updateManagedEnvContent,
   validateBackendTarget,
+  validateClientId,
+  validateRsaPublicKey,
   validateSameOriginPath,
   writeManagedEnvFileAtomic,
 };

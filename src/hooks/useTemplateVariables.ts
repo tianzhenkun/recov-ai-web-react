@@ -3,7 +3,7 @@ import type { TemplateVariable } from '@/components/TemplateEditor/types';
 import {
   listTemplateVariables,
   normalizeTemplateVariables,
-} from '@/services/ruoyi/templateVariable';
+} from '@/modules/recov/services/templateVariable';
 
 export const useTemplateVariables = () => {
   const [variables, setVariables] = useState<TemplateVariable[]>([]);
