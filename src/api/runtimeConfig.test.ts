@@ -56,6 +56,21 @@ describe('runtime api channels', () => {
     ).toThrow('API channels must not use the site root');
   });
 
+  it('accepts a 64-character clientId and rejects 65 characters', () => {
+    expect(() =>
+      parseRuntimeConfig({
+        ...requiredConfig,
+        clientId: 'a'.repeat(64),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      parseRuntimeConfig({
+        ...requiredConfig,
+        clientId: 'a'.repeat(65),
+      }),
+    ).toThrow('at most 64 characters');
+  });
+
   it.each([
     { ssePath: '/api' },
     { adminApi: '/api/resource/sse' },

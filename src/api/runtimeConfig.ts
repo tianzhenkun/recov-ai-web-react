@@ -106,9 +106,9 @@ export const parseRuntimeConfig = (value: unknown): LingchenRuntimeConfig => {
       : fail('encrypt must be a boolean.');
 
   const clientId = readRequiredString(value, 'clientId');
-  if (clientId.length > 128 || /\s/.test(clientId)) {
+  if (clientId.length > 64 || /\s/.test(clientId)) {
     fail(
-      'clientId must not contain whitespace and must be at most 128 characters.',
+      'clientId must not contain whitespace and must be at most 64 characters.',
     );
   }
 

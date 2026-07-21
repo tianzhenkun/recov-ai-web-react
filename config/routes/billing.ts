@@ -23,9 +23,9 @@ export default [
     hideInMenu: true,
   },
   {
-    name: 'billing-operations.coupons',
-    path: '/billing-operations/coupons',
-    component: './billing/operations/coupons',
+    name: 'billing-operations.coupon-templates',
+    path: '/billing-operations/coupon-templates',
+    component: './billing/operations/coupon-templates',
     hideInMenu: true,
   },
   {

@@ -209,6 +209,11 @@ describe('getInitialState dynamic tenant restore', () => {
     mockCallOrder.length = 0;
     jest.clearAllMocks();
     mockFloatingProcessPanelProps.length = 0;
+    Object.assign(mockHistory.location, {
+      hash: '',
+      pathname: '/sys/settle',
+      search: '',
+    });
 
     mockGetStoredDynamicTenantId.mockReturnValue('277201');
     mockGetInfo.mockImplementation(async () => {
@@ -228,6 +233,8 @@ describe('getInitialState dynamic tenant restore', () => {
     mockGetSiteConfig.mockResolvedValue({
       data: {
         loginVariant: 'default',
+        portalScope: 'PRODUCT',
+        productCode: 'recov',
         productName: 'LingChen AI',
         tenantMode: 'SELECTABLE',
       },
@@ -248,6 +255,14 @@ describe('getInitialState dynamic tenant restore', () => {
     });
   });
 
+  afterEach(() => {
+    Object.assign(mockHistory.location, {
+      hash: '',
+      pathname: '/sys/settle',
+      search: '',
+    });
+  });
+
   it('re-applies stored dynamic tenant after getInfo clears backend dynamic state', async () => {
     const { getInitialState } = require('./app');
 
@@ -256,6 +271,34 @@ describe('getInitialState dynamic tenant restore', () => {
     expect(initialState.dynamicTenantId).toBe('277201');
     expect(mockDynamicTenant).toHaveBeenCalledWith('277201');
     expect(mockCallOrder).toEqual(['getInfo', 'dynamicTenant', 'loadMenu']);
+  });
+
+  it('clears the stored dynamic tenant without restoring it for a FIXED portal', async () => {
+    mockGetSiteConfig.mockResolvedValueOnce({
+      data: {
+        loginVariant: 'default',
+        portalScope: 'PLATFORM',
+        tenantMode: 'FIXED',
+      },
+    });
+    const { getInitialState } = require('./app');
+
+    const initialState = await getInitialState();
+
+    expect(initialState.dynamicTenantId).toBeUndefined();
+    expect(mockDynamicTenant).not.toHaveBeenCalled();
+    expect(mockClearStoredDynamicTenantId).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the site profile is unavailable instead of restoring a tenant', async () => {
+    mockGetSiteConfig.mockRejectedValueOnce(new Error('站点配置不可用'));
+    const { getInitialState } = require('./app');
+
+    const initialState = await getInitialState();
+
+    expect(initialState.dynamicTenantId).toBeUndefined();
+    expect(mockDynamicTenant).not.toHaveBeenCalled();
+    expect(mockClearStoredDynamicTenantId).toHaveBeenCalledTimes(1);
   });
 
   it('keeps stored dynamic tenant when restore fails with a transient server error', async () => {
@@ -291,6 +334,25 @@ describe('getInitialState dynamic tenant restore', () => {
     expect(mockHistory.replace).toHaveBeenCalledWith(
       expect.stringContaining('/user/login?redirect='),
     );
+  });
+
+  it('does not wrap the login redirect again when getInfo already redirected', async () => {
+    const loginUrl = '/user/login?redirect=%2Fsys%2Fsettle';
+    mockGetInfo.mockImplementationOnce(async () => {
+      mockHistory.replace(loginUrl);
+      Object.assign(mockHistory.location, {
+        hash: '',
+        pathname: '/user/login',
+        search: '?redirect=%2Fsys%2Fsettle',
+      });
+      throw new Error('会话已过期');
+    });
+    const { getInitialState } = require('./app');
+
+    await getInitialState();
+
+    expect(mockHistory.replace).toHaveBeenCalledTimes(1);
+    expect(mockHistory.replace).toHaveBeenCalledWith(loginUrl);
   });
 });
 
@@ -437,6 +499,8 @@ describe('layout color theme settings', () => {
         settings: {},
         siteProfile: {
           loginVariant: 'default',
+          portalScope: 'PRODUCT',
+          productCode: 'sales',
           productName: 'Sales Agent',
           tenantMode: 'FIXED',
         },

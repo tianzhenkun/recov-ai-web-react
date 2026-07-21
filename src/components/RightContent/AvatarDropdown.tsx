@@ -61,10 +61,12 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   const currentUserId = initialState?.currentUser?.userid;
   const activeWorkspaceKey = initialState?.activeMenuWorkspaceKey;
   const menuWorkspaceMode = initialState?.menuWorkspaceMode;
+  const isProductPortal = initialState?.siteProfile?.portalScope === 'PRODUCT';
 
   useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUserId || !isProductPortal) {
       setWorkspaces([]);
+      setWorkspaceLoading(false);
       return;
     }
 
@@ -109,6 +111,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
     currentUserId,
     initialState?.dynamicTenantId,
     initialState?.tenantSwitchVersion,
+    isProductPortal,
     menuWorkspaceMode,
     setInitialState,
   ]);
@@ -182,7 +185,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
             icon: <SettingOutlined />,
             label: '个人中心',
           },
-          ...(hasPermission('credit:me:account:view')
+          ...(isProductPortal && hasPermission('credit:me:account:view')
             ? [
                 {
                   key: 'credit',

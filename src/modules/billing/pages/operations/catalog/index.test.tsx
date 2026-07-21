@@ -45,6 +45,11 @@ jest.mock('@umijs/max', () => ({
         rawUser: { tenantId: '000000' },
       },
       dynamicTenantId: '000000',
+      siteProfile: {
+        loginVariant: 'default',
+        portalScope: 'PLATFORM',
+        tenantMode: 'FIXED',
+      },
     },
   }),
 }));

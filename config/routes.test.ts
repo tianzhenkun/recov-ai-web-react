@@ -40,6 +40,8 @@ describe('routes', () => {
 
     expect(paths.has('/billing')).toBe(true);
     expect(paths.has('/billing-operations')).toBe(true);
+    expect(paths.has('/billing-operations/coupon-templates')).toBe(true);
+    expect(paths.has('/billing-operations/coupons')).toBe(false);
   });
 
   it('exposes the standard flow events page as a hidden route', () => {

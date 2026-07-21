@@ -35,8 +35,10 @@ export type TenantInfo = {
 };
 
 export type TenantMode = 'SELECTABLE' | 'FIXED';
+export type PortalScope = 'PLATFORM' | 'PRODUCT';
 
 export type SiteConfig = {
+  portalScope: PortalScope;
   productCode?: string;
   productName?: string;
   loginVariant: string;

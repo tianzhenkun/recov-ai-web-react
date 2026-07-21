@@ -38,6 +38,7 @@ import {
   savePaymentChannelConfig,
   validatePaymentChannelConfig,
 } from '@/modules/billing/services/payment';
+import OperationsGuard from '../components/OperationsGuard';
 
 type WechatConfigForm = PaymentChannelConfigSavePayload;
 
@@ -485,4 +486,10 @@ const PaymentChannelConfigPage = () => {
   );
 };
 
-export default PaymentChannelConfigPage;
+const GuardedPaymentChannelConfigPage = () => (
+  <OperationsGuard permissions="payment:channel-config:list">
+    <PaymentChannelConfigPage />
+  </OperationsGuard>
+);
+
+export default GuardedPaymentChannelConfigPage;

@@ -20,7 +20,7 @@ export default {
   'menu.billing-operations': '计费管理',
   'menu.billing-operations.catalog': '产品与计价',
   'menu.billing-operations.packages': '套餐管理',
-  'menu.billing-operations.coupons': '优惠券运营',
+  'menu.billing-operations.coupon-templates': '优惠券模板',
   'menu.billing-operations.accounts': '信用点账户',
   'menu.billing-operations.charges': '扣费与偿债',
   'menu.billing-operations.payments': '支付与退款',

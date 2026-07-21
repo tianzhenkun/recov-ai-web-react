@@ -2,6 +2,15 @@ import { ruoyiRequest } from '@/api/main';
 
 const BASE = '/system/license-management';
 
+export type LicenseCapabilityStatus = {
+  issuerEnabled: boolean;
+};
+
+export const getLicenseCapabilities = () =>
+  ruoyiRequest<LicenseCapabilityStatus>(`${BASE}/capabilities`, {
+    method: 'GET',
+  });
+
 export type LicenseStatus = '0' | '1';
 export type LicenseIssueType =
   | 'INITIAL'

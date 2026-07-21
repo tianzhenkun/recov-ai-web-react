@@ -7,9 +7,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { history, useAccess } from '@umijs/max';
 import { Button, Card, Flex, Tag, Typography } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { type ReactNode, useEffect, useState } from 'react';
-import { getRouters } from '@/app/menu';
-import { hasInstalledRoute } from './model';
+import React, { type ReactNode } from 'react';
 
 type IntegrationEntry = {
   code: string;
@@ -53,12 +51,6 @@ const oauthEntry: IntegrationEntry = {
   icon: <LoginOutlined />,
 };
 
-type PaymentCapabilityStatus =
-  | 'loading'
-  | 'available'
-  | 'unavailable'
-  | 'unknown';
-
 const useStyles = createStyles(({ token }) => ({
   grid: {
     display: 'grid',
@@ -86,48 +78,16 @@ const useStyles = createStyles(({ token }) => ({
     minHeight: 44,
     marginBottom: token.marginMD,
   },
-  capabilityHint: {
-    display: 'block',
-    marginTop: token.marginMD,
-  },
 }));
 
 const IntegrationCenterPage = () => {
   const { styles } = useStyles();
   const access = useAccess();
-  const [paymentCapabilityStatus, setPaymentCapabilityStatus] =
-    useState<PaymentCapabilityStatus>('loading');
-
-  useEffect(() => {
-    let active = true;
-
-    void getRouters({ skipErrorHandler: true })
-      .then((response) => {
-        if (!active) return;
-        if (!Array.isArray(response.data)) {
-          setPaymentCapabilityStatus('unknown');
-          return;
-        }
-
-        setPaymentCapabilityStatus(
-          hasInstalledRoute(response.data, paymentRoutePath)
-            ? 'available'
-            : 'unavailable',
-        );
-      })
-      .catch(() => {
-        if (active) setPaymentCapabilityStatus('unknown');
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const integrationEntries = [
     objectStorageEntry,
     ...(access.canManageOAuthIntegration ? [oauthEntry] : []),
-    ...(paymentCapabilityStatus === 'available' ? [paymentEntry] : []),
+    paymentEntry,
   ];
 
   return (
@@ -167,11 +127,6 @@ const IntegrationCenterPage = () => {
           </Card>
         ))}
       </div>
-      {paymentCapabilityStatus === 'unknown' ? (
-        <Typography.Text type="secondary" className={styles.capabilityHint}>
-          支付集成能力暂无法确认，当前仅显示已确定可用的配置。
-        </Typography.Text>
-      ) : null}
     </PageContainer>
   );
 };

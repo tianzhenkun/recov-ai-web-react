@@ -57,12 +57,28 @@ const validateSameOriginPath = (value: string) => {
 };
 
 export const createProxy = (env: ProxyEnv = process.env) => {
+  const portalScope = read(env, 'LINGCHEN_LOCAL_PORTAL_SCOPE');
+  if (!portalScope || !['PLATFORM', 'PRODUCT'].includes(portalScope)) {
+    throw new Error('入口范围仅允许 PLATFORM 或 PRODUCT。');
+  }
   const productCode = read(env, 'LINGCHEN_LOCAL_PRODUCT_CODE') || '';
   if (productCode && !/^[a-z][a-z0-9_]{1,63}$/.test(productCode)) {
     throw new Error('产品编码必须使用小写字母、数字或下划线。');
   }
-  const productHeaders = {
+  if (
+    (portalScope === 'PLATFORM' && productCode) ||
+    (portalScope === 'PRODUCT' && !productCode)
+  ) {
+    throw new Error('入口范围与产品编码组合不正确。');
+  }
+  const clientId = read(env, 'UMI_APP_CLIENT_ID') || '';
+  if (!clientId || clientId.length > 64 || /\s/.test(clientId)) {
+    throw new Error('clientId 不能为空、不能包含空白且不能超过 64 个字符。');
+  }
+  const siteHeaders = {
+    'X-Lingchen-Portal-Scope': portalScope,
     'X-Lingchen-Product-Code': productCode,
+    clientid: clientId,
   };
   const baseApi = validateSameOriginPath(
     read(env, 'UMI_APP_BASE_API') || '/dev-api',
@@ -80,7 +96,7 @@ export const createProxy = (env: ProxyEnv = process.env) => {
       proxyTimeout: 0,
       timeout: 0,
       headers: {
-        ...productHeaders,
+        ...siteHeaders,
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive',
       },
@@ -89,7 +105,7 @@ export const createProxy = (env: ProxyEnv = process.env) => {
       target: apiTarget,
       changeOrigin: true,
       ws: true,
-      headers: productHeaders,
+      headers: siteHeaders,
       pathRewrite: { [`^${escapeRegExp(baseApi)}`]: '' },
     },
   };
@@ -97,8 +113,11 @@ export const createProxy = (env: ProxyEnv = process.env) => {
   return configured;
 };
 
+const localDevelopmentProxy =
+  read(process.env, 'UMI_ENV') === 'dev' ? createProxy() : {};
+
 export default {
-  dev: createProxy(),
-  test: createProxy(),
-  pre: createProxy(),
+  dev: localDevelopmentProxy,
+  test: {},
+  pre: {},
 };

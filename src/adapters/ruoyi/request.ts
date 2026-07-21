@@ -218,7 +218,7 @@ const requestWithBaseApi = async <T = unknown>(
   } = options;
   const method = normalizeMethod(options.method);
   const headers: InternalHeaders = { ...(inputHeaders || {}) };
-  const isToken = headers.isToken === false;
+  const isTokenDisabled = headers.isToken === false;
   const shouldEncrypt =
     isEncryptEnabled() &&
     ['post', 'put'].includes(method) &&
@@ -229,7 +229,7 @@ const requestWithBaseApi = async <T = unknown>(
   }
 
   const token = getToken();
-  if (token && !isToken) {
+  if (token && !isTokenDisabled) {
     headers.Authorization = `Bearer ${token}`;
   }
   headers.clientid = getClientId();
@@ -272,6 +272,17 @@ const requestWithBaseApi = async <T = unknown>(
     };
   }
 
+  const handleUnauthorized = (
+    response: RuoyiResponse = { code: RuoYiCode.UNAUTHORIZED },
+  ): never => {
+    const errorMessage = '无效的会话，或者会话已过期，请重新登录。';
+    redirectToLogin();
+    if (!options.skipErrorHandler) {
+      showRuoyiError(errorMessage);
+    }
+    throw new RuoyiError(errorMessage, response);
+  };
+
   const handleResponseData = (rawData: unknown, responseType?: string) => {
     if (isRawResponseType(responseType)) {
       return rawData as T;
@@ -281,9 +292,8 @@ const requestWithBaseApi = async <T = unknown>(
       return rawData as RuoyiResponse<T>;
     }
 
-    if (rawData.code === RuoYiCode.UNAUTHORIZED) {
-      redirectToLogin();
-      throw new RuoyiError('无效的会话，或者会话已过期，请重新登录。', rawData);
+    if (rawData.code === RuoYiCode.UNAUTHORIZED && !isTokenDisabled) {
+      return handleUnauthorized(rawData);
     }
 
     if (rawData.code !== RuoYiCode.SUCCESS) {
@@ -305,10 +315,18 @@ const requestWithBaseApi = async <T = unknown>(
       response.request?.responseType,
     );
   } catch (error) {
+    if (error instanceof RuoyiError) {
+      throw error;
+    }
     const requestError = error as UmiRequestError;
     const response = requestError.response;
     const responseType = response?.request?.responseType;
     const errorData = response ? readResponseData(response) : requestError.data;
+    if (response?.status === RuoYiCode.UNAUTHORIZED && !isTokenDisabled) {
+      return handleUnauthorized(
+        isRuoyiResponse(errorData) ? errorData : undefined,
+      );
+    }
     if (!isRawResponseType(responseType) && isRuoyiResponse(errorData)) {
       return handleResponseData(errorData, responseType);
     }

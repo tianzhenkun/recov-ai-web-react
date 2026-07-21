@@ -49,11 +49,14 @@ const TenantSwitch = ({
   const [loading, setLoading] = useState(false);
   const currentUser = initialState?.currentUser;
   const isSuperAdmin = isSuperAdminUser(currentUser);
+  const canSwitchTenant =
+    isSuperAdmin && initialState?.siteProfile?.tenantMode === 'SELECTABLE';
   const selectedTenantId = initialState?.dynamicTenantId;
   const isCompact = !screens.md;
 
   useEffect(() => {
-    if (!isSuperAdmin) {
+    if (!canSwitchTenant) {
+      clearStoredDynamicTenantId();
       setTenantEnabled(false);
       setTenantList([]);
       return;
@@ -83,7 +86,7 @@ const TenantSwitch = ({
     return () => {
       mounted = false;
     };
-  }, [isSuperAdmin]);
+  }, [canSwitchTenant]);
 
   const options = useMemo(
     () =>
@@ -152,7 +155,7 @@ const TenantSwitch = ({
     }
   };
 
-  if (!isSuperAdmin || !tenantEnabled || options.length === 0) return null;
+  if (!canSwitchTenant || !tenantEnabled || options.length === 0) return null;
 
   if (variant === 'sider' || variant === 'icon' || isCompact) {
     const menuItems: MenuProps['items'] = [

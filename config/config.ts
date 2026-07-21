@@ -2,7 +2,7 @@
 
 import { join } from 'node:path';
 import { defineConfig } from '@umijs/max';
-import { buildClientEnvDefines } from './clientDefines';
+import { buildClientEnvDefines, resolveBuildOutputPath } from './clientDefines';
 import defaultSettings from './defaultSettings';
 import proxy from './proxy';
 
@@ -30,6 +30,10 @@ export default defineConfig({
    * @doc https://umijs.org/docs/api/config#hash
    */
   hash: true,
+
+  // Utoopack 的开发服务器会直接读取输出目录；与正式构建共用 dist
+  // 会导致运行中的本地站点被后续 npm run build 覆盖。
+  outputPath: resolveBuildOutputPath(isProductionBuild),
 
   publicPath: PUBLIC_PATH,
 

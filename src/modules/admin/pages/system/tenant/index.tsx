@@ -1,6 +1,4 @@
 import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -27,11 +25,9 @@ import { useDeleteConfirm } from '@/hooks/useDeleteConfirm';
 import {
   addTenant,
   changeTenantStatus,
-  clearRecovTenantInit,
   deleteTenants,
   exportTenants,
   getTenant,
-  initRecovTenant,
   listTenants,
   selectTenantPackages,
   syncTenantConfig,
@@ -52,9 +48,6 @@ type TenantSearchParams = {
   contactPhone?: string;
   companyName?: string;
 };
-
-const isTemplateTenant = (tenantId?: number | string) =>
-  String(tenantId) === '000000';
 
 const toTenantQuery = (params: TenantSearchParams): TenantQuery => ({
   pageNum: params.current || 1,
@@ -105,11 +98,6 @@ const TenantPage = () => {
   const [syncPackageLoadingId, setSyncPackageLoadingId] = useState<
     number | string
   >();
-  const [initRecovTenantLoadingId, setInitRecovTenantLoadingId] = useState<
-    number | string
-  >();
-  const [clearRecovTenantInitLoadingId, setClearRecovTenantInitLoadingId] =
-    useState<number | string>();
   const openDeleteConfirm = useDeleteConfirm({
     modal: modalApi,
     messageApi,
@@ -221,35 +209,6 @@ const TenantPage = () => {
     }
   };
 
-  const handleInitRecovTenant = async (record: TenantItem) => {
-    if (!record.tenantId || isTemplateTenant(record.tenantId)) return;
-
-    setInitRecovTenantLoadingId(record.tenantId);
-    try {
-      const response = await initRecovTenant(record.tenantId);
-      const result = response.data;
-      if (result?.initialized === false) {
-        messageApi.warning(result.message || '初始化未执行');
-        return;
-      }
-      messageApi.success(result?.message || '初始化成功');
-    } finally {
-      setInitRecovTenantLoadingId(undefined);
-    }
-  };
-
-  const handleClearRecovTenantInit = async (record: TenantItem) => {
-    if (!record.tenantId || isTemplateTenant(record.tenantId)) return;
-
-    setClearRecovTenantInitLoadingId(record.tenantId);
-    try {
-      const response = await clearRecovTenantInit(record.tenantId);
-      messageApi.success(response.data?.message || '清除成功');
-    } finally {
-      setClearRecovTenantInitLoadingId(undefined);
-    }
-  };
-
   const confirmDangerAction = ({
     title,
     content,
@@ -350,35 +309,6 @@ const TenantPage = () => {
                   title: '同步租户套餐',
                   content: `确认同步租户编号为“${record.tenantId}”的套餐数据吗？`,
                   onOk: () => handleSyncTenantPackage(record),
-                }),
-            },
-            {
-              key: 'initRecovTenant',
-              label: '初始化催收业务信息',
-              icon: <CheckCircleOutlined />,
-              disabled: isTemplateTenant(record.tenantId),
-              loading: initRecovTenantLoadingId === record.tenantId,
-              permissions: 'system:tenant:edit',
-              onClick: () =>
-                confirmDangerAction({
-                  title: '初始化催收业务信息',
-                  content: `确认从模板租户重新初始化租户编号为“${record.tenantId}”的催收业务配置？该操作会先清除该租户已有的催收初始化配置。`,
-                  onOk: () => handleInitRecovTenant(record),
-                }),
-            },
-            {
-              key: 'clearRecovTenantInit',
-              label: '清除催收初始化数据',
-              danger: true,
-              icon: <CloseCircleOutlined />,
-              disabled: isTemplateTenant(record.tenantId),
-              loading: clearRecovTenantInitLoadingId === record.tenantId,
-              permissions: 'system:tenant:remove',
-              onClick: () =>
-                confirmDangerAction({
-                  title: '清除催收初始化数据',
-                  content: `确认清除租户编号为“${record.tenantId}”的催收初始化数据？该操作会直接删除催收配置，且不会检查租户是否已有真实业务数据。`,
-                  onOk: () => handleClearRecovTenantInit(record),
                 }),
             },
             {

@@ -34,7 +34,7 @@ import {
   theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PermissionButton, usePermission } from '@/components/Permission';
 import {
   type CreditAccount,
@@ -192,26 +192,31 @@ export const CreditWorkspace = ({
   const { canAccess } = usePermission();
   const [purchaseForm] = Form.useForm<PurchaseFormValues>();
   const purchaseIntentIdempotency = usePurchaseIntentIdempotency();
+  const finishPurchaseIntent = purchaseIntentIdempotency.finish;
   const permissions = scopePermissions[scope];
 
   const [activeTab, setActiveTab] = useState<CreditWorkspaceTab>(initialTab);
-  const [account, setAccount] = useState<CreditAccount>();
-  const [entitlements, setEntitlements] = useState<CreditEntitlements>();
-  const [grants, setGrants] = useState<CreditGrant[]>([]);
-  const [packages, setPackages] = useState<CreditPackage[]>([]);
-  const [orders, setOrders] = useState<CreditPackageOrder[]>([]);
-  const [coupons, setCoupons] = useState<CreditCoupon[]>([]);
-  const [purchaseCoupons, setPurchaseCoupons] = useState<CreditCoupon[]>([]);
-  const [claimableTemplates, setClaimableTemplates] = useState<
+  const [storedAccount, setAccount] = useState<CreditAccount>();
+  const [storedEntitlements, setEntitlements] = useState<CreditEntitlements>();
+  const [storedGrants, setGrants] = useState<CreditGrant[]>([]);
+  const [storedPackages, setPackages] = useState<CreditPackage[]>([]);
+  const [storedOrders, setOrders] = useState<CreditPackageOrder[]>([]);
+  const [storedCoupons, setCoupons] = useState<CreditCoupon[]>([]);
+  const [storedPurchaseCoupons, setPurchaseCoupons] = useState<CreditCoupon[]>(
+    [],
+  );
+  const [storedClaimableTemplates, setClaimableTemplates] = useState<
     CreditCouponTemplate[]
   >([]);
-  const [ledgers, setLedgers] = useState<CreditLedger[]>([]);
+  const [storedLedgers, setLedgers] = useState<CreditLedger[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<CreditPackage>();
-  const [selectedOrder, setSelectedOrder] = useState<CreditPackageOrder>();
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [orderOpen, setOrderOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [storedSelectedPackage, setSelectedPackage] = useState<CreditPackage>();
+  const [storedSelectedOrder, setSelectedOrder] =
+    useState<CreditPackageOrder>();
+  const [storedPurchaseOpen, setPurchaseOpen] = useState(false);
+  const [storedOrderOpen, setOrderOpen] = useState(false);
+  const [purchaseSubmitting, setPurchaseSubmitting] = useState(false);
+  const [retryingPayment, setRetryingPayment] = useState(false);
   const [claimingId, setClaimingId] = useState<string>();
   const [orderPage, setOrderPage] = useState({
     current: 1,
@@ -231,69 +236,242 @@ export const CreditWorkspace = ({
   const rawTenantId = (
     initialState?.currentUser?.rawUser as { tenantId?: string } | undefined
   )?.tenantId;
-  const tenantContextKey = `${initialState?.dynamicTenantId || rawTenantId || 'default'}:${initialState?.tenantSwitchVersion || 0}`;
+  const tenantContextKey = `${scope}:${initialState?.dynamicTenantId || rawTenantId || 'default'}:${initialState?.tenantSwitchVersion || 0}`;
+  const [workspaceGeneration, setWorkspaceGeneration] = useState(0);
+  const [workspaceDataContextKey, setWorkspaceDataContextKey] =
+    useState(tenantContextKey);
+  const activeTenantContextRef = useRef(tenantContextKey);
+  activeTenantContextRef.current = tenantContextKey;
+  const activeWorkspaceGenerationRef = useRef(workspaceGeneration);
+  activeWorkspaceGenerationRef.current = workspaceGeneration;
+  const hasCurrentWorkspaceData = workspaceDataContextKey === tenantContextKey;
+  const account = hasCurrentWorkspaceData ? storedAccount : undefined;
+  const entitlements = hasCurrentWorkspaceData ? storedEntitlements : undefined;
+  const grants = hasCurrentWorkspaceData ? storedGrants : [];
+  const packages = hasCurrentWorkspaceData ? storedPackages : [];
+  const orders = hasCurrentWorkspaceData ? storedOrders : [];
+  const coupons = hasCurrentWorkspaceData ? storedCoupons : [];
+  const purchaseCoupons = hasCurrentWorkspaceData ? storedPurchaseCoupons : [];
+  const claimableTemplates = hasCurrentWorkspaceData
+    ? storedClaimableTemplates
+    : [];
+  const ledgers = hasCurrentWorkspaceData ? storedLedgers : [];
+  const selectedPackage = hasCurrentWorkspaceData
+    ? storedSelectedPackage
+    : undefined;
+  const selectedOrder = hasCurrentWorkspaceData
+    ? storedSelectedOrder
+    : undefined;
+  const purchaseOpen = hasCurrentWorkspaceData && storedPurchaseOpen;
+  const orderOpen = hasCurrentWorkspaceData && storedOrderOpen;
+  const isActiveTenantContext = useCallback(
+    (requestContextKey: string) =>
+      activeTenantContextRef.current === requestContextKey,
+    [],
+  );
+  const isActiveWorkspaceRequest = useCallback(
+    (requestContextKey: string, requestGeneration: number) =>
+      activeTenantContextRef.current === requestContextKey &&
+      activeWorkspaceGenerationRef.current === requestGeneration,
+    [],
+  );
+  const modalInteractionGenerationRef = useRef(0);
+  const orderReadSequenceRef = useRef(0);
+  const purchaseSubmissionInFlightRef = useRef(false);
+  const claimInFlightRef = useRef(false);
+  const retryPaymentInFlightRef = useRef(false);
+  const isActiveModalInteraction = useCallback(
+    (requestContextKey: string, requestGeneration: number) =>
+      isActiveTenantContext(requestContextKey) &&
+      modalInteractionGenerationRef.current === requestGeneration,
+    [isActiveTenantContext],
+  );
+  const advanceModalInteractionGeneration = useCallback(() => {
+    modalInteractionGenerationRef.current += 1;
+    return modalInteractionGenerationRef.current;
+  }, []);
+  const invalidateBusinessInteractions = useCallback(() => {
+    advanceModalInteractionGeneration();
+    orderReadSequenceRef.current += 1;
+    setPurchaseOpen(false);
+    setOrderOpen(false);
+    setSelectedPackage(undefined);
+    setSelectedOrder(undefined);
+    setPurchaseCoupons([]);
+    if (!purchaseSubmissionInFlightRef.current) {
+      finishPurchaseIntent();
+    }
+  }, [advanceModalInteractionGeneration, finishPurchaseIntent]);
+  const closePurchaseInteraction = useCallback(() => {
+    if (purchaseSubmissionInFlightRef.current) return;
+    advanceModalInteractionGeneration();
+    finishPurchaseIntent();
+    setPurchaseOpen(false);
+    setSelectedPackage(undefined);
+    setPurchaseCoupons([]);
+    setPurchaseSubmitting(false);
+  }, [advanceModalInteractionGeneration, finishPurchaseIntent]);
+  const closeOrderInteraction = useCallback(() => {
+    advanceModalInteractionGeneration();
+    orderReadSequenceRef.current += 1;
+    setOrderOpen(false);
+    setSelectedOrder(undefined);
+  }, [advanceModalInteractionGeneration]);
+  const resetWorkspaceData = useCallback((contextKey: string) => {
+    setAccount(undefined);
+    setEntitlements(undefined);
+    setGrants([]);
+    setPackages([]);
+    setOrders([]);
+    setCoupons([]);
+    setPurchaseCoupons([]);
+    setClaimableTemplates([]);
+    setLedgers([]);
+    setLoading(false);
+    setOrderPage({ current: 1, pageSize: 10, total: 0 });
+    setCouponPage({ current: 1, pageSize: 10, total: 0 });
+    setLedgerPage({ current: 1, pageSize: 10, total: 0 });
+    setWorkspaceDataContextKey(contextKey);
+  }, []);
+  const requestWorkspaceDataRefresh = useCallback(() => {
+    const nextGeneration = activeWorkspaceGenerationRef.current + 1;
+    activeWorkspaceGenerationRef.current = nextGeneration;
+    setWorkspaceGeneration(nextGeneration);
+  }, []);
 
   useEffect(() => setActiveTab(initialTab), [initialTab]);
 
+  const previousTenantContextRef = useRef(tenantContextKey);
+  useEffect(() => {
+    if (previousTenantContextRef.current === tenantContextKey) return;
+    previousTenantContextRef.current = tenantContextKey;
+    invalidateBusinessInteractions();
+    resetWorkspaceData(tenantContextKey);
+    requestWorkspaceDataRefresh();
+  }, [
+    invalidateBusinessInteractions,
+    requestWorkspaceDataRefresh,
+    resetWorkspaceData,
+    tenantContextKey,
+  ]);
+
   const loadAccount = useCallback(async () => {
     if (!canAccess({ permissions: permissions.account })) return;
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = workspaceGeneration;
     const [nextAccount, nextGrants, nextEntitlements] = await Promise.all([
       getScopedCreditAccount(scope),
       listScopedCreditGrants(scope),
       getScopedCreditEntitlements(scope),
     ]);
+    if (!isActiveWorkspaceRequest(requestContextKey, requestGeneration)) return;
     setAccount(nextAccount);
     setGrants(nextGrants);
     setEntitlements(nextEntitlements);
-  }, [canAccess, permissions.account, scope]);
+  }, [
+    canAccess,
+    isActiveWorkspaceRequest,
+    permissions.account,
+    scope,
+    tenantContextKey,
+    workspaceGeneration,
+  ]);
 
   const loadPackages = useCallback(async () => {
     if (!canAccess({ permissions: permissions.packages })) return;
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = workspaceGeneration;
     const rows = await listScopedCreditPackages(scope);
+    if (!isActiveWorkspaceRequest(requestContextKey, requestGeneration)) return;
     setPackages(rows.filter((item) => packageOwnerMatchesScope(scope, item)));
-  }, [canAccess, permissions.packages, scope]);
+  }, [
+    canAccess,
+    isActiveWorkspaceRequest,
+    permissions.packages,
+    scope,
+    tenantContextKey,
+    workspaceGeneration,
+  ]);
 
   const loadOrders = useCallback(
     async (pageNum = 1, pageSize = 10) => {
       if (!canAccess({ permissions: permissions.orders })) return;
+      const requestContextKey = tenantContextKey;
+      const requestGeneration = workspaceGeneration;
       const result = await pageScopedCreditPackageOrders(scope, {
         pageNum,
         pageSize,
       });
+      if (!isActiveWorkspaceRequest(requestContextKey, requestGeneration)) {
+        return;
+      }
       setOrders(result.rows);
       setOrderPage({ current: pageNum, pageSize, total: result.total });
     },
-    [canAccess, permissions.orders, scope],
+    [
+      canAccess,
+      isActiveWorkspaceRequest,
+      permissions.orders,
+      scope,
+      tenantContextKey,
+      workspaceGeneration,
+    ],
   );
 
   const loadCoupons = useCallback(
     async (pageNum = 1, pageSize = 10) => {
       if (!canAccess({ permissions: permissions.coupons })) return;
+      const requestContextKey = tenantContextKey;
+      const requestGeneration = workspaceGeneration;
       const [owned, claimable] = await Promise.all([
         pageScopedCreditCoupons(scope, { pageNum, pageSize }),
         listScopedClaimableCouponTemplates(scope),
       ]);
+      if (!isActiveWorkspaceRequest(requestContextKey, requestGeneration)) {
+        return;
+      }
       setCoupons(owned.rows);
       setCouponPage({ current: pageNum, pageSize, total: owned.total });
       setClaimableTemplates(claimable);
     },
-    [canAccess, permissions.coupons, scope],
+    [
+      canAccess,
+      isActiveWorkspaceRequest,
+      permissions.coupons,
+      scope,
+      tenantContextKey,
+      workspaceGeneration,
+    ],
   );
 
   const loadLedgers = useCallback(
     async (pageNum = 1, pageSize = 10) => {
       if (!canAccess({ permissions: permissions.ledgers })) return;
+      const requestContextKey = tenantContextKey;
+      const requestGeneration = workspaceGeneration;
       const result = await pageScopedCreditLedgers(scope, {
         pageNum,
         pageSize,
       });
+      if (!isActiveWorkspaceRequest(requestContextKey, requestGeneration)) {
+        return;
+      }
       setLedgers(result.rows);
       setLedgerPage({ current: pageNum, pageSize, total: result.total });
     },
-    [canAccess, permissions.ledgers, scope],
+    [
+      canAccess,
+      isActiveWorkspaceRequest,
+      permissions.ledgers,
+      scope,
+      tenantContextKey,
+      workspaceGeneration,
+    ],
   );
 
   const refresh = useCallback(async () => {
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = workspaceGeneration;
     setLoading(true);
     try {
       await Promise.all([
@@ -304,39 +482,52 @@ export const CreditWorkspace = ({
         loadLedgers(1, 10),
       ]);
     } catch (error) {
-      message.error(getErrorMessage(error, '加载信用点数据失败'));
+      if (isActiveWorkspaceRequest(requestContextKey, requestGeneration)) {
+        message.error(getErrorMessage(error, '加载信用点数据失败'));
+      }
     } finally {
-      setLoading(false);
+      if (isActiveWorkspaceRequest(requestContextKey, requestGeneration)) {
+        setLoading(false);
+      }
     }
   }, [
+    isActiveWorkspaceRequest,
     loadAccount,
     loadCoupons,
     loadLedgers,
     loadOrders,
     loadPackages,
     message,
+    tenantContextKey,
+    workspaceGeneration,
   ]);
 
   useEffect(() => {
-    setAccount(undefined);
-    setEntitlements(undefined);
-    setGrants([]);
-    setPackages([]);
-    setOrders([]);
-    setCoupons([]);
-    setPurchaseCoupons([]);
-    setClaimableTemplates([]);
-    setLedgers([]);
-    setOrderPage({ current: 1, pageSize: 10, total: 0 });
-    setCouponPage({ current: 1, pageSize: 10, total: 0 });
-    setLedgerPage({ current: 1, pageSize: 10, total: 0 });
+    if (!isActiveWorkspaceRequest(tenantContextKey, workspaceGeneration)) {
+      return;
+    }
     void refresh();
-  }, [refresh, tenantContextKey]);
+  }, [
+    isActiveWorkspaceRequest,
+    refresh,
+    tenantContextKey,
+    workspaceGeneration,
+  ]);
 
   const pollSelectedOrder = useCallback(async () => {
     if (!selectedOrder?.id) return;
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = modalInteractionGenerationRef.current;
+    const requestSequence = orderReadSequenceRef.current + 1;
+    orderReadSequenceRef.current = requestSequence;
     try {
       const next = await getScopedCreditPackageOrder(scope, selectedOrder.id);
+      if (
+        !isActiveModalInteraction(requestContextKey, requestGeneration) ||
+        orderReadSequenceRef.current !== requestSequence
+      ) {
+        return;
+      }
       setSelectedOrder(next);
       setOrders((current) =>
         current.map((item) => (item.id === next.id ? next : item)),
@@ -349,9 +540,15 @@ export const CreditWorkspace = ({
         ]);
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '刷新支付状态失败'));
+      if (
+        isActiveModalInteraction(requestContextKey, requestGeneration) &&
+        orderReadSequenceRef.current === requestSequence
+      ) {
+        message.error(getErrorMessage(error, '刷新支付状态失败'));
+      }
     }
   }, [
+    isActiveModalInteraction,
     loadAccount,
     loadCoupons,
     loadLedgers,
@@ -362,18 +559,25 @@ export const CreditWorkspace = ({
     couponPage.pageSize,
     ledgerPage.current,
     ledgerPage.pageSize,
+    tenantContextKey,
   ]);
 
+  const shouldPollSelectedOrder =
+    orderOpen && shouldPollPackageOrder(selectedOrder);
+
   useEffect(() => {
-    if (!orderOpen || !shouldPollPackageOrder(selectedOrder)) return undefined;
+    if (!shouldPollSelectedOrder) return undefined;
     const timer = window.setInterval(
       () => void pollSelectedOrder(),
       PACKAGE_ORDER_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
-  }, [orderOpen, pollSelectedOrder, selectedOrder]);
+  }, [pollSelectedOrder, shouldPollSelectedOrder]);
 
   const openPurchase = async (record: CreditPackage) => {
+    if (purchaseSubmissionInFlightRef.current) return;
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = advanceModalInteractionGeneration();
     purchaseIntentIdempotency.start();
     setSelectedPackage(record);
     purchaseForm.resetFields();
@@ -386,23 +590,31 @@ export const CreditWorkspace = ({
       return;
     }
     try {
-      setPurchaseCoupons(
-        await listScopedCreditCoupons(scope, {
-          packageId: record.id,
-          status: 'UNUSED',
-          pageNum: 1,
-          pageSize: 100,
-        }),
-      );
+      const nextCoupons = await listScopedCreditCoupons(scope, {
+        packageId: record.id,
+        status: 'UNUSED',
+        pageNum: 1,
+        pageSize: 100,
+      });
+      if (!isActiveModalInteraction(requestContextKey, requestGeneration)) {
+        return;
+      }
+      setPurchaseCoupons(nextCoupons);
     } catch (error) {
-      message.error(getErrorMessage(error, '加载可用优惠券失败'));
+      if (isActiveModalInteraction(requestContextKey, requestGeneration)) {
+        message.error(getErrorMessage(error, '加载可用优惠券失败'));
+      }
     }
   };
 
   const submitPurchase = async () => {
-    if (!selectedPackage?.id) return;
+    if (!selectedPackage?.id || purchaseSubmissionInFlightRef.current) return;
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = modalInteractionGenerationRef.current;
     const values = await purchaseForm.validateFields();
-    setSubmitting(true);
+    if (!isActiveModalInteraction(requestContextKey, requestGeneration)) return;
+    purchaseSubmissionInFlightRef.current = true;
+    setPurchaseSubmitting(true);
     try {
       const order = await createScopedCreditPackageOrder(scope, {
         packageId: selectedPackage.id,
@@ -415,61 +627,106 @@ export const CreditWorkspace = ({
         remark: values.remark,
       });
       purchaseIntentIdempotency.finish();
+      if (!isActiveTenantContext(requestContextKey)) return;
+      advanceModalInteractionGeneration();
+      orderReadSequenceRef.current += 1;
       setPurchaseOpen(false);
+      setSelectedPackage(undefined);
+      setPurchaseCoupons([]);
       setSelectedOrder(order);
       setOrderOpen(true);
-      await loadOrders(orderPage.current, orderPage.pageSize);
-      message.success('订单已创建');
+      requestWorkspaceDataRefresh();
+      if (isActiveTenantContext(requestContextKey)) {
+        message.success('订单已创建');
+      }
     } catch (error) {
       purchaseIntentIdempotency.markFailed();
-      message.error(getErrorMessage(error, '创建套餐订单失败'));
+      if (isActiveTenantContext(requestContextKey)) {
+        message.error(getErrorMessage(error, '创建套餐订单失败'));
+      }
     } finally {
-      setSubmitting(false);
+      purchaseSubmissionInFlightRef.current = false;
+      setPurchaseSubmitting(false);
     }
   };
 
   const claimCoupon = async (template: CreditCouponTemplate) => {
-    if (!template.id) return;
+    if (!template.id || claimInFlightRef.current) return;
+    const requestContextKey = tenantContextKey;
+    claimInFlightRef.current = true;
     setClaimingId(template.id);
     try {
       await claimScopedCreditCoupon(scope, template.id);
-      await loadCoupons(couponPage.current, couponPage.pageSize);
-      message.success('优惠券领取成功');
+      if (!isActiveTenantContext(requestContextKey)) return;
+      requestWorkspaceDataRefresh();
+      if (isActiveTenantContext(requestContextKey)) {
+        message.success('优惠券领取成功');
+      }
     } catch (error) {
-      message.error(getErrorMessage(error, '优惠券领取失败'));
+      if (isActiveTenantContext(requestContextKey)) {
+        message.error(getErrorMessage(error, '优惠券领取失败'));
+      }
     } finally {
+      claimInFlightRef.current = false;
       setClaimingId(undefined);
     }
   };
 
   const openOrder = async (record: CreditPackageOrder) => {
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = advanceModalInteractionGeneration();
+    const requestSequence = orderReadSequenceRef.current + 1;
+    orderReadSequenceRef.current = requestSequence;
     setSelectedOrder(record);
     setOrderOpen(true);
     if (!record.id) return;
     try {
-      setSelectedOrder(await getScopedCreditPackageOrder(scope, record.id));
+      const next = await getScopedCreditPackageOrder(scope, record.id);
+      if (
+        !isActiveModalInteraction(requestContextKey, requestGeneration) ||
+        orderReadSequenceRef.current !== requestSequence
+      ) {
+        return;
+      }
+      setSelectedOrder(next);
     } catch (error) {
-      message.error(getErrorMessage(error, '加载订单详情失败'));
+      if (
+        isActiveModalInteraction(requestContextKey, requestGeneration) &&
+        orderReadSequenceRef.current === requestSequence
+      ) {
+        message.error(getErrorMessage(error, '加载订单详情失败'));
+      }
     }
   };
 
   const retryPayment = async () => {
-    if (!selectedOrder?.id) return;
-    setSubmitting(true);
+    if (!selectedOrder?.id || retryPaymentInFlightRef.current) return;
+    const requestContextKey = tenantContextKey;
+    const requestGeneration = modalInteractionGenerationRef.current;
+    retryPaymentInFlightRef.current = true;
+    setRetryingPayment(true);
     try {
       const next = await retryScopedCreditPackagePayment(
         scope,
         selectedOrder.id,
       );
-      setSelectedOrder(next);
+      if (!isActiveTenantContext(requestContextKey)) return;
       setOrders((current) =>
         current.map((item) => (item.id === next.id ? next : item)),
       );
+      if (isActiveModalInteraction(requestContextKey, requestGeneration)) {
+        orderReadSequenceRef.current += 1;
+        setSelectedOrder(next);
+      }
+      requestWorkspaceDataRefresh();
       message.success('支付二维码已刷新');
     } catch (error) {
-      message.error(getErrorMessage(error, '重新发起支付失败'));
+      if (isActiveTenantContext(requestContextKey)) {
+        message.error(getErrorMessage(error, '重新发起支付失败'));
+      }
     } finally {
-      setSubmitting(false);
+      retryPaymentInFlightRef.current = false;
+      setRetryingPayment(false);
     }
   };
 
@@ -1094,6 +1351,7 @@ export const CreditWorkspace = ({
                   </Text>
                   <PermissionButton
                     permissions={permissions.claim}
+                    disabled={Boolean(claimingId)}
                     loading={claimingId === template.id}
                     size="small"
                     onClick={() => void claimCoupon(template)}
@@ -1214,7 +1472,7 @@ export const CreditWorkspace = ({
         <Button
           icon={<ReloadOutlined />}
           loading={loading}
-          onClick={() => void refresh()}
+          onClick={requestWorkspaceDataRefresh}
         >
           刷新
         </Button>
@@ -1233,12 +1491,12 @@ export const CreditWorkspace = ({
         forceRender
         open={purchaseOpen}
         title={`购买${selectedPackage?.packageName || '套餐'}`}
-        confirmLoading={submitting}
+        closable={!purchaseSubmitting}
+        confirmLoading={purchaseSubmitting}
+        keyboard={!purchaseSubmitting}
+        mask={{ closable: !purchaseSubmitting }}
         okText="创建订单"
-        onCancel={() => {
-          purchaseIntentIdempotency.finish();
-          setPurchaseOpen(false);
-        }}
+        onCancel={closePurchaseInteraction}
         onOk={() => void submitPurchase()}
       >
         <Descriptions
@@ -1304,7 +1562,7 @@ export const CreditWorkspace = ({
           canRetryPackagePayment(selectedOrder) ? (
             <PermissionButton
               permissions={permissions.purchase}
-              loading={submitting}
+              loading={retryingPayment}
               type="primary"
               onClick={() => void retryPayment()}
             >
@@ -1315,7 +1573,7 @@ export const CreditWorkspace = ({
         open={orderOpen}
         title="套餐订单"
         width={680}
-        onCancel={() => setOrderOpen(false)}
+        onCancel={closeOrderInteraction}
       >
         <Descriptions bordered column={2} size="small">
           <Descriptions.Item label="订单号" span={2}>
@@ -1345,7 +1603,7 @@ export const CreditWorkspace = ({
           <Descriptions.Item label="实付">
             {formatAmount(selectedOrder?.payAmount)}
           </Descriptions.Item>
-          <Descriptions.Item label="退款状态">
+          <Descriptions.Item label="退款状态" span={2}>
             {selectedOrder?.refundStatus || '-'}
           </Descriptions.Item>
           <Descriptions.Item label="权益到期" span={2}>
@@ -1377,7 +1635,7 @@ export const CreditWorkspace = ({
               </Text>
             </Space>
           )}
-        {shouldPollPackageOrder(selectedOrder) && (
+        {shouldPollSelectedOrder && (
           <Alert
             showIcon
             type="info"

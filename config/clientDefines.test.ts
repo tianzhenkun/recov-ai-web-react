@@ -1,4 +1,4 @@
-import { buildClientEnvDefines } from './clientDefines';
+import { buildClientEnvDefines, resolveBuildOutputPath } from './clientDefines';
 
 describe('build client defines', () => {
   const inheritedEnvironment = {
@@ -31,5 +31,17 @@ describe('build client defines', () => {
         'process.env.UMI_APP_CLIENT_ID': 'machine-client',
       }),
     );
+  });
+});
+
+describe('build output isolation', () => {
+  it('keeps local development assets outside the production dist directory', () => {
+    expect(resolveBuildOutputPath(false)).toBe(
+      'node_modules/.cache/lingchen-dev-dist',
+    );
+  });
+
+  it('keeps formal builds in the production dist directory', () => {
+    expect(resolveBuildOutputPath(true)).toBe('dist');
   });
 });

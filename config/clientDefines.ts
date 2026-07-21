@@ -34,3 +34,6 @@ export const buildClientEnvDefines = (
       production ? '' : normalizeEnvValue(environment[key]),
     ]),
   );
+
+export const resolveBuildOutputPath = (production: boolean) =>
+  production ? 'dist' : 'node_modules/.cache/lingchen-dev-dist';

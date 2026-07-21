@@ -20,7 +20,7 @@ export default {
   'menu.billing-operations': 'Billing Operations',
   'menu.billing-operations.catalog': 'Products & Pricing',
   'menu.billing-operations.packages': 'Package Management',
-  'menu.billing-operations.coupons': 'Coupon Operations',
+  'menu.billing-operations.coupon-templates': 'Coupon Templates',
   'menu.billing-operations.accounts': 'Credit Accounts',
   'menu.billing-operations.charges': 'Charges & Debt',
   'menu.billing-operations.payments': 'Payments & Refunds',

@@ -1,9 +1,7 @@
 import {
   EditOutlined,
-  GiftOutlined,
   PlusCircleOutlined,
   ReloadOutlined,
-  SendOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
@@ -18,7 +16,6 @@ import {
   Row,
   Select,
   Space,
-  Statistic,
   Table,
   theme,
 } from 'antd';
@@ -30,8 +27,6 @@ import TableActions from '@/components/TableActions';
 import {
   billingPermissions,
   couponReceiveModeText,
-  couponStatusText,
-  couponStatusTone,
   couponTypeText,
   formatAmount,
   formatDate,
@@ -39,19 +34,15 @@ import {
   ownerTypeText,
   renderCodeId,
   renderDictTag,
-  shortId,
   toNumber,
 } from '@/modules/billing/components/shared';
 import {
-  type CreditCoupon,
   type CreditCouponTemplate,
   type CreditCouponType,
   type CreditEnableStatus,
   type CreditPackage,
-  issueCreditCoupon,
   listCreditCouponTemplates,
   listCreditPackages,
-  pageCreditCoupons,
   saveCreditCouponTemplate,
 } from '@/modules/billing/services/credit-billing';
 import OperationsGuard from '../components/OperationsGuard';
@@ -59,11 +50,6 @@ import OperationsGuard from '../components/OperationsGuard';
 type TemplateFilterValues = {
   receiveMode?: 'all' | 'DIRECT_ISSUE' | 'SELF_CLAIM';
   status?: 'all' | CreditEnableStatus;
-};
-
-type CouponFilterValues = {
-  ownerType?: 'all' | 'TENANT' | 'USER';
-  status?: 'all' | 'UNUSED' | 'LOCKED' | 'USED' | 'EXPIRED' | 'VOIDED';
 };
 
 type TemplateFormValues = {
@@ -89,26 +75,10 @@ type TemplateFormValues = {
   remark?: string;
 };
 
-type IssueFormValues = {
-  templateId: string;
-  accountId: string;
-  sourceType: string;
-  sourceId: string;
-};
-
 const receiveModeOptions = [
   { label: '全部方式', value: 'all' },
-  { label: '系统派发 · DIRECT_ISSUE', value: 'DIRECT_ISSUE' },
+  { label: '系统发放 · DIRECT_ISSUE', value: 'DIRECT_ISSUE' },
   { label: '用户领取 · SELF_CLAIM', value: 'SELF_CLAIM' },
-];
-
-const couponStatusOptions = [
-  { label: '全部状态', value: 'all' },
-  { label: '未使用 · UNUSED', value: 'UNUSED' },
-  { label: '锁定中 · LOCKED', value: 'LOCKED' },
-  { label: '已使用 · USED', value: 'USED' },
-  { label: '已过期 · EXPIRED', value: 'EXPIRED' },
-  { label: '已作废 · VOIDED', value: 'VOIDED' },
 ];
 
 const templateStatusOptions = [
@@ -128,16 +98,6 @@ const ownerScopeOptions = [
   { label: '个人', value: 'USER' },
 ];
 
-const ownerTypeOptions = [
-  { label: '团队账户', value: 'TENANT' },
-  { label: '个人账户', value: 'USER' },
-];
-
-const ownerFilterOptions = [
-  { label: '全部账户', value: 'all' },
-  ...ownerTypeOptions,
-];
-
 const packageScopeOptions = [
   { label: '全部套餐 · ALL', value: 'ALL' },
   { label: '指定套餐 · SPECIFIED', value: 'SPECIFIED' },
@@ -148,7 +108,13 @@ const validityTypeOptions = [
   { label: '领取后有效 · AFTER_RECEIVE', value: 'AFTER_RECEIVE' },
 ];
 
-const describeCoupon = (record: CreditCouponTemplate | CreditCoupon) => {
+const statusText = { ENABLED: '启用', DISABLED: '停用' };
+const statusTone: Record<string, string> = {
+  ENABLED: 'green',
+  DISABLED: 'default',
+};
+
+const describeCoupon = (record: CreditCouponTemplate) => {
   if (record.couponType === 'AMOUNT_OFF') {
     return `减 ${formatAmount(record.discountAmount)}`;
   }
@@ -159,48 +125,26 @@ const describeCoupon = (record: CreditCouponTemplate | CreditCoupon) => {
   return '-';
 };
 
-const templateStatusText = {
-  ENABLED: '启用',
-  DISABLED: '停用',
-};
-
-const templateStatusTone: Record<string, string> = {
-  ENABLED: 'green',
-  DISABLED: 'default',
-};
-
-const CreditCouponsPage = () => {
+const CouponTemplateConfigPage = () => {
   const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
-  const [templateFilterForm] = Form.useForm<TemplateFilterValues>();
-  const [couponFilterForm] = Form.useForm<CouponFilterValues>();
+  const [filterForm] = Form.useForm<TemplateFilterValues>();
   const [templateForm] = Form.useForm<TemplateFormValues>();
-  const [issueForm] = Form.useForm<IssueFormValues>();
   const couponType = Form.useWatch('couponType', templateForm);
   const packageScope = Form.useWatch('packageScope', templateForm);
   const validityType = Form.useWatch('validityType', templateForm);
-
   const [templates, setTemplates] = useState<CreditCouponTemplate[]>([]);
-  const [coupons, setCoupons] = useState<CreditCoupon[]>([]);
   const [packages, setPackages] = useState<CreditPackage[]>([]);
-  const [templateLoading, setTemplateLoading] = useState(false);
-  const [couponLoading, setCouponLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [issuing, setIssuing] = useState(false);
-  const [templateOpen, setTemplateOpen] = useState(false);
-  const [issueOpen, setIssueOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] =
     useState<CreditCouponTemplate>();
-  const [couponPage, setCouponPage] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0,
-  });
 
   const loadTemplates = useCallback(async () => {
-    setTemplateLoading(true);
+    setLoading(true);
     try {
-      const values = templateFilterForm.getFieldsValue();
+      const values = filterForm.getFieldsValue();
       setTemplates(
         await listCreditCouponTemplates({
           receiveMode:
@@ -216,37 +160,9 @@ const CreditCouponsPage = () => {
     } catch (error) {
       messageApi.error(getErrorMessage(error, '加载优惠券模板失败'));
     } finally {
-      setTemplateLoading(false);
+      setLoading(false);
     }
-  }, [messageApi, templateFilterForm]);
-
-  const loadCoupons = useCallback(
-    async (pageNum = 1, pageSize = 10) => {
-      setCouponLoading(true);
-      try {
-        const values = couponFilterForm.getFieldsValue();
-        const result = await pageCreditCoupons({
-          ownerType:
-            values.ownerType && values.ownerType !== 'all'
-              ? values.ownerType
-              : undefined,
-          status:
-            values.status && values.status !== 'all'
-              ? values.status
-              : undefined,
-          pageNum,
-          pageSize,
-        });
-        setCoupons(result.rows);
-        setCouponPage({ current: pageNum, pageSize, total: result.total });
-      } catch (error) {
-        messageApi.error(getErrorMessage(error, '加载用户券失败'));
-      } finally {
-        setCouponLoading(false);
-      }
-    },
-    [couponFilterForm, messageApi],
-  );
+  }, [filterForm, messageApi]);
 
   const loadPackages = useCallback(async () => {
     try {
@@ -258,22 +174,8 @@ const CreditCouponsPage = () => {
 
   useEffect(() => {
     void loadTemplates();
-    void loadCoupons(1, 10);
     void loadPackages();
-  }, [loadCoupons, loadPackages, loadTemplates]);
-
-  const summary = useMemo(
-    () => ({
-      templateCount: templates.length,
-      selfClaim: templates.filter((item) => item.receiveMode === 'SELF_CLAIM')
-        .length,
-      directIssue: templates.filter(
-        (item) => item.receiveMode === 'DIRECT_ISSUE',
-      ).length,
-      unusedCoupon: coupons.filter((item) => item.status === 'UNUSED').length,
-    }),
-    [coupons, templates],
-  );
+  }, [loadPackages, loadTemplates]);
 
   const packageOptions = useMemo(
     () =>
@@ -295,18 +197,7 @@ const CreditCouponsPage = () => {
     [packages],
   );
 
-  const directIssueTemplateOptions = useMemo(
-    () =>
-      templates
-        .filter((item) => item.receiveMode === 'DIRECT_ISSUE')
-        .map((item) => ({
-          label: `${item.couponName || item.id} · ${item.id}`,
-          value: String(item.id),
-        })),
-    [templates],
-  );
-
-  const openTemplateModal = (record?: CreditCouponTemplate) => {
+  const openModal = (record?: CreditCouponTemplate) => {
     setEditingTemplate(record);
     templateForm.setFieldsValue(
       record
@@ -333,8 +224,8 @@ const CreditCouponsPage = () => {
             remark: record.remark,
           }
         : {
-            couponType: 'AMOUNT_OFF',
             campaignCode: `campaign-${Date.now()}`,
+            couponType: 'AMOUNT_OFF',
             ownerScope: 'TENANT',
             packageScope: 'ALL',
             receiveMode: 'SELF_CLAIM',
@@ -344,29 +235,16 @@ const CreditCouponsPage = () => {
             sortOrder: 100,
           },
     );
-    setTemplateOpen(true);
+    setModalOpen(true);
   };
 
-  const closeTemplateModal = () => {
-    setTemplateOpen(false);
+  const closeModal = () => {
+    setModalOpen(false);
     setEditingTemplate(undefined);
     templateForm.resetFields();
   };
 
-  const openIssueModal = (record?: CreditCouponTemplate) => {
-    issueForm.setFieldsValue({
-      templateId: record?.id,
-      sourceType: 'direct_issue',
-    });
-    setIssueOpen(true);
-  };
-
-  const closeIssueModal = () => {
-    setIssueOpen(false);
-    issueForm.resetFields();
-  };
-
-  const handleSaveTemplate = async () => {
+  const saveTemplate = async () => {
     const values = await templateForm.validateFields();
     setSaving(true);
     try {
@@ -410,7 +288,7 @@ const CreditCouponsPage = () => {
         remark: values.remark?.trim() || undefined,
       });
       messageApi.success('优惠券模板已保存');
-      closeTemplateModal();
+      closeModal();
       await loadTemplates();
     } catch (error) {
       messageApi.error(getErrorMessage(error, '保存优惠券模板失败'));
@@ -419,28 +297,7 @@ const CreditCouponsPage = () => {
     }
   };
 
-  const handleIssue = async () => {
-    const values = await issueForm.validateFields();
-    setIssuing(true);
-    try {
-      await issueCreditCoupon({
-        templateId: values.templateId,
-        accountId: values.accountId.trim(),
-        sourceType: values.sourceType.trim(),
-        sourceId: values.sourceId.trim(),
-      });
-      messageApi.success('优惠券已派发');
-      closeIssueModal();
-      await loadTemplates();
-      await loadCoupons(couponPage.current, couponPage.pageSize);
-    } catch (error) {
-      messageApi.error(getErrorMessage(error, '派发优惠券失败'));
-    } finally {
-      setIssuing(false);
-    }
-  };
-
-  const templateColumns: ColumnsType<CreditCouponTemplate> = [
+  const columns: ColumnsType<CreditCouponTemplate> = [
     { title: '模板ID', dataIndex: 'id', width: 150, render: renderCodeId },
     {
       title: '优惠券名称',
@@ -500,17 +357,13 @@ const CreditCouponsPage = () => {
       dataIndex: 'status',
       width: 110,
       render: (value) =>
-        renderDictTag(
-          value,
-          templateStatusText,
-          templateStatusTone[String(value || '')],
-        ),
+        renderDictTag(value, statusText, statusTone[String(value || '')]),
     },
     {
       title: '操作',
       key: 'actions',
       fixed: 'right',
-      width: 110,
+      width: 90,
       render: (_, record) => (
         <TableActions
           actions={[
@@ -519,15 +372,7 @@ const CreditCouponsPage = () => {
               label: '编辑',
               icon: <EditOutlined />,
               permissions: billingPermissions.adminCouponEdit,
-              onClick: () => openTemplateModal(record),
-            },
-            {
-              key: 'issue',
-              label: '派发',
-              icon: <SendOutlined />,
-              permissions: billingPermissions.adminCouponIssue,
-              disabled: record.receiveMode !== 'DIRECT_ISSUE',
-              onClick: () => openIssueModal(record),
+              onClick: () => openModal(record),
             },
           ]}
         />
@@ -535,111 +380,12 @@ const CreditCouponsPage = () => {
     },
   ];
 
-  const couponColumns: ColumnsType<CreditCoupon> = [
-    { title: '券ID', dataIndex: 'id', width: 150, render: renderCodeId },
-    { title: '券号', dataIndex: 'couponNo', width: 180, ellipsis: true },
-    { title: '名称', dataIndex: 'couponName', width: 160, ellipsis: true },
-    {
-      title: '类型',
-      dataIndex: 'couponType',
-      width: 130,
-      render: (value) => renderDictTag(value, couponTypeText, 'purple'),
-    },
-    {
-      title: '优惠内容',
-      width: 130,
-      render: (_, record) => describeCoupon(record),
-    },
-    {
-      title: '归属',
-      width: 210,
-      render: (_, record) =>
-        `${ownerTypeText[String(record.ownerType || '')] || record.ownerType || '-'} · ${shortId(record.ownerId)}`,
-    },
-    {
-      title: '有效期',
-      width: 180,
-      render: (_, record) =>
-        `${formatDate(record.validFrom)} ~ ${formatDate(record.expiresAt)}`,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 120,
-      render: (value) =>
-        renderDictTag(
-          value,
-          couponStatusText,
-          couponStatusTone[String(value || '')],
-        ),
-    },
-    {
-      title: '领取用户',
-      dataIndex: 'receivedUserId',
-      width: 150,
-      render: renderCodeId,
-    },
-    {
-      title: '核销用户',
-      dataIndex: 'usedUserId',
-      width: 150,
-      render: renderCodeId,
-    },
-    {
-      title: '领取时间',
-      dataIndex: 'receivedTime',
-      width: 180,
-      render: formatDate,
-    },
-    {
-      title: '核销时间',
-      dataIndex: 'usedTime',
-      width: 180,
-      render: formatDate,
-    },
-    {
-      title: '来源',
-      width: 180,
-      render: (_, record) =>
-        `${record.sourceType || '-'} / ${record.sourceId || '-'}`,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createTime',
-      width: 180,
-      render: formatDate,
-    },
-  ];
-
   return (
-    <PageContainer breadcrumbRender={false} title="优惠券管理">
+    <PageContainer breadcrumbRender={false} title="优惠券模板">
       {messageContextHolder}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <ProCard>
-            <Statistic title="模板总数" value={summary.templateCount} />
-          </ProCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <ProCard>
-            <Statistic title="用户领取模板" value={summary.selfClaim} />
-          </ProCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <ProCard>
-            <Statistic title="系统派发模板" value={summary.directIssue} />
-          </ProCard>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <ProCard>
-            <Statistic title="当前页未使用券" value={summary.unusedCoupon} />
-          </ProCard>
-        </Col>
-      </Row>
-
-      <ProCard style={{ marginTop: token.marginLG }} title="优惠券模板">
+      <ProCard>
         <Form<TemplateFilterValues>
-          form={templateFilterForm}
+          form={filterForm}
           initialValues={{ receiveMode: 'all', status: 'all' }}
           layout="inline"
           onFinish={() => loadTemplates()}
@@ -652,12 +398,12 @@ const CreditCouponsPage = () => {
           </Form.Item>
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit">
+              <Button htmlType="submit" type="primary">
                 查询
               </Button>
               <Button
                 onClick={() => {
-                  templateFilterForm.resetFields();
+                  filterForm.resetFields();
                   void loadTemplates();
                 }}
               >
@@ -674,87 +420,23 @@ const CreditCouponsPage = () => {
                 permissions={billingPermissions.adminCouponEdit}
                 icon={<PlusCircleOutlined />}
                 type="primary"
-                onClick={() => openTemplateModal()}
+                onClick={() => openModal()}
               >
                 新增模板
               </PermissionButton>
-              <PermissionButton
-                permissions={billingPermissions.adminCouponIssue}
-                icon={<GiftOutlined />}
-                onClick={() => openIssueModal()}
-              >
-                主动派发
-              </PermissionButton>
             </Space>
           </Form.Item>
         </Form>
         <Table
-          columns={templateColumns}
+          columns={columns}
           dataSource={templates}
-          loading={templateLoading}
+          loading={loading}
           pagination={{
             showSizeChanger: true,
             showTotal: (total) => `共 ${total} 条`,
           }}
           rowKey={(record) => String(record.id)}
-          scroll={{ x: 1550 }}
-          size="middle"
-          style={{ marginTop: token.marginMD }}
-        />
-      </ProCard>
-
-      <ProCard style={{ marginTop: token.marginLG }} title="用户券">
-        <Form<CouponFilterValues>
-          form={couponFilterForm}
-          initialValues={{ ownerType: 'all', status: 'all' }}
-          layout="inline"
-          onFinish={() => loadCoupons(1, couponPage.pageSize)}
-        >
-          <Form.Item label="归属类型" name="ownerType">
-            <Select options={ownerFilterOptions} style={{ width: 180 }} />
-          </Form.Item>
-          <Form.Item label="状态" name="status">
-            <Select options={couponStatusOptions} style={{ width: 170 }} />
-          </Form.Item>
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit">
-                查询
-              </Button>
-              <Button
-                onClick={() => {
-                  couponFilterForm.resetFields();
-                  void loadCoupons(1, couponPage.pageSize);
-                }}
-              >
-                重置
-              </Button>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={() =>
-                  loadCoupons(couponPage.current, couponPage.pageSize)
-                }
-              >
-                刷新
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-        <Table
-          columns={couponColumns}
-          dataSource={coupons}
-          loading={couponLoading}
-          pagination={{
-            current: couponPage.current,
-            pageSize: couponPage.pageSize,
-            total: couponPage.total,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条`,
-            onChange: (pageNum, pageSize) =>
-              void loadCoupons(pageNum, pageSize),
-          }}
-          rowKey={(record) => String(record.id)}
-          scroll={{ x: 2100 }}
+          scroll={{ x: 1450 }}
           size="middle"
           style={{ marginTop: token.marginMD }}
         />
@@ -765,11 +447,11 @@ const CreditCouponsPage = () => {
         destroyOnHidden
         forceRender
         okText="保存"
-        open={templateOpen}
+        open={modalOpen}
         title={editingTemplate ? '编辑优惠券模板' : '新增优惠券模板'}
         width={760}
-        onCancel={closeTemplateModal}
-        onOk={handleSaveTemplate}
+        onCancel={closeModal}
+        onOk={saveTemplate}
       >
         <Form<TemplateFormValues>
           form={templateForm}
@@ -810,7 +492,7 @@ const CreditCouponsPage = () => {
                 <Select options={couponTypeOptions} />
               </Form.Item>
             </Col>
-            {couponType === 'AMOUNT_OFF' && (
+            {couponType === 'AMOUNT_OFF' ? (
               <Col span={12}>
                 <Form.Item
                   label="立减金额"
@@ -820,8 +502,7 @@ const CreditCouponsPage = () => {
                   <InputNumber className="w-full" min={0.01} precision={2} />
                 </Form.Item>
               </Col>
-            )}
-            {couponType === 'PERCENT_OFF' && (
+            ) : (
               <>
                 <Col span={12}>
                   <Form.Item
@@ -867,7 +548,7 @@ const CreditCouponsPage = () => {
                 <Select options={packageScopeOptions} />
               </Form.Item>
             </Col>
-            {packageScope === 'SPECIFIED' && (
+            {packageScope === 'SPECIFIED' ? (
               <Col span={12}>
                 <Form.Item
                   label="指定套餐"
@@ -877,7 +558,7 @@ const CreditCouponsPage = () => {
                   <Select options={packageOptions} showSearch />
                 </Form.Item>
               </Col>
-            )}
+            ) : null}
             <Col span={12}>
               <Form.Item
                 label="领取方式"
@@ -960,71 +641,14 @@ const CreditCouponsPage = () => {
           </Row>
         </Form>
       </Modal>
-
-      <Modal
-        confirmLoading={issuing}
-        destroyOnHidden
-        forceRender
-        okText="确认派发"
-        open={issueOpen}
-        title="主动派发优惠券"
-        width={560}
-        onCancel={closeIssueModal}
-        onOk={handleIssue}
-      >
-        <Form<IssueFormValues>
-          form={issueForm}
-          layout="vertical"
-          preserve={false}
-        >
-          <Row gutter={12}>
-            <Col span={24}>
-              <Form.Item
-                label="优惠券模板"
-                name="templateId"
-                rules={[{ required: true, message: '请选择优惠券模板' }]}
-              >
-                <Select options={directIssueTemplateOptions} showSearch />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item
-                label="目标账户ID"
-                name="accountId"
-                rules={[{ required: true, message: '请输入目标账户ID' }]}
-              >
-                <Input allowClear />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="来源类型"
-                name="sourceType"
-                rules={[{ required: true, message: '请输入来源类型' }]}
-              >
-                <Input allowClear />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="来源ID"
-                name="sourceId"
-                rules={[{ required: true, message: '请输入来源ID' }]}
-              >
-                <Input allowClear />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
     </PageContainer>
   );
 };
 
-const GuardedCreditCouponsPage = () => (
+const GuardedCouponTemplateConfigPage = () => (
   <OperationsGuard permissions={billingPermissions.adminCouponList}>
-    <CreditCouponsPage />
+    <CouponTemplateConfigPage />
   </OperationsGuard>
 );
 
-export default GuardedCreditCouponsPage;
+export default GuardedCouponTemplateConfigPage;

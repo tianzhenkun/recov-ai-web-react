@@ -16,6 +16,7 @@ npm-debug.log*
 yarn-error.log
 .env
 .env.local
+/config/local-dev.local.js
 .env.*.local
 
 # local AI tool state
@@ -60,9 +61,6 @@ build
 
 # worktrees
 .worktrees
-
-# superpowers docs
-docs/superpowers
 
 # cloudflare wrangler
 .wrangler

@@ -391,13 +391,6 @@ export type CreditCouponClaimPayload = {
   packageId?: string;
 };
 
-export type CreditCouponIssuePayload = {
-  templateId: string;
-  accountId: string;
-  sourceType: string;
-  sourceId: string;
-};
-
 export type AdminCreditGrantPayload = {
   accountId: string;
   points: number;
@@ -606,15 +599,6 @@ export const listCreditCouponTemplates = async (params?: {
         params,
       },
     ),
-  );
-
-export const issueCreditCoupon = async (data: CreditCouponIssuePayload) =>
-  unwrapData(
-    await ruoyiRequest<CreditCoupon>(`${CREDIT_ADMIN_BASE}/coupons/issue`, {
-      method: 'post',
-      data,
-      repeatSubmit: false,
-    }),
   );
 
 export const pageCreditCoupons = async (params?: {

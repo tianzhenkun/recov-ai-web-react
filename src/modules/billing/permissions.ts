@@ -5,7 +5,6 @@ export const billingPermissions = {
   adminPackageEdit: 'credit:admin:package:edit',
   adminCouponList: 'credit:admin:coupon:list',
   adminCouponEdit: 'credit:admin:coupon:edit',
-  adminCouponIssue: 'credit:admin:coupon:issue',
   adminAccountList: 'credit:admin:account:list',
   adminAccountGrant: 'credit:admin:account:grant',
   adminChargeList: 'credit:admin:charge:list',

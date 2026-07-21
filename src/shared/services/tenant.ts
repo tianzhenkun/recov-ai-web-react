@@ -71,21 +71,6 @@ export type TenantPackageQuery = {
   packageName?: string;
 };
 
-export type TenantInitDetail = {
-  tableName?: string;
-  count?: number;
-};
-
-export type TenantInitResult = {
-  tenantId?: number | string;
-  sourceTenantId?: number | string;
-  initialized?: boolean;
-  cleared?: boolean;
-  totalCount?: number;
-  message?: string;
-  details?: TenantInitDetail[];
-};
-
 export const listTenants = (params: TenantQuery) =>
   ruoyiRequest<TenantItem>('/system/tenant/list', {
     method: 'get',
@@ -162,22 +147,6 @@ export const syncTenantDict = () =>
 export const syncTenantConfig = () =>
   ruoyiRequest('/system/tenant/syncTenantConfig', {
     method: 'get',
-  });
-
-export const initRecovTenant = (tenantId: number | string) =>
-  ruoyiRequest<TenantInitResult>('/system/recov/tenant/config/init', {
-    method: 'post',
-    data: {
-      tenantId,
-    },
-  });
-
-export const clearRecovTenantInit = (tenantId: number | string) =>
-  ruoyiRequest<TenantInitResult>('/system/recov/tenant/config/init/clear', {
-    method: 'post',
-    data: {
-      tenantId,
-    },
   });
 
 export const selectTenantPackages = () =>

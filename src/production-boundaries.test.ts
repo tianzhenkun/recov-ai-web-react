@@ -40,6 +40,52 @@ describe('production source boundaries', () => {
     ).toBe(false);
   });
 
+  it('keeps product-specific Recov provisioning out of generic tenant management', () => {
+    const source = [
+      read('src/modules/admin/pages/system/tenant/index.tsx'),
+      read('src/shared/services/tenant.ts'),
+    ].join('\n');
+
+    expect(source).not.toMatch(
+      /initRecovTenant|clearRecovTenantInit|\/system\/recov\/tenant\/config\/init/,
+    );
+  });
+
+  it('does not ship a Billing runtime capability preflight or action gate', () => {
+    const creditWorkspace = read(
+      'src/modules/billing/components/CreditWorkspace.tsx',
+    );
+    const source = [
+      read(
+        'src/modules/billing/pages/operations/components/OperationsGuard.tsx',
+      ),
+      creditWorkspace,
+      read('src/modules/admin/pages/system/integration-center/index.tsx'),
+      read('src/modules/billing/pages/operations/accounts/index.tsx'),
+      read('src/modules/billing/pages/operations/charges/index.tsx'),
+      read('src/modules/billing/pages/operations/payments/index.tsx'),
+      read('src/modules/billing/pages/operations/reliability/index.tsx'),
+    ].join('\n');
+
+    expect(source).not.toMatch(
+      /\/system\/credit\/capabilities|businessOperationsEnabled|useBillingCapability|canCreateBusinessResults|canRunBillingBusinessAction|shouldPollBillingBusinessResult/,
+    );
+    expect(creditWorkspace).toContain('activeWorkspaceGenerationRef');
+    expect(creditWorkspace).toMatch(
+      /activeTenantContextRef\.current === requestContextKey\s*&&\s*activeWorkspaceGenerationRef\.current === requestGeneration/,
+    );
+    expect(
+      existsSync(
+        join(process.cwd(), 'src/modules/billing/services/capabilities.ts'),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(process.cwd(), 'src/modules/billing/policies/runtimePolicy.ts'),
+      ),
+    ).toBe(false);
+  });
+
   it.each([
     'src/service-worker.js',
     'src/manifest.json',

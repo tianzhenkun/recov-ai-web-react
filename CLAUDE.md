@@ -6,7 +6,7 @@ LingChen multi-product frontend on React, Umi Max v4, antd v6 and ProComponents 
 
 ## Commands
 
-`npm run configure:local` (configure the real backend), `PORT=8001 npm run dev` (real backend development), `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Jest), `npx antd lint ./src` (antd-specific checks).
+Copy `config/local-dev.example.js` to the ignored `config/local-dev.local.js`, maintain the Gateway and product profiles there, then use `npm run dev` (default profile), `npm run dev:admin`, `npm run dev:recov`, or `npm run dev:sales`. Other commands: `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Jest), `npx antd lint ./src` (antd-specific checks).
 
 Other: `npm run biome` (auto-fix), `npm run tsc` (type-check only). Runtime mocks and the Ant Design Pro demo/simple workflow have been removed.
 

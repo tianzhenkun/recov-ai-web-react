@@ -283,9 +283,16 @@ const shouldClearStoredDynamicTenantAfterRestoreError = (error: unknown) =>
   error instanceof RuoyiError &&
   [RuoYiCode.UNAUTHORIZED, 403].includes(Number(error.code));
 
-const restoreDynamicTenantContext = async (currentUser?: RuoyiCurrentUser) => {
+const restoreDynamicTenantContext = async (
+  currentUser?: RuoyiCurrentUser,
+  siteProfile?: SiteProfile,
+) => {
   const storedTenantId = getStoredDynamicTenantId();
   if (!storedTenantId) return undefined;
+  if (siteProfile?.tenantMode !== 'SELECTABLE') {
+    clearStoredDynamicTenantId();
+    return undefined;
+  }
   if (!currentUser) return undefined;
 
   if (!isSuperAdminCurrentUser(currentUser)) {
@@ -338,9 +345,11 @@ export async function getInitialState(): Promise<{
       return currentUser;
     } catch (_error) {
       const { pathname, search, hash } = history.location;
-      history.replace(
-        `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
-      );
+      if (pathname !== loginPath) {
+        history.replace(
+          `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
+        );
+      }
     }
     return undefined;
   };
@@ -353,7 +362,10 @@ export async function getInitialState(): Promise<{
       fetchUserInfo(),
       loadSiteProfile(),
     ]);
-    const dynamicTenantId = await restoreDynamicTenantContext(currentUser);
+    const dynamicTenantId = await restoreDynamicTenantContext(
+      currentUser,
+      siteProfile,
+    );
     let menuWorkspaceMode: RuoyiMenuWorkspaceMode = 'default';
     let activeMenuWorkspaceKey: string | undefined;
 

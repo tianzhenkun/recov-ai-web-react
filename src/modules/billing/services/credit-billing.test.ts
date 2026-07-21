@@ -6,7 +6,6 @@ import {
   getScopedCreditEntitlements,
   getScopedCreditPackageOrder,
   grantAdminCredit,
-  issueCreditCoupon,
   listCreditProducts,
   pageCreditAccounts,
   pageScopedCreditPackageOrders,
@@ -174,25 +173,6 @@ describe('scoped credit billing service', () => {
     expect(options.data).not.toHaveProperty('ownerId');
     expect(options.data).not.toHaveProperty('productCode');
     expect(options.data).not.toHaveProperty('expiresAt');
-  });
-
-  it('issues coupons with an account and traceable source only', async () => {
-    await issueCreditCoupon({
-      templateId: 'template-1',
-      accountId: '90071992547409931234',
-      sourceType: 'direct_issue',
-      sourceId: 'campaign-1',
-    });
-
-    const [url, options] = mockedRequest.mock.calls[0];
-    expect(url).toBe('/system/credit/admin/coupons/issue');
-    expect(options.data).toEqual({
-      templateId: 'template-1',
-      accountId: '90071992547409931234',
-      sourceType: 'direct_issue',
-      sourceId: 'campaign-1',
-    });
-    expect(options.data).not.toHaveProperty('remark');
   });
 
   it('submits bounded charge adjustment facts', async () => {
