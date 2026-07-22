@@ -9,8 +9,16 @@ import {
   WifiOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { Alert, Button, Card, Flex, Tag, Typography } from 'antd';
-import React, { type ReactNode } from 'react';
+import { Alert, Badge, Button, Card, Flex, Tag, Typography } from 'antd';
+import React, { type ReactNode, useCallback, useEffect, useState } from 'react';
+import {
+  getPendingHandoffs,
+  type HandoffDto,
+  type MediaCredentialDto,
+  type PageResult,
+} from '@/services/ruoyi/agent-console';
+import WaitingPool from './components/WaitingPool';
+import { useAgentEvents } from './hooks/useAgentEvents';
 import type { DeviceCheckState } from './hooks/useAgentPresence';
 import { useAgentPresence } from './hooks/useAgentPresence';
 import './index.css';
@@ -62,6 +70,43 @@ const DeviceCheck = ({
 
 const AgentWorkbenchPage = () => {
   const agent = useAgentPresence();
+  const [handoffs, setHandoffs] = useState<HandoffDto[]>([]);
+  const [handoffsLoading, setHandoffsLoading] = useState(false);
+  const [claimedCredential, setClaimedCredential] =
+    useState<MediaCredentialDto>();
+
+  const loadHandoffs = useCallback(async () => {
+    if (!agent.profile) {
+      setHandoffs([]);
+      return;
+    }
+    setHandoffsLoading(true);
+    try {
+      const response = await getPendingHandoffs({ pageSize: 100 });
+      const envelope = response as unknown as {
+        data?: PageResult<HandoffDto>;
+        rows?: HandoffDto[];
+      };
+      const page = envelope.data;
+      setHandoffs(
+        page?.rows || (Array.isArray(envelope.rows) ? envelope.rows : []) || [],
+      );
+    } catch {
+      setHandoffs([]);
+    } finally {
+      setHandoffsLoading(false);
+    }
+  }, [agent.profile]);
+
+  const agentEvents = useAgentEvents({
+    agentStatus: agent.status,
+    refresh: loadHandoffs,
+  });
+
+  useEffect(() => {
+    if (agent.phase === 'ready' && agent.profile) void loadHandoffs();
+  }, [agent.phase, agent.profile, loadHandoffs]);
+
   const busy = ['loading', 'checking', 'updating'].includes(agent.phase);
   const status = agent.status || 'offline';
   const meta = statusMeta[status as keyof typeof statusMeta];
@@ -181,8 +226,48 @@ const AgentWorkbenchPage = () => {
       ) : null}
 
       <div className="agent-workbench-grid">
-        <Card title="待接来电" variant="borderless" />
-        <Card title="当前通话" variant="borderless" />
+        <Card
+          title={
+            <Flex align="center" gap="small">
+              <span>待接来电</span>
+              <Badge count={agentEvents.unreadCount} />
+            </Flex>
+          }
+          extra={
+            <Button
+              type="text"
+              size="small"
+              onClick={() => void agentEvents.requestNotificationPermission()}
+            >
+              开启桌面通知
+            </Button>
+          }
+          variant="borderless"
+          onMouseEnter={agentEvents.clearUnread}
+        >
+          <WaitingPool
+            handoffs={handoffs}
+            loading={handoffsLoading}
+            agentStatus={agent.status}
+            consoleSessionId={agent.consoleSessionId}
+            onClaimed={(credential) => {
+              setClaimedCredential(credential);
+              setHandoffs((current) =>
+                current.filter(
+                  (item) => item.handoff_id !== credential.handoff.handoff_id,
+                ),
+              );
+            }}
+            onRemove={(handoffId) =>
+              setHandoffs((current) =>
+                current.filter((item) => item.handoff_id !== handoffId),
+              )
+            }
+          />
+        </Card>
+        <Card title="当前通话" variant="borderless">
+          {claimedCredential ? <Text>正在连接人工通话</Text> : null}
+        </Card>
         <Card title="客户与交接信息" variant="borderless" />
       </div>
     </PageContainer>

@@ -1,0 +1,58 @@
+.agent-waiting-pool-notice {
+  margin-bottom: 12px;
+}
+
+.agent-waiting-pool-item {
+  align-items: stretch;
+  padding: 12px 0;
+}
+
+.agent-waiting-pool-content {
+  width: 100%;
+}
+
+.agent-waiting-pool-timer {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #31506f;
+  background: #edf5ff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-waiting-pool-timer[data-sla-level="warning"] {
+  color: #925400;
+  background: #fff5d6;
+}
+
+.agent-waiting-pool-timer[data-sla-level="urgent"] {
+  color: #a61d24;
+  background: #fff1f0;
+  font-weight: 600;
+}
+
+.agent-waiting-pool-reason {
+  display: block;
+  margin-top: 8px;
+}
+
+.agent-waiting-pool-summary {
+  margin: 8px 0;
+}
+
+.agent-waiting-pool-dialogue {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f7f9fc;
+}
+
+.agent-waiting-pool-items {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  color: #52616f;
+  font-size: 13px;
+}
