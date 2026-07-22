@@ -8,7 +8,6 @@ import {
   Collapse,
   Descriptions,
   Drawer,
-  List,
   Modal,
   Tag,
   Timeline,
@@ -327,23 +326,21 @@ const HandoffAdminPage = () => {
                   detail.request_message ||
                   '摘要未生成'}
               </Paragraph>
-              <List
-                size="small"
-                dataSource={detail.pending_items || []}
-                renderItem={(item) => <List.Item>{item.text}</List.Item>}
-              />
+              <ul>
+                {(detail.pending_items || []).map((item) => (
+                  <li key={item.text}>{item.text}</li>
+                ))}
+              </ul>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>三方对话</Title>
-              <List
-                size="small"
-                dataSource={detail.recent_dialogue || []}
-                renderItem={(item) => (
-                  <List.Item>
+              <div>
+                {(detail.recent_dialogue || []).map((item, index) => (
+                  <Paragraph key={item.id || `${item.speaker_type}-${index}`}>
                     {item.speaker_type}：{item.text}
-                  </List.Item>
-                )}
-              />
+                  </Paragraph>
+                ))}
+              </div>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>录音状态</Title>

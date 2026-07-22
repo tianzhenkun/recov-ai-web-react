@@ -1,4 +1,4 @@
-import { Empty, List, Tag, Typography } from 'antd';
+import { Empty, Tag, Typography } from 'antd';
 import * as React from 'react';
 import type { HandoffDto } from '@/services/ruoyi/agent-console';
 import './HandoffContextPanel.css';
@@ -46,11 +46,11 @@ const HandoffContextPanel = ({ handoff }: { handoff?: HandoffDto }) => {
           待处理事项
         </Text>
         {handoff.pending_items?.length ? (
-          <List
-            size="small"
-            dataSource={handoff.pending_items}
-            renderItem={(item) => <List.Item>{item.text}</List.Item>}
-          />
+          <ul className="agent-handoff-list">
+            {handoff.pending_items.map((item) => (
+              <li key={item.text}>{item.text}</li>
+            ))}
+          </ul>
         ) : (
           <Text type="secondary">暂无明确待处理事项</Text>
         )}
@@ -61,18 +61,16 @@ const HandoffContextPanel = ({ handoff }: { handoff?: HandoffDto }) => {
           最近对话
         </Text>
         {handoff.recent_dialogue?.length ? (
-          <List
-            size="small"
-            dataSource={handoff.recent_dialogue.slice(-6)}
-            renderItem={(item) => (
-              <List.Item>
+          <div className="agent-handoff-dialogue-list">
+            {handoff.recent_dialogue.slice(-6).map((item, index) => (
+              <div key={item.id || `${item.speaker_type}-${index}`}>
                 <Text type="secondary">
                   {item.speaker_type === 'customer' ? '客户' : 'AI'}：
                 </Text>
                 <Text>{item.text}</Text>
-              </List.Item>
-            )}
-          />
+              </div>
+            ))}
+          </div>
         ) : (
           <Text type="secondary">暂无对话记录</Text>
         )}

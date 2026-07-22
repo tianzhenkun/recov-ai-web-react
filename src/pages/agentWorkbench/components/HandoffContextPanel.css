@@ -20,11 +20,14 @@
   margin-bottom: 6px;
 }
 
-.agent-handoff-context .ant-list-item {
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 4px;
-  padding-inline: 0;
+.agent-handoff-list {
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.agent-handoff-dialogue-list {
+  display: grid;
+  gap: 8px;
 }
 
 .agent-handoff-business {

@@ -3,7 +3,7 @@ import {
   type ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import { Descriptions, Drawer, List, Tag, Timeline, Typography } from 'antd';
+import { Descriptions, Drawer, Tag, Timeline, Typography } from 'antd';
 import * as React from 'react';
 import { useMemo, useState } from 'react';
 import TableActions from '@/components/TableActions';
@@ -303,17 +303,15 @@ const FollowUpAdminPage = () => {
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>关联回拨通话</Title>
-              <List
-                size="small"
-                dataSource={(detail.attempts || []).filter(
-                  (attempt) => attempt.related_call_id,
-                )}
-                renderItem={(attempt) => (
-                  <List.Item>
-                    {attempt.related_call_id} · {attempt.attempt_result}
-                  </List.Item>
-                )}
-              />
+              <div>
+                {(detail.attempts || [])
+                  .filter((attempt) => attempt.related_call_id)
+                  .map((attempt) => (
+                    <div key={attempt.id}>
+                      {attempt.related_call_id} · {attempt.attempt_result}
+                    </div>
+                  ))}
+              </div>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>完成或关闭信息</Title>
