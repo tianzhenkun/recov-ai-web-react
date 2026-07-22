@@ -4,6 +4,8 @@ type RouteLike = {
   path?: string;
   component?: string;
   hideInMenu?: boolean;
+  access?: string;
+  requiredPermission?: string;
   routes?: RouteLike[];
 };
 
@@ -22,6 +24,35 @@ describe('routes', () => {
     expect(flowEventsRoute).toMatchObject({
       component: './recov/flowEvents',
       hideInMenu: true,
+    });
+  });
+
+  it.each([
+    ['/agent-workbench', './agentWorkbench', 'ai_call:agent:console'],
+    [
+      '/ai-call/agents',
+      './agentWorkbench/admin/agents',
+      'ai_call:agent:manage',
+    ],
+    [
+      '/ai-call/handoffs',
+      './agentWorkbench/admin/handoffs',
+      'ai_call:agent:manage',
+    ],
+    [
+      '/ai-call/follow-ups',
+      './agentWorkbench/admin/followUps',
+      'ai_call:agent:manage',
+    ],
+  ])('maps %s to the independent agent workbench module', (path, component, requiredPermission) => {
+    const route = flattenRoutes(routes).find((item) => item.path === path);
+
+    expect(route).toMatchObject({
+      path,
+      component,
+      hideInMenu: true,
+      access: 'hasRoutePermission',
+      requiredPermission,
     });
   });
 });

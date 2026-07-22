@@ -56,6 +56,7 @@ type InternalHeaders = Record<string, unknown> & {
 };
 
 export type RuoyiRequestOptions = {
+  baseApi?: string;
   method?: string;
   headers?: InternalHeaders;
   data?: unknown;
@@ -298,7 +299,8 @@ export async function ruoyiRequest<T = unknown>(
   url: string,
   options: RuoyiRequestOptions = {},
 ): Promise<RuoyiResponse<T> | T> {
-  return requestWithBaseApi<T>(getBaseApi(), url, options);
+  const { baseApi, ...requestOptions } = options;
+  return requestWithBaseApi<T>(baseApi || getBaseApi(), url, requestOptions);
 }
 
 export async function adminRequest<T = unknown>(

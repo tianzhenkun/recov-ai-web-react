@@ -22,6 +22,10 @@ export default function access(
 ) {
   const { currentUser } = initialState ?? {};
 
+  type PermissionRoute = {
+    requiredPermission?: string;
+  };
+
   return {
     canAdmin: hasRole(currentUser, 'admin'),
     hasRole: (role: string) => hasRole(currentUser, role),
@@ -33,5 +37,10 @@ export default function access(
       hasAnyPermission(currentUser, permissions),
     hasAllPermissions: (permissions: string | string[]) =>
       hasAllPermissions(currentUser, permissions),
+    hasRoutePermission: (route: PermissionRoute) =>
+      Boolean(
+        route.requiredPermission &&
+          hasPermission(currentUser, route.requiredPermission),
+      ),
   };
 }

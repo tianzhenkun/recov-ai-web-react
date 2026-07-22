@@ -4,6 +4,9 @@ type ProxyRule = {
   target?: string;
   changeOrigin?: boolean;
   ws?: boolean;
+  proxyTimeout?: number;
+  timeout?: number;
+  headers?: Record<string, string>;
   pathRewrite?: Record<string, string>;
 };
 
@@ -28,6 +31,24 @@ describe('proxy config', () => {
       changeOrigin: true,
       ws: true,
       pathRewrite: { '^/voice-api': '' },
+    });
+  });
+
+  it('keeps the agent console api proxy isolated with long-lived connections', () => {
+    const devProxy = proxy.dev as Record<string, ProxyRule>;
+
+    expect(devProxy['/ai-call-agent-api']).toMatchObject({
+      target:
+        process.env.UMI_APP_AI_CALL_API_TARGET || 'http://127.0.0.1:19011',
+      changeOrigin: true,
+      ws: true,
+      proxyTimeout: 0,
+      timeout: 0,
+      pathRewrite: { '^/ai-call-agent-api': '' },
+      headers: {
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     });
   });
 });
