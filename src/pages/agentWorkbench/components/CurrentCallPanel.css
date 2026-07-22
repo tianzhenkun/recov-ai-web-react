@@ -1,0 +1,40 @@
+.agent-current-call {
+  display: grid;
+  gap: 20px;
+}
+
+.agent-current-call-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 10px;
+  background: #f4f8ff;
+}
+
+.agent-current-call-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #1677ff;
+  font-size: 18px;
+}
+
+.agent-current-call-tags {
+  margin-top: 8px;
+}
+
+.agent-current-call-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agent-current-call-device {
+  min-width: 170px;
+  flex: 1;
+}

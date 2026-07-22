@@ -17,7 +17,10 @@ import {
   type MediaCredentialDto,
   type PageResult,
 } from '@/services/ruoyi/agent-console';
+import CurrentCallPanel from './components/CurrentCallPanel';
+import HandoffContextPanel from './components/HandoffContextPanel';
 import WaitingPool from './components/WaitingPool';
+import { useAgentCall } from './hooks/useAgentCall';
 import { useAgentEvents } from './hooks/useAgentEvents';
 import type { DeviceCheckState } from './hooks/useAgentPresence';
 import { useAgentPresence } from './hooks/useAgentPresence';
@@ -74,6 +77,7 @@ const AgentWorkbenchPage = () => {
   const [handoffsLoading, setHandoffsLoading] = useState(false);
   const [claimedCredential, setClaimedCredential] =
     useState<MediaCredentialDto>();
+  const [wrapUpReason, setWrapUpReason] = useState('');
 
   const loadHandoffs = useCallback(async () => {
     if (!agent.profile) {
@@ -101,6 +105,12 @@ const AgentWorkbenchPage = () => {
   const agentEvents = useAgentEvents({
     agentStatus: agent.status,
     refresh: loadHandoffs,
+  });
+  const agentCall = useAgentCall({
+    credential: claimedCredential,
+    consoleSessionId: agent.consoleSessionId,
+    refresh: loadHandoffs,
+    onWrapUp: (_handoff, reason) => setWrapUpReason(reason || ''),
   });
 
   useEffect(() => {
@@ -251,6 +261,7 @@ const AgentWorkbenchPage = () => {
             agentStatus={agent.status}
             consoleSessionId={agent.consoleSessionId}
             onClaimed={(credential) => {
+              setWrapUpReason('');
               setClaimedCredential(credential);
               setHandoffs((current) =>
                 current.filter(
@@ -266,9 +277,29 @@ const AgentWorkbenchPage = () => {
           />
         </Card>
         <Card title="当前通话" variant="borderless">
-          {claimedCredential ? <Text>正在连接人工通话</Text> : null}
+          {wrapUpReason ? (
+            <Alert
+              className="agent-workbench-alert"
+              type="warning"
+              showIcon
+              title="通话异常结束，已进入话后处理"
+              description={wrapUpReason}
+            />
+          ) : null}
+          <CurrentCallPanel
+            phase={agentCall.phase}
+            microphoneEnabled={agentCall.microphoneEnabled}
+            remoteAudioReady={agentCall.remoteAudioReady}
+            networkQuality={agentCall.networkQuality}
+            errorMessage={agentCall.errorMessage}
+            onToggleMicrophone={agentCall.toggleMicrophone}
+            onSwitchAudioInput={agentCall.switchAudioInput}
+            onEndCall={agentCall.endCall}
+          />
         </Card>
-        <Card title="客户与交接信息" variant="borderless" />
+        <Card title="客户与交接信息" variant="borderless">
+          <HandoffContextPanel handoff={claimedCredential?.handoff} />
+        </Card>
       </div>
     </PageContainer>
   );

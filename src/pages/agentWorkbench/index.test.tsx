@@ -4,6 +4,7 @@ import AgentWorkbenchPage from './index';
 
 const mockUseAgentPresence = jest.fn();
 const mockUseAgentEvents = jest.fn();
+const mockUseAgentCall = jest.fn();
 const mockGetPendingHandoffs = jest.fn();
 
 jest.mock('./hooks/useAgentPresence', () => ({
@@ -12,6 +13,10 @@ jest.mock('./hooks/useAgentPresence', () => ({
 
 jest.mock('./hooks/useAgentEvents', () => ({
   useAgentEvents: () => mockUseAgentEvents(),
+}));
+
+jest.mock('./hooks/useAgentCall', () => ({
+  useAgentCall: () => mockUseAgentCall(),
 }));
 
 jest.mock('@/services/ruoyi/agent-console', () => ({
@@ -47,6 +52,16 @@ describe('AgentWorkbenchPage presence shell', () => {
   });
 
   beforeEach(() => {
+    mockUseAgentCall.mockReturnValue({
+      phase: 'idle',
+      microphoneEnabled: true,
+      remoteAudioReady: false,
+      networkQuality: 'unknown',
+      errorMessage: '',
+      toggleMicrophone: jest.fn(),
+      switchAudioInput: jest.fn(),
+      endCall: jest.fn(),
+    });
     mockUseAgentEvents.mockReturnValue({
       transport: 'sse',
       unreadCount: 0,

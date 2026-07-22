@@ -1,0 +1,33 @@
+.agent-handoff-context {
+  display: grid;
+  gap: 18px;
+}
+
+.agent-handoff-customer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agent-handoff-customer .ant-tag {
+  margin-inline-start: auto;
+  margin-inline-end: 0;
+}
+
+.agent-handoff-section-title {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.agent-handoff-context .ant-list-item {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  padding-inline: 0;
+}
+
+.agent-handoff-business {
+  display: grid;
+  gap: 6px;
+}
