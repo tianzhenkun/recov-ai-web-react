@@ -107,6 +107,13 @@ export type AgentPresenceDto = {
   status_updated_at?: string | null;
 };
 
+export type AdminAgentDto = AgentProfileDto & {
+  presence?: AgentPresenceDto | null;
+  runtime_status?: AgentStatus;
+  abnormal_occupied?: boolean;
+  abnormal_reason?: string | null;
+};
+
 export type DialogueTurnDto = {
   id?: BigintString;
   speaker_type: 'customer' | 'ai' | 'agent' | string;
@@ -478,7 +485,7 @@ export const closeFollowUp = (
   );
 
 export const listAdminAgents = (params: PageQuery = {}) =>
-  agentConsoleRequest<PageResult<AgentProfileDto>>(
+  agentConsoleRequest<PageResult<AdminAgentDto>>(
     `${AGENT_CONSOLE_ADMIN_API_PREFIX}/agents`,
     { method: 'get', params },
   );

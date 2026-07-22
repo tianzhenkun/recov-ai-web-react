@@ -1,0 +1,61 @@
+.agent-admin-page {
+  min-height: 100%;
+  background: #f4f6f9;
+}
+
+.agent-admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.agent-admin-metric-card .ant-pro-card-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+}
+
+.agent-admin-metric-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  background: #e8f3ff;
+}
+
+.agent-admin-metric-icon[data-tone="green"] {
+  background: #e7f8ef;
+}
+.agent-admin-metric-icon[data-tone="orange"] {
+  background: #fff3dc;
+}
+.agent-admin-metric-icon[data-tone="red"] {
+  background: #ffebe9;
+}
+.agent-admin-metric-icon[data-tone="purple"] {
+  background: #f3eaff;
+}
+
+.agent-admin-metric-value {
+  margin-top: 2px;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.agent-admin-detail {
+  display: grid;
+  gap: 20px;
+}
+
+.agent-admin-detail-section h5 {
+  margin: 0 0 10px;
+}
+
+@media (max-width: 768px) {
+  .agent-admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
