@@ -59,6 +59,10 @@
   min-height: 520px;
 }
 
+.agent-workbench-follow-up {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 1200px) {
   .agent-workbench-device-grid {
     grid-template-columns: repeat(3, minmax(108px, 1fr));

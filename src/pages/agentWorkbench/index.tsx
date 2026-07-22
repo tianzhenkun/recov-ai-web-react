@@ -18,7 +18,9 @@ import {
   type PageResult,
 } from '@/services/ruoyi/agent-console';
 import CurrentCallPanel from './components/CurrentCallPanel';
+import FollowUpPanel from './components/FollowUpPanel';
 import HandoffContextPanel from './components/HandoffContextPanel';
+import QuickWrapUp from './components/QuickWrapUp';
 import WaitingPool from './components/WaitingPool';
 import { useAgentCall } from './hooks/useAgentCall';
 import { useAgentEvents } from './hooks/useAgentEvents';
@@ -286,19 +288,40 @@ const AgentWorkbenchPage = () => {
               description={wrapUpReason}
             />
           ) : null}
-          <CurrentCallPanel
-            phase={agentCall.phase}
-            microphoneEnabled={agentCall.microphoneEnabled}
-            remoteAudioReady={agentCall.remoteAudioReady}
-            networkQuality={agentCall.networkQuality}
-            errorMessage={agentCall.errorMessage}
-            onToggleMicrophone={agentCall.toggleMicrophone}
-            onSwitchAudioInput={agentCall.switchAudioInput}
-            onEndCall={agentCall.endCall}
-          />
+          {claimedCredential &&
+          ['ended', 'wrap_up_quick'].includes(agentCall.phase) ? (
+            <QuickWrapUp
+              handoff={claimedCredential.handoff}
+              abnormalReason={wrapUpReason}
+              onSubmitted={async () => {
+                setClaimedCredential(undefined);
+                setWrapUpReason('');
+                await agent.bootstrap();
+                await loadHandoffs();
+              }}
+            />
+          ) : (
+            <CurrentCallPanel
+              phase={agentCall.phase}
+              microphoneEnabled={agentCall.microphoneEnabled}
+              remoteAudioReady={agentCall.remoteAudioReady}
+              networkQuality={agentCall.networkQuality}
+              errorMessage={agentCall.errorMessage}
+              onToggleMicrophone={agentCall.toggleMicrophone}
+              onSwitchAudioInput={agentCall.switchAudioInput}
+              onEndCall={agentCall.endCall}
+            />
+          )}
         </Card>
         <Card title="客户与交接信息" variant="borderless">
           <HandoffContextPanel handoff={claimedCredential?.handoff} />
+        </Card>
+        <Card
+          className="agent-workbench-follow-up"
+          title="人工跟进"
+          variant="borderless"
+        >
+          <FollowUpPanel agentStatus={agent.status} />
         </Card>
       </div>
     </PageContainer>

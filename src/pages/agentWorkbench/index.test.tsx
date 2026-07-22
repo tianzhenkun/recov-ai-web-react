@@ -19,6 +19,10 @@ jest.mock('./hooks/useAgentCall', () => ({
   useAgentCall: () => mockUseAgentCall(),
 }));
 
+jest.mock('./components/FollowUpPanel', () => () => (
+  <div>人工跟进测试替身</div>
+));
+
 jest.mock('@/services/ruoyi/agent-console', () => ({
   getPendingHandoffs: (...args: unknown[]) => mockGetPendingHandoffs(...args),
 }));
