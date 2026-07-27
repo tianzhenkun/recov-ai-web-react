@@ -24,20 +24,28 @@ import {
   getAiCallLabPromptProfiles,
   getAiCallLabVoiceProfiles,
 } from '@/services/ruoyi/ai-call-lab';
+import { uploadOssFile } from '@/services/ruoyi/oss';
 import type { ExecutionMode } from '../domain';
+import { useVisiblePolling } from '../hooks/useVisiblePolling';
 import {
   createAiCallTask,
+  createBatchValidation,
+  downloadOutboundTargetTemplate,
+  getValidationResult,
   type SingleTargetValidationRequest,
-  type ValidationResult,
+  type ValidationRequest,
+  type ValidationResult as ValidationResultData,
   validateSingleTarget,
 } from '../service';
+import BatchTargetUpload from './BatchTargetUpload';
 import TaskConfirmation from './TaskConfirmation';
+import ValidationResultPanel from './ValidationResult';
 import { validateExecutionPlan } from './validation';
 
 type TaskFormValues = {
   taskName: string;
-  taskMode: 'single';
-  phoneNumber: string;
+  taskMode: 'single' | 'batch';
+  phoneNumber?: string;
   customerName?: string;
   promptKey: string;
   voice: string;
@@ -47,13 +55,15 @@ type TaskFormValues = {
 };
 
 type ValidatedTask = {
-  request: SingleTargetValidationRequest;
-  validation: ValidationResult;
+  request: ValidationRequest;
+  validation: ValidationResultData;
   values: TaskFormValues;
   prompt: AiCallLabPromptProfile;
   voice: AiCallLabVoiceProfile;
   rule: AiCallRule;
 };
+
+type BatchValidationContext = Omit<ValidatedTask, 'validation'>;
 
 const createIdempotencyKey = () =>
   globalThis.crypto?.randomUUID?.() ||
@@ -86,7 +96,15 @@ const CreateAiCallTaskPage = () => {
   const [validating, setValidating] = useState(false);
   const [validatedTask, setValidatedTask] = useState<ValidatedTask>();
   const [creating, setCreating] = useState(false);
+  const [batchFile, setBatchFile] = useState<File>();
+  const [batchOssId, setBatchOssId] = useState<string>();
+  const [batchValidation, setBatchValidation] =
+    useState<ValidationResultData>();
+  const [batchContext, setBatchContext] = useState<BatchValidationContext>();
+  const [batchPhase, setBatchPhase] = useState<'uploading' | 'validating'>();
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const creatingRef = useRef(false);
+  const taskMode = Form.useWatch('taskMode', form);
   const executionMode = Form.useWatch('executionMode', form);
   const ruleId = Form.useWatch('ruleId', form);
 
@@ -127,6 +145,23 @@ const CreateAiCallTaskPage = () => {
     [ruleId, rules],
   );
 
+  const finalizeBatchValidation = (validation: ValidationResultData) => {
+    setBatchValidation(validation);
+    if (validation.status === 'PASSED' && batchContext) {
+      setValidatedTask({ ...batchContext, validation });
+    }
+  };
+
+  useVisiblePolling({
+    enabled: batchValidation?.status === 'VALIDATING',
+    intervalMs: 2_000,
+    onTick: async () => {
+      if (!batchValidation?.validationId) return;
+      const next = await getValidationResult(batchValidation.validationId);
+      finalizeBatchValidation(next);
+    },
+  });
+
   const validateTask = async (values: TaskFormValues) => {
     const prompt = promptProfiles.find(
       (item) => getPromptKey(item) === values.promptKey,
@@ -149,11 +184,9 @@ const CreateAiCallTaskPage = () => {
       return;
     }
 
-    const request: SingleTargetValidationRequest = {
+    const request: ValidationRequest = {
       taskName: values.taskName.trim(),
-      taskMode: 'single',
-      phoneNumber: values.phoneNumber.trim(),
-      customerName: values.customerName?.trim() || undefined,
+      taskMode: values.taskMode,
       promptProfileId: prompt.id === undefined ? undefined : String(prompt.id),
       sceneCode: prompt.sceneCode,
       voice: voice.voice,
@@ -164,15 +197,61 @@ const CreateAiCallTaskPage = () => {
 
     setValidating(true);
     try {
-      const validation = await validateSingleTarget(request);
-      if (validation.status !== 'PASSED') {
-        messageApi.error(validation.errorMessage || '任务校验未通过');
+      if (values.taskMode === 'single') {
+        const singleRequest: SingleTargetValidationRequest = {
+          ...request,
+          taskMode: 'single',
+          phoneNumber: values.phoneNumber?.trim() || '',
+          customerName: values.customerName?.trim() || undefined,
+        };
+        const validation = await validateSingleTarget(singleRequest);
+        if (validation.status !== 'PASSED') {
+          messageApi.error(validation.errorMessage || '任务校验未通过');
+          return;
+        }
+        setValidatedTask({
+          request: singleRequest,
+          validation,
+          values,
+          prompt,
+          voice,
+          rule,
+        });
         return;
       }
-      setValidatedTask({ request, validation, values, prompt, voice, rule });
+
+      if (!batchFile) {
+        messageApi.error('请上传完整外呼名单');
+        return;
+      }
+      let nextOssId = batchOssId;
+      if (!nextOssId) {
+        setBatchPhase('uploading');
+        const uploadResult = await uploadOssFile(batchFile);
+        const returnedOssId = uploadResult.data?.ossId;
+        if (returnedOssId === undefined || returnedOssId === null) {
+          throw new Error('文件上传成功但未返回 OSS ID');
+        }
+        nextOssId = String(returnedOssId);
+        setBatchOssId(nextOssId);
+      }
+
+      setBatchPhase('validating');
+      const validation = await createBatchValidation({
+        ossId: nextOssId,
+        originalFilename: batchFile.name,
+        request,
+      });
+      const context = { request, values, prompt, voice, rule };
+      setBatchContext(context);
+      setBatchValidation(validation);
+      if (validation.status === 'PASSED') {
+        setValidatedTask({ ...context, validation });
+      }
     } catch (error) {
       messageApi.error(getErrorMessage(error));
     } finally {
+      setBatchPhase(undefined);
       setValidating(false);
     }
   };
@@ -212,7 +291,11 @@ const CreateAiCallTaskPage = () => {
             form={form}
             layout="vertical"
             onFinish={validateTask}
-            onValuesChange={() => setValidatedTask(undefined)}
+            onValuesChange={() => {
+              setValidatedTask(undefined);
+              setBatchValidation(undefined);
+              setBatchContext(undefined);
+            }}
           >
             <Form.Item
               label="任务名称"
@@ -225,27 +308,58 @@ const CreateAiCallTaskPage = () => {
             </Form.Item>
 
             <Form.Item label="外呼方式" name="taskMode">
-              <Radio.Group options={[{ label: '单号码', value: 'single' }]} />
+              <Radio.Group
+                options={[
+                  { label: '单号码', value: 'single' },
+                  { label: '名单外呼', value: 'batch' },
+                ]}
+              />
             </Form.Item>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Form.Item
-                label="手机号"
-                name="phoneNumber"
-                rules={[
-                  { required: true, message: '请输入手机号' },
-                  {
-                    pattern: /^1\d{10}$/,
-                    message: '请输入正确的 11 位手机号',
-                  },
-                ]}
-              >
-                <Input maxLength={11} placeholder="请输入手机号" />
+            {taskMode === 'batch' ? (
+              <Form.Item label="外呼名单" required>
+                <BatchTargetUpload
+                  downloading={downloadingTemplate}
+                  file={batchFile}
+                  onDownload={async () => {
+                    setDownloadingTemplate(true);
+                    try {
+                      await downloadOutboundTargetTemplate();
+                    } catch (error) {
+                      messageApi.error(getErrorMessage(error));
+                    } finally {
+                      setDownloadingTemplate(false);
+                    }
+                  }}
+                  onFileChange={(file) => {
+                    setBatchFile(file);
+                    setBatchOssId(undefined);
+                    setBatchValidation(undefined);
+                    setBatchContext(undefined);
+                    setValidatedTask(undefined);
+                  }}
+                />
               </Form.Item>
-              <Form.Item label="客户名称" name="customerName">
-                <Input maxLength={50} placeholder="请输入客户名称（选填）" />
-              </Form.Item>
-            </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Form.Item
+                  label="手机号"
+                  name="phoneNumber"
+                  rules={[
+                    { required: true, message: '请输入手机号' },
+                    {
+                      pattern: /^1\d{10}$/,
+                      message: '请输入正确的 11 位手机号',
+                    },
+                  ]}
+                >
+                  <Input maxLength={11} placeholder="请输入手机号" />
+                </Form.Item>
+                <Form.Item label="客户名称" name="customerName">
+                  <Input maxLength={50} placeholder="请输入客户名称（选填）" />
+                </Form.Item>
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-2">
               <Form.Item
@@ -330,6 +444,18 @@ const CreateAiCallTaskPage = () => {
           </Form>
         </RecovTableCard>
 
+        {batchPhase === 'uploading' ? (
+          <RecovTableCard>正在上传名单</RecovTableCard>
+        ) : null}
+        {batchValidation && batchValidation.status !== 'PASSED' ? (
+          <RecovTableCard>
+            <ValidationResultPanel
+              result={batchValidation}
+              onRetry={() => form.submit()}
+            />
+          </RecovTableCard>
+        ) : null}
+
         {validatedTask ? (
           <>
             <RecovTableCard>
@@ -355,6 +481,7 @@ const CreateAiCallTaskPage = () => {
                 ruleSummary={formatRuleSummary(validatedTask.rule)}
                 sceneCode={validatedTask.prompt.sceneCode}
                 taskName={validatedTask.values.taskName}
+                targetCount={validatedTask.validation.validTargetCount}
                 voiceName={
                   validatedTask.voice.displayName || validatedTask.voice.voice
                 }

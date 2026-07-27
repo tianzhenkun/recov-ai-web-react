@@ -11,7 +11,13 @@ import {
   getAiCallLabPromptProfiles,
   getAiCallLabVoiceProfiles,
 } from '@/services/ruoyi/ai-call-lab';
-import { createAiCallTask, validateSingleTarget } from '../service';
+import { uploadOssFile } from '@/services/ruoyi/oss';
+import {
+  createAiCallTask,
+  createBatchValidation,
+  downloadOutboundTargetTemplate,
+  validateSingleTarget,
+} from '../service';
 import AiCallTaskCreatePage from './index';
 
 const mockPush = jest.fn();
@@ -31,7 +37,16 @@ jest.mock('@/pages/aiCallRules/service', () => ({
 
 jest.mock('../service', () => ({
   createAiCallTask: jest.fn(),
+  createBatchValidation: jest.fn(),
+  downloadOutboundTargetTemplate: jest.fn(),
+  downloadValidationIssues: jest.fn(),
+  getValidationResult: jest.fn(),
+  listValidationIssues: jest.fn(),
   validateSingleTarget: jest.fn(),
+}));
+
+jest.mock('@/services/ruoyi/oss', () => ({
+  uploadOssFile: jest.fn(),
 }));
 
 const mockedPromptProfiles = getAiCallLabPromptProfiles as jest.Mock;
@@ -39,6 +54,9 @@ const mockedVoiceProfiles = getAiCallLabVoiceProfiles as jest.Mock;
 const mockedListRules = listAiCallRules as jest.Mock;
 const mockedValidateSingle = validateSingleTarget as jest.Mock;
 const mockedCreateTask = createAiCallTask as jest.Mock;
+const mockedCreateBatch = createBatchValidation as jest.Mock;
+const mockedDownloadTemplate = downloadOutboundTargetTemplate as jest.Mock;
+const mockedUploadOss = uploadOssFile as jest.Mock;
 
 describe('single target AI Call task creation', () => {
   beforeEach(() => {
@@ -48,6 +66,9 @@ describe('single target AI Call task creation', () => {
     mockedListRules.mockReset();
     mockedValidateSingle.mockReset();
     mockedCreateTask.mockReset();
+    mockedCreateBatch.mockReset();
+    mockedDownloadTemplate.mockReset();
+    mockedUploadOss.mockReset();
     mockedPromptProfiles.mockResolvedValue({
       rows: [
         {
@@ -86,6 +107,20 @@ describe('single target AI Call task creation', () => {
     mockedCreateTask.mockResolvedValue({
       accepted: true,
       taskId: 'task-created',
+    });
+    mockedCreateBatch.mockResolvedValue({
+      validationId: 'validation-batch',
+      status: 'PASSED',
+      validTargetCount: 2,
+      issueCount: 0,
+    });
+    mockedDownloadTemplate.mockResolvedValue(undefined);
+    mockedUploadOss.mockResolvedValue({
+      data: {
+        ossId: 'oss-1',
+        fileName: 'targets.xlsx',
+        url: '/targets.xlsx',
+      },
     });
   });
 
@@ -149,5 +184,48 @@ describe('single target AI Call task creation', () => {
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith('/ai-call/tasks/task-created'),
     );
+  });
+
+  it('downloads the template, uploads one complete list and validates by ossId', async () => {
+    const { container } = render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+
+    fireEvent.click(screen.getByRole('radio', { name: '名单外呼' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /下载名单模板/ }),
+    );
+    await waitFor(() =>
+      expect(mockedDownloadTemplate).toHaveBeenCalledTimes(1),
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
+      target: { value: '批量客户回访' },
+    });
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error('未找到名单文件选择框');
+    }
+    expect(input.accept).toBe('.xlsx,.xls,.csv');
+    const file = new File(['手机号,客户名称'], 'targets.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+
+    await waitFor(() => expect(mockedUploadOss).toHaveBeenCalledWith(file));
+    await waitFor(() =>
+      expect(mockedCreateBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ossId: 'oss-1',
+          originalFilename: 'targets.xlsx',
+          request: expect.objectContaining({
+            taskMode: 'batch',
+            taskName: '批量客户回访',
+          }),
+        }),
+      ),
+    );
+    expect(await screen.findByText('有效外呼对象 2 个')).toBeTruthy();
+    expect(screen.getByText('人工确认摘要')).toBeTruthy();
   });
 });

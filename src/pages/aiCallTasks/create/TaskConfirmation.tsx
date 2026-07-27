@@ -3,7 +3,8 @@ import React from 'react';
 
 type TaskConfirmationProps = {
   taskName: string;
-  phoneNumber: string;
+  targetCount: number;
+  phoneNumber?: string;
   customerName?: string;
   promptName: string;
   sceneCode: string;
@@ -17,6 +18,7 @@ type TaskConfirmationProps = {
 
 const TaskConfirmation = ({
   taskName,
+  targetCount,
   phoneNumber,
   customerName,
   promptName,
@@ -35,8 +37,14 @@ const TaskConfirmation = ({
       column={{ xs: 1, sm: 2 }}
       items={[
         { key: 'taskName', label: '任务名称', children: taskName },
-        { key: 'targetCount', label: '外呼对象', children: '1 个' },
-        { key: 'phoneNumber', label: '手机号', children: phoneNumber },
+        {
+          key: 'targetCount',
+          label: '外呼对象',
+          children: `${targetCount} 个`,
+        },
+        ...(phoneNumber
+          ? [{ key: 'phoneNumber', label: '手机号', children: phoneNumber }]
+          : []),
         {
           key: 'customerName',
           label: '客户名称',
