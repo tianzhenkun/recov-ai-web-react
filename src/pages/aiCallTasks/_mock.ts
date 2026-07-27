@@ -5,7 +5,10 @@ import type {
   TaskStatus,
   ValidationIssue,
 } from './domain';
-import type { ValidationResult } from './service';
+import type {
+  SingleTargetValidationRequest,
+  ValidationResult,
+} from './service';
 
 const now = '2026-07-27 10:00:00';
 
@@ -164,9 +167,17 @@ type MockValidation = ValidationResult & {
 };
 
 const validations = new Map<string, MockValidation>();
+const singleValidations = new Map<string, SingleTargetValidationRequest>();
 let uploadCount = 0;
 let validationCount = 0;
 let createdTaskCount = 0;
+
+const promptNames: Record<string, string> = {
+  intro_geo: 'GEO 产品介绍',
+  intro_contract: '合同审查产品介绍',
+  intro_business: '企业服务通知',
+  intro_follow_up: '客户回访',
+};
 
 const success = <T>(res: Response, data: T, msg = '操作成功') =>
   res.json({ code: 200, msg, data });
@@ -230,6 +241,7 @@ const createTask = (req: Request, res: Response) => {
   createdTaskCount += 1;
   const taskId = `task-created-${createdTaskCount}`;
   const body = req.body || {};
+  const singleValidation = singleValidations.get(String(body.validationId));
   const task: AiCallTask = {
     taskId,
     taskName: body.taskName,
@@ -242,7 +254,7 @@ const createTask = (req: Request, res: Response) => {
     executionMode: body.executionMode,
     scheduledAt: body.scheduledAt,
     promptProfileId: body.promptProfileId,
-    promptName: '合同审查产品介绍',
+    promptName: promptNames[body.sceneCode] || body.sceneCode,
     sceneCode: body.sceneCode,
     voice: body.voice,
     voiceName: body.voice,
@@ -254,7 +266,20 @@ const createTask = (req: Request, res: Response) => {
     updatedAt: now,
   };
   tasks = [task, ...tasks];
-  taskTargets[taskId] = [];
+  taskTargets[taskId] =
+    body.taskMode === 'single' && singleValidation
+      ? [
+          {
+            targetId: `target-${taskId}-1`,
+            taskId,
+            customerName: singleValidation.customerName,
+            phoneNumber: singleValidation.phoneNumber,
+            status: 'PENDING',
+            attemptCount: 0,
+            updatedAt: now,
+          },
+        ]
+      : [];
   return success(res, { taskId, accepted: true }, '任务创建已受理');
 };
 
@@ -298,13 +323,19 @@ const listTargets = (req: Request, res: Response) => {
   return page(res, filtered.slice(start, end), filtered.length);
 };
 
-const validateSingle = (_req: Request, res: Response) =>
-  success(res, {
-    validationId: `validation-single-${Date.now()}`,
+const validateSingle = (req: Request, res: Response) => {
+  const validationId = `validation-single-${Date.now()}`;
+  singleValidations.set(
+    validationId,
+    req.body as SingleTargetValidationRequest,
+  );
+  return success(res, {
+    validationId,
     status: 'PASSED',
     validTargetCount: 1,
     issueCount: 0,
   });
+};
 
 const createBatchValidation = (req: Request, res: Response) => {
   validationCount += 1;

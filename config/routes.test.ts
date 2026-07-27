@@ -60,6 +60,7 @@ describe('routes', () => {
     ['/ai-call/tasks', './aiCallTasks'],
     ['/ai-call/tasks/create', './aiCallTasks/create'],
     ['/ai-call/tasks/:taskId', './aiCallTasks/detail'],
+    ['/ai-call/records', './aiCallRecords'],
     ['/ai-call/rules', './aiCallRules'],
   ])('maps %s to %s', (path, component) => {
     const route = flattenRoutes(routes).find((item) => item.path === path);

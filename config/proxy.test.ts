@@ -51,4 +51,16 @@ describe('proxy config', () => {
       },
     });
   });
+
+  it('proxies AI Call configuration requests to the AI Call runtime', () => {
+    const devProxy = proxy.dev as Record<string, ProxyRule>;
+
+    expect(devProxy['/ai-call-lab-api']).toMatchObject({
+      target:
+        process.env.UMI_APP_AI_CALL_API_TARGET || 'http://127.0.0.1:19011',
+      changeOrigin: true,
+      ws: true,
+      pathRewrite: { '^/ai-call-lab-api': '' },
+    });
+  });
 });
