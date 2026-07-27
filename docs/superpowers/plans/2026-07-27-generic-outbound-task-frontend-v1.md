@@ -34,7 +34,7 @@
 - `src/pages/aiCallTasks/domain.ts`：任务、外呼对象、校验结果、状态和展示映射。
 - `src/pages/aiCallTasks/domain.test.ts`：状态动作、终态、轮询条件和进度计算测试。
 - `src/pages/aiCallTasks/service.ts`：任务、名单校验、外呼对象和任务动作请求。
-- `src/pages/aiCallTasks/service.test.ts`：路径、参数、FormData、幂等头和 Blob 下载测试。
+- `src/pages/aiCallTasks/service.test.ts`：路径、参数、OSS 文件标识、幂等头、模板和问题明细下载测试。
 - `src/pages/aiCallTasks/_mock.ts`：开发环境任务、校验、问题明细和状态动作 Mock。
 - `src/pages/aiCallTasks/hooks/useVisiblePolling.ts`：页面可见时的定时刷新。
 - `src/pages/aiCallTasks/hooks/useVisiblePolling.test.tsx`：计时器、页面隐藏和卸载清理测试。
@@ -46,7 +46,7 @@
 - `src/pages/aiCallTasks/create/index.test.tsx`：单号码、批量名单、校验与确认测试。
 - `src/pages/aiCallTasks/create/BatchTargetUpload.tsx`：完整名单上传与替换。
 - `src/pages/aiCallTasks/create/ValidationResult.tsx`：校验摘要、问题分页和下载。
-- `src/pages/aiCallTasks/create/TaskConfirmation.tsx`：人工确认摘要。
+- `src/pages/aiCallTasks/create/TaskConfirmation.tsx`：校验通过后显示在创建页底部的人工确认摘要。
 - `src/pages/aiCallTasks/detail/index.tsx`：任务摘要和外呼对象列表。
 - `src/pages/aiCallTasks/detail/index.test.tsx`：详情、分页、轮询和记录跳转测试。
 - `src/pages/aiCallRules/domain.ts`：呼叫规则字段和校验函数。
@@ -78,7 +78,7 @@
 
 ## 2. 后端接口契约
 
-所有接口经 `/ai-call-agent-api` 代理访问 `19011`。以下路径是前端实现的唯一契约；真实后端路径若需调整，必须先修改契约文档、service 测试和 service，再修改页面。
+除项目已有的公共 OSS 上传接口外，通用外呼接口均经 `/ai-call-agent-api` 代理访问 `19011`。以下路径是前端实现的唯一契约；真实后端路径若需调整，必须先修改契约文档、service 测试和 service，再修改页面。
 
 ### 2.1 任务
 
@@ -100,13 +100,19 @@
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
+| POST | `/ai-call/outbound-targets/import-template` | 下载外呼名单 Excel 模板 |
 | POST | `/ai-call/outbound-validations/single` | 同步校验单号码任务 |
-| POST | `/ai-call/outbound-validations/batch` | 上传完整名单并创建异步校验 |
+| POST | `/ai-call/outbound-validations/batch` | 以 `ossId` 和待校验外呼参数创建异步校验 |
 | GET | `/ai-call/outbound-validations/{validationId}` | 查询校验状态和摘要 |
 | GET | `/ai-call/outbound-validations/{validationId}/issues` | 问题数据分页 |
 | GET | `/ai-call/outbound-validations/{validationId}/issues/export` | 下载全部问题明细 |
 
-批量上传使用 `multipart/form-data`，字段名固定为 `file` 和 `request`。`request` 是任务配置 JSON 字符串。
+批量名单使用两段式处理：
+
+1. 前端调用现有 `POST /resource/oss/upload` 上传原始文件并取得字符串 `ossId`。
+2. 前端以 JSON 调用批量校验接口，提交 `ossId`、`originalFilename` 和待校验外呼参数。
+
+批量校验接口不接收 `multipart/form-data`，也不接收前端传递的公开文件 URL。
 
 ### 2.3 呼叫规则
 
@@ -116,8 +122,9 @@
 | GET | `/ai-call/outbound-rules/meta` | 查询重试上限和可重试结果枚举 |
 | POST | `/ai-call/outbound-rules` | 创建规则 |
 | PUT | `/ai-call/outbound-rules/{ruleId}` | 更新规则 |
+| DELETE | `/ai-call/outbound-rules/{ruleId}` | 软删除规则 |
 
-V1 不提供删除规则。
+删除规则后不再返回于规则列表和新建任务选项；已创建任务继续使用规则快照。已校验但未创建任务的结果失效，确认创建时发现规则已删除必须返回明确错误。
 
 ### 2.4 统一响应
 
@@ -391,7 +398,29 @@ await expect(listAiCallTasks({ pageNum: 1, pageSize: 20 })).rejects.toThrow(
 - 非 `200` 响应由 `ruoyiRequest` 抛出 `RuoyiError`，service 不吞掉错误；
 - Mock 接口不得返回裸数据。
 
-批量上传测试必须断言 `FormData` 同时包含 `file` 和序列化后的 `request`。
+批量校验请求测试必须断言：
+
+```ts
+await createBatchValidation({
+  ossId: 'oss-1',
+  originalFilename: '外呼名单.xlsx',
+  request: validationRequest,
+});
+expect(mockedRuoyiRequest).toHaveBeenCalledWith(
+  '/ai-call/outbound-validations/batch',
+  expect.objectContaining({
+    baseApi: '/ai-call-agent-api',
+    method: 'post',
+    data: {
+      ossId: 'oss-1',
+      originalFilename: '外呼名单.xlsx',
+      request: validationRequest,
+    },
+  }),
+);
+```
+
+模板下载测试必须断言 `downloadOutboundTargetTemplate` 通过现有 `ruoyiDownload` 请求 `/ai-call/outbound-targets/import-template`，文件名固定为 `外呼名单导入模板.xlsx`，并传入 `baseApi: '/ai-call-agent-api'`。
 
 - [ ] **步骤 2：运行测试并确认失败**
 
@@ -438,7 +467,7 @@ const unwrapPage = <T>(response: RuoyiResponse<T> | T) => {
 };
 ```
 
-每个 `ruoyiRequest` 调用都传入 `baseApi: AI_CALL_AGENT_BASE_API`。普通接口使用 `unwrapData`，分页接口使用 `unwrapPage`；不能复制 `aiCallRecords/service.ts` 中兼容裸响应和 `data.rows` 的历史逻辑。
+每个 `ruoyiRequest` 调用都传入 `baseApi: AI_CALL_AGENT_BASE_API`。需要返回业务数据的普通接口使用 `unwrapData`，不返回 `data` 的删除等命令接口只调用 `requireEnvelope`，分页接口使用 `unwrapPage`；不能复制 `aiCallRecords/service.ts` 中兼容裸响应和 `data.rows` 的历史逻辑。
 
 实现：
 
@@ -451,8 +480,9 @@ const unwrapPage = <T>(response: RuoyiResponse<T> | T) => {
 - `stopAiCallTask`
 - `cancelAiCallTask`
 - `listAiCallTaskTargets`
+- `downloadOutboundTargetTemplate`
 - `validateSingleTarget`
-- `uploadBatchValidation`
+- `createBatchValidation`
 - `getValidationResult`
 - `listValidationIssues`
 - `downloadValidationIssues`
@@ -469,10 +499,14 @@ Mock 初始数据必须覆盖：
 - 1 个 `COMPLETED` 任务；
 - 同一对象两次拨打的关联数据；
 - 批量校验 `VALIDATING → FAILED`；
+- 模板下载返回 Excel Blob；
+- 批量校验请求保存并返回对应 `ossId`；
 - 问题行包含手机号格式错误和重复行号；
 - 第二次上传后 `VALIDATING → PASSED`；
 - 暂停 `RUNNING → PAUSING → PAUSED`；
 - 停止 `RUNNING → STOPPING → STOPPED`。
+
+为保证无真实后端时也能完成浏览器流程，`_mock.ts` 同时提供 `POST /dev-api/resource/oss/upload`，返回 `{ code: 200, data: { ossId: 'oss-1', fileName, url } }`；该路由只模拟公共 OSS 上传结果，不在前端解析名单内容。
 
 Mock 的普通响应固定使用 `{ code: 200, msg, data }`，分页响应固定使用 `{ code: 200, msg, rows, total }`。Mock 只在 Umi Mock 模式加载，生产构建不得导入它。
 
@@ -634,11 +668,19 @@ npx jest src/pages/aiCallRules/domain.test.ts --runInBand
 - 合法表单调用创建接口；
 - 编辑时调用 `PUT /outbound-rules/{ruleId}`；
 - 页面从 `/outbound-rules/meta` 读取 `maxRetryCount` 和可重试结果选项；
-- 页面没有删除按钮。
+- 操作列通过 `TableActions` 提供“编辑、删除”；
+- 点击删除后显示规则名称、对新任务的影响以及“已创建任务不受影响”的二次确认；
+- 取消确认时不调用删除接口；
+- 确认后调用 `DELETE /outbound-rules/{ruleId}` 并刷新列表；
+- 删除失败时保留当前列表并展示后端 `msg`。
 
 - [ ] **步骤 5：实现 service 和页面**
 
-service 固定实现 `getAiCallRuleMetadata`、`listAiCallRules`、`createAiCallRule` 和 `updateAiCallRule`。`_mock.ts` 返回 `maxRetryCount: 5`、三个可重试结果和两条规则。页面使用 `ProTable` 展示规则；使用受控 `Modal destroyOnHidden` 和 `Form.List` 编辑时段、重试间隔。操作列固定右侧，只提供“编辑”。
+service 固定实现 `getAiCallRuleMetadata`、`listAiCallRules`、`createAiCallRule`、`updateAiCallRule` 和 `deleteAiCallRule`。`_mock.ts` 返回 `maxRetryCount: 5`、三个可重试结果和两条规则；删除后对应规则不再出现在分页结果中。页面使用 `ProTable` 展示规则；使用受控 `Modal destroyOnHidden` 和 `Form.List` 编辑时段、重试间隔。操作列固定右侧，并通过 `TableActions` 收纳“编辑、删除”。
+
+删除确认文案固定为：
+
+> 确认删除呼叫规则“{规则名称}”吗？删除后不能用于新任务，已创建任务仍按原规则执行。此操作不可恢复。
 
 - [ ] **步骤 6：运行测试**
 
@@ -769,6 +811,7 @@ git commit -m "feat: 增加外呼任务运行列表"
 - 立即执行在规则时段外时阻止校验；
 - 定时执行必须在未来且处于允许时段；
 - 校验通过后出现确认摘要；
+- 确认摘要位于创建页底部、校验结果下方，不打开新页面或弹窗；
 - 确认摘要显示提示词名称和场景编码；
 - 连续点击确认只调用一次创建接口；
 - 创建成功后跳转 `/ai-call/tasks/{taskId}`。
@@ -809,7 +852,7 @@ type TaskFormValues = {
 1. 执行表单校验；
 2. 执行规则时间校验；
 3. 调用 `validateSingleTarget`；
-4. 仅在返回 `PASSED` 时显示 `TaskConfirmation`；
+4. 仅在返回 `PASSED` 时，在创建页底部、校验结果下方以内联卡片显示 `TaskConfirmation`；
 5. 表单任一字段改变后立即清除旧校验结果；
 6. 点击“确认启动”时生成一次 UUID 幂等键；
 7. 请求期间按钮 `loading` 且 `disabled`；
@@ -843,10 +886,16 @@ git commit -m "feat: 增加单号码外呼任务创建"
 
 断言：
 
-- 模板字段说明只有 `phoneNumber` 必填、`customerName` 选填；
+- 上传区域提供“下载名单模板”，下载文件名为 `外呼名单导入模板.xlsx`；
+- 模板表头只有“手机号”和“客户名称”，分别映射 `phoneNumber` 必填、`customerName` 选填；
+- 模板下载失败时不清空当前表单或已选择文件；
 - `Upload.Dragger` 限制单文件，接受 `.xlsx,.xls,.csv`；
-- 新文件替换旧文件和旧校验结果；
-- 上传返回 `VALIDATING` 后每 2 秒查询；
+- 新文件替换旧文件、旧 `ossId` 和旧校验结果；
+- 点击“校验任务”后先调用 `uploadOssFile`，取得 `ossId` 后再调用 `createBatchValidation`；
+- OSS 上传失败时不调用批量校验接口；
+- OSS 上传成功但校验任务创建失败时保留 `ossId`，点击“重新校验”不重复上传；
+- 名单业务校验失败后选择修正文件，必须重新上传并取得新的 `ossId`；
+- 校验接口返回 `VALIDATING` 后每 2 秒查询；
 - 页面隐藏或终态后停止校验轮询；
 - `FAILED` 时确认按钮不可用；
 - 问题列表展示原文件行号、手机号、客户名称、多个错误原因和重复行号；
@@ -866,7 +915,16 @@ npx jest src/pages/aiCallTasks/create/index.test.tsx --runInBand
 
 - [ ] **步骤 3：实现 BatchTargetUpload**
 
-使用受控 `fileList` 和 `beforeUpload={() => false}` 拦截自动上传；点击“校验任务”时才调用 `uploadBatchValidation`。`onChange` 接收到新文件后清空 `validationId`、状态、摘要和问题页。
+使用受控 `fileList` 和 `beforeUpload={() => false}` 拦截自动上传。“下载名单模板”调用 `downloadOutboundTargetTemplate`，下载期间按钮显示 loading。
+
+点击“校验任务”时按固定顺序执行：
+
+1. 没有可复用的 `ossId` 时，调用项目已有的 `uploadOssFile(file)`；
+2. 取得字符串 `ossId` 后，调用 `createBatchValidation({ ossId, originalFilename, request })`；
+3. 创建校验失败但文件仍有效时保留 `ossId`，重新校验只重试第 2 步；
+4. `onChange` 接收到新文件后清空旧 `ossId`、`validationId`、状态、摘要和问题页。
+
+页面依次显示“正在上传名单”和“名单校验中”，但用户仍只点击一次“校验任务”。
 
 可见文案固定为：
 
@@ -1156,16 +1214,19 @@ npm start
 浏览器验收：
 
 1. `/ai-call/tasks` 能筛选、分页和进入创建/详情。
-2. 单号码填写、校验、确认后进入任务详情。
-3. 批量名单第一次校验失败，能看到行号、手机号、原因和重复行。
-4. 下载问题明细后，替换上传完整名单，第二次校验通过。
-5. 运行中任务平滑进入暂停中和已暂停，恢复后继续。
-6. 停止任务先进入停止中，再进入已停止。
-7. 定时任务只能修改名称和执行时间。
-8. 任务详情只显示配置摘要和外呼对象，不显示三套 Tab。
-9. 任务级和对象级按钮跳转统一通话记录并自动筛选。
-10. 通话记录列表直接显示 AI 结论、摘要和录音入口。
-11. AI Call 菜单中没有第一阶段数据看板。
+2. 单号码校验通过后，确认卡片显示在创建页底部；确认后进入任务详情。
+3. 批量上传区域可以下载 `外呼名单导入模板.xlsx`，第一行只有“手机号、客户名称”。
+4. 批量名单点击一次“校验任务”后依次显示上传中和校验中，页面不展示 `ossId`。
+5. 批量名单第一次校验失败，能看到行号、手机号、原因和重复行。
+6. 下载问题明细后，替换上传完整名单，第二次校验通过。
+7. 删除呼叫规则需要二次确认，删除后规则从列表和新建任务选项中消失。
+8. 运行中任务平滑进入暂停中和已暂停，恢复后继续。
+9. 停止任务先进入停止中，再进入已停止。
+10. 定时任务只能修改名称和执行时间。
+11. 任务详情只显示配置摘要和外呼对象，不显示三套 Tab。
+12. 任务级和对象级按钮跳转统一通话记录并自动筛选。
+13. 通话记录列表直接显示 AI 结论、摘要和录音入口。
+14. AI Call 菜单中没有第一阶段数据看板。
 
 - [ ] **步骤 6：真实接口联调门禁**
 
@@ -1173,7 +1234,11 @@ npm start
 
 - 任务列表 HTTP 200；
 - 单号码校验最终 `PASSED`；
+- 模板下载返回可打开的 Excel，表头为“手机号、客户名称”；
+- 公共 OSS 上传返回字符串 `ossId`，批量校验接口仅接收该 `ossId` 和待校验外呼参数；
 - 批量校验出现一次真实 `FAILED` 和问题明细；
+- 删除规则后分页接口和新建任务选项均不再返回该规则；
+- 使用已删除规则的旧校验结果不能创建任务；
 - 任务创建返回 `taskId`，且重复幂等请求不创建第二个任务；
 - 暂停最终进入 `PAUSED`；
 - 恢复最终进入 `RUNNING` 或 `COMPLETED`；
