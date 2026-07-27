@@ -244,6 +244,7 @@ const AiCallRecordsPage = () => {
         title: '所属任务',
         dataIndex: 'taskId',
         valueType: 'select',
+        hideInTable: true,
         initialValue: presetTaskId,
         fieldProps: {
           allowClear: true,

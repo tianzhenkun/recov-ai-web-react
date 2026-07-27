@@ -59,6 +59,7 @@ jest.mock('@ant-design/pro-components', () => {
         render?: (value: unknown, row: unknown) => unknown;
         renderText?: (value: unknown, row: unknown) => unknown;
         dataIndex?: string;
+        hideInTable?: boolean;
       }>;
       const request = props.request as CallableFunction;
       const [rows, setRows] = React.useState([]);
@@ -88,12 +89,18 @@ jest.mock('@ant-design/pro-components', () => {
               ),
             ),
         ),
-        ...columns.map((column) =>
-          React.createElement(
-            'span',
-            { key: String(column.key || column.title) },
-            column.title,
-          ),
+        React.createElement(
+          'div',
+          { 'data-testid': 'table-columns' },
+          ...columns
+            .filter((column) => !column.hideInTable)
+            .map((column) =>
+              React.createElement(
+                'span',
+                { key: String(column.key || column.title) },
+                column.title,
+              ),
+            ),
         ),
         ...rows.map((row: unknown, index: number) =>
           React.createElement(
@@ -236,6 +243,10 @@ describe('AI Call 通话记录页面', () => {
     expect(detailButton.textContent).toBe('查看详情');
 
     const searchFields = screen.getByTestId('search-fields');
+    const tableColumns = screen.getByTestId('table-columns');
+    expect(
+      within(tableColumns).queryByText('所属任务', { exact: true }),
+    ).toBeNull();
     for (const text of [
       '通话时间',
       '客户信息',
