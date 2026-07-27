@@ -1,4 +1,5 @@
 import {
+  attachAiCallManagementMenu,
   attachSalesAgentOverviewMenu,
   buildLayoutMenuData,
   buildRuoyiMenuData,
@@ -149,6 +150,64 @@ describe('RuoYi menu transform', () => {
       }),
     ]);
     expect(menuData[0].redirect).toBeUndefined();
+  });
+
+  it('adds generic outbound management entries under an AI Call management menu', () => {
+    const source = [
+      {
+        path: '/ai-call',
+        name: 'AI Call',
+        children: [
+          {
+            path: '/agent-workbench',
+            name: '坐席工作台',
+          },
+          {
+            path: '/ai-call/agents',
+            name: '坐席管理',
+          },
+        ],
+      },
+    ];
+
+    const once = attachAiCallManagementMenu(source);
+    const twice = attachAiCallManagementMenu(once);
+
+    expect(once[0].children?.slice(0, 3)).toEqual([
+      expect.objectContaining({
+        path: '/ai-call/tasks',
+        name: '外呼任务',
+      }),
+      expect.objectContaining({
+        path: '/ai-call/records',
+        name: '通话记录',
+      }),
+      expect.objectContaining({
+        path: '/ai-call/rules',
+        name: '呼叫规则',
+      }),
+    ]);
+    expect(twice).toEqual(once);
+    expect(
+      twice[0].children?.filter((item) => item.path === '/ai-call/tasks'),
+    ).toHaveLength(1);
+  });
+
+  it('does not expose generic outbound entries without an AI Call management child', () => {
+    const menuData = attachAiCallManagementMenu([
+      {
+        path: '/ai-call',
+        name: 'AI Call',
+        children: [
+          {
+            path: '/ai-call-lab/customer',
+            name: '通话测试台',
+          },
+        ],
+      },
+    ]);
+
+    expect(menuData[0].children).toHaveLength(1);
   });
 
   it('does not append template example menus to business navigation', () => {

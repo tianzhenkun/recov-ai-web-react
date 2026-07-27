@@ -1,4 +1,10 @@
-import { BarChartOutlined, ExperimentOutlined } from '@ant-design/icons';
+import {
+  BarChartOutlined,
+  ExperimentOutlined,
+  FieldTimeOutlined,
+  HistoryOutlined,
+  PhoneOutlined,
+} from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
@@ -34,6 +40,14 @@ const salesOverviewPath = '/sales/dashboard';
 const salesOverviewTitle = '数据总览';
 const salesIcpModelingPath = '/sales/icp-modeling';
 const salesIcpModelingTitle = 'ICP 建模';
+const aiCallTasksPath = '/ai-call/tasks';
+const aiCallRecordsPath = '/ai-call/records';
+const aiCallRulesPath = '/ai-call/rules';
+const aiCallManagementPaths = new Set([
+  '/ai-call/agents',
+  '/ai-call/handoffs',
+  '/ai-call/follow-ups',
+]);
 
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
 let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
@@ -70,6 +84,34 @@ const salesAgentInjectedChildren: RuoyiMenuDataItem[] = [
   salesOverviewMenuItem,
   salesIcpModelingMenuItem,
 ];
+
+const aiCallInjectedChildren: RuoyiMenuDataItem[] = [
+  {
+    key: aiCallTasksPath,
+    path: aiCallTasksPath,
+    name: '外呼任务',
+    locale: false,
+    icon: <PhoneOutlined />,
+  },
+  {
+    key: aiCallRecordsPath,
+    path: aiCallRecordsPath,
+    name: '通话记录',
+    locale: false,
+    icon: <HistoryOutlined />,
+  },
+  {
+    key: aiCallRulesPath,
+    path: aiCallRulesPath,
+    name: '呼叫规则',
+    locale: false,
+    icon: <FieldTimeOutlined />,
+  },
+];
+
+const aiCallInjectedPaths = new Set(
+  aiCallInjectedChildren.map((item) => normalizePath(item.path)),
+);
 
 const isSalesAgentMenuItem = (item: MenuDataItem) => {
   const path = normalizePath(item.path);
@@ -118,6 +160,37 @@ export const attachSalesAgentOverviewMenu = (
     return {
       ...rest,
       children: nextChildren,
+    };
+  });
+
+export const attachAiCallManagementMenu = (
+  menuData: RuoyiMenuDataItem[],
+): RuoyiMenuDataItem[] =>
+  menuData.map((item) => {
+    const children = item.children
+      ? attachAiCallManagementMenu(item.children as RuoyiMenuDataItem[])
+      : [];
+    const isAiCallRoot =
+      normalizePath(item.path) === '/ai-call' ||
+      String(item.name || '')
+        .trim()
+        .toLowerCase() === 'ai call';
+    const hasManagementChild = children.some((child) =>
+      aiCallManagementPaths.has(normalizePath(child.path)),
+    );
+
+    if (!isAiCallRoot || !hasManagementChild) {
+      return children.length > 0 ? { ...item, children } : item;
+    }
+
+    return {
+      ...item,
+      children: [
+        ...aiCallInjectedChildren,
+        ...children.filter(
+          (child) => !aiCallInjectedPaths.has(normalizePath(child.path)),
+        ),
+      ],
     };
   });
 
@@ -212,7 +285,9 @@ export const buildLayoutMenuData = (
   ruoyiMenuData: RuoyiMenuDataItem[],
   _defaultMenuData: MenuDataItem[],
 ) => {
-  return attachSalesAgentOverviewMenu(ruoyiMenuData);
+  return attachAiCallManagementMenu(
+    attachSalesAgentOverviewMenu(ruoyiMenuData),
+  );
 };
 
 export const setCachedRuoyiMenuData = (menuData: RuoyiMenuDataItem[]) => {
@@ -371,8 +446,8 @@ export const loadRuoyiMenuData = async () => {
 
   cachedRuoyiMenuRequest = getRouters({ skipErrorHandler: true })
     .then((response) => {
-      const menuData = attachSalesAgentOverviewMenu(
-        buildRuoyiMenuData(response.data || []),
+      const menuData = attachAiCallManagementMenu(
+        attachSalesAgentOverviewMenu(buildRuoyiMenuData(response.data || [])),
       );
       setCachedRuoyiMenuData(menuData);
       return menuData;
