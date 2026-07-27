@@ -121,24 +121,26 @@ V1 不提供删除规则。
 
 ### 2.4 统一响应
 
-页面 service 只接受以下两种外壳：
+接口响应与现有若依及催收接口保持一致，只接受以下两种外壳：
 
 ```ts
-type ApiEnvelope<T> = {
-  code?: number;
+type ApiResponse<T> = {
+  code: number;
   msg?: string;
   data?: T;
-  rows?: T[];
-  total?: number;
 };
 
-type PageResult<T> = {
+type TableDataInfo<T> = {
+  code: number;
+  msg?: string;
   rows: T[];
   total: number;
 };
 ```
 
-任务级系统失败统一返回或保存 `errorMessage`。所有 ID 使用字符串。
+普通详情、创建和状态操作返回 `ApiResponse<T>`；分页查询返回 `TableDataInfo<T>`，分页结果不能嵌套进 `data`。`code === 200` 表示成功，其他状态码由现有若依错误处理流程统一抛错。页面 service 对外再把分页响应归一化为 `{ rows, total }`，但不能兼容没有 `code` 的裸对象、裸数组或 `data.rows` 结构。
+
+Blob 下载成功时直接返回文件流，失败时返回 `{ code, msg }` JSON。任务级系统失败统一返回或保存 `errorMessage`。所有 ID 使用字符串。
 
 ## 3. 核心类型
 
@@ -340,25 +342,54 @@ git commit -m "feat: 定义通用外呼任务契约"
 至少覆盖：
 
 ```ts
+mockedRuoyiRequest.mockResolvedValueOnce({
+  code: 200,
+  rows: [runningTask],
+  total: 1,
+});
+
 await listAiCallTasks({ pageNum: 1, pageSize: 20, status: 'RUNNING' });
-expect(request).toHaveBeenCalledWith(
-  '/ai-call-agent-api/ai-call/outbound-tasks',
+expect(mockedRuoyiRequest).toHaveBeenCalledWith(
+  '/ai-call/outbound-tasks',
   {
+    baseApi: '/ai-call-agent-api',
     method: 'get',
     params: { pageNum: 1, pageSize: 20, status: 'RUNNING' },
   },
 );
 
+mockedRuoyiRequest.mockResolvedValueOnce({
+  code: 200,
+  data: { taskId: 'task-1', accepted: true },
+});
+
 await createAiCallTask(payload, 'validation-1', 'idem-1');
-expect(request).toHaveBeenCalledWith(
-  '/ai-call-agent-api/ai-call/outbound-tasks',
+expect(mockedRuoyiRequest).toHaveBeenCalledWith(
+  '/ai-call/outbound-tasks',
   expect.objectContaining({
+    baseApi: '/ai-call-agent-api',
     method: 'post',
     headers: { 'Idempotency-Key': 'idem-1' },
     data: { ...payload, validationId: 'validation-1' },
   }),
 );
+
+mockedRuoyiRequest.mockResolvedValueOnce({
+  rows: [runningTask],
+  total: 1,
+});
+await expect(listAiCallTasks({ pageNum: 1, pageSize: 20 })).rejects.toThrow(
+  '接口响应缺少 code',
+);
 ```
+
+响应契约测试还必须覆盖：
+
+- `{ code: 200, data }` 能正确解包普通数据；
+- `{ code: 200, rows, total }` 能归一化为页面使用的 `{ rows, total }`；
+- 缺少 `code` 的裸对象、裸数组和 `{ data: { rows, total } }` 均被拒绝；
+- 非 `200` 响应由 `ruoyiRequest` 抛出 `RuoyiError`，service 不吞掉错误；
+- Mock 接口不得返回裸数据。
 
 批量上传测试必须断言 `FormData` 同时包含 `file` 和序列化后的 `request`。
 
@@ -372,13 +403,42 @@ npx jest src/pages/aiCallTasks/service.test.ts --runInBand
 
 - [ ] **步骤 3：实现 response 解包和任务请求**
 
-统一前缀：
+统一使用现有若依请求适配器，通过 `baseApi` 指向独立 AI Call 代理：
 
 ```ts
-const OUTBOUND_PREFIX = '/ai-call-agent-api/ai-call';
+import { ruoyiRequest } from '@/adapters/ruoyi/request';
+import type { RuoyiResponse } from '@/adapters/ruoyi/response';
+
+const AI_CALL_AGENT_BASE_API = '/ai-call-agent-api';
+const OUTBOUND_PREFIX = '/ai-call';
 const TASKS_PATH = `${OUTBOUND_PREFIX}/outbound-tasks`;
 const VALIDATIONS_PATH = `${OUTBOUND_PREFIX}/outbound-validations`;
+
+const requireEnvelope = <T>(response: RuoyiResponse<T> | T) => {
+  if (!response || typeof response !== 'object' || !('code' in response)) {
+    throw new Error('接口响应缺少 code');
+  }
+  return response as RuoyiResponse<T>;
+};
+
+const unwrapData = <T>(response: RuoyiResponse<T> | T): T => {
+  const envelope = requireEnvelope(response);
+  if (envelope.data === undefined) {
+    throw new Error('接口响应缺少 data');
+  }
+  return envelope.data;
+};
+
+const unwrapPage = <T>(response: RuoyiResponse<T> | T) => {
+  const envelope = requireEnvelope(response);
+  if (!Array.isArray(envelope.rows) || typeof envelope.total !== 'number') {
+    throw new Error('分页响应缺少 rows 或 total');
+  }
+  return { rows: envelope.rows, total: envelope.total };
+};
 ```
+
+每个 `ruoyiRequest` 调用都传入 `baseApi: AI_CALL_AGENT_BASE_API`。普通接口使用 `unwrapData`，分页接口使用 `unwrapPage`；不能复制 `aiCallRecords/service.ts` 中兼容裸响应和 `data.rows` 的历史逻辑。
 
 实现：
 
@@ -414,7 +474,7 @@ Mock 初始数据必须覆盖：
 - 暂停 `RUNNING → PAUSING → PAUSED`；
 - 停止 `RUNNING → STOPPING → STOPPED`。
 
-Mock 只在 Umi Mock 模式加载，生产构建不得导入它。
+Mock 的普通响应固定使用 `{ code: 200, msg, data }`，分页响应固定使用 `{ code: 200, msg, rows, total }`。Mock 只在 Umi Mock 模式加载，生产构建不得导入它。
 
 - [ ] **步骤 5：运行 service 测试**
 
