@@ -50,8 +50,8 @@ type AgentFormValues = {
   sceneCodes: SceneCode[];
 };
 
-const getRuntimeStatus = (row: AdminAgentDto) =>
-  row.runtime_status || row.presence?.status || 'offline';
+const getRuntimeStatus = (row?: AdminAgentDto) =>
+  row?.runtime_status || row?.presence?.status || 'offline';
 
 const AgentAdminPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);

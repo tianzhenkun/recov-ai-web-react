@@ -1,9 +1,32 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { render } from '@testing-library/react';
+import * as React from 'react';
+import AgentAdminPage from './index';
+
+type ContainerProps = {
+  children?: unknown;
+};
+
+jest.mock('@ant-design/pro-components', () => {
+  const ReactModule = jest.requireActual('react');
+  const Container = ({ children }: ContainerProps) =>
+    ReactModule.createElement('div', null, children as never);
+
+  return {
+    PageContainer: Container,
+    ProCard: Container,
+    ProTable: () => null,
+  };
+});
 
 const sourcePath = path.join(__dirname, 'index.tsx');
 
 describe('agent administration page', () => {
+  it('renders safely before a detail record is selected', () => {
+    expect(() => render(<AgentAdminPage />)).not.toThrow();
+  });
+
   it('contains the required metrics, filters, columns and guarded actions', () => {
     const source = fs.readFileSync(sourcePath, 'utf8');
     for (const text of [
