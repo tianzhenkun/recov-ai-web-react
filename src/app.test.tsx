@@ -187,6 +187,11 @@ describe('getInitialState dynamic tenant restore', () => {
     mockCallOrder.length = 0;
     jest.clearAllMocks();
     mockFloatingProcessPanelProps.length = 0;
+    mockHistory.location = {
+      hash: '',
+      pathname: '/sys/settle',
+      search: '',
+    };
 
     mockGetStoredDynamicTenantId.mockReturnValue('277201');
     mockGetInfo.mockImplementation(async () => {
@@ -240,6 +245,27 @@ describe('getInitialState dynamic tenant restore', () => {
 
     expect(initialState.dynamicTenantId).toBeUndefined();
     expect(mockClearStoredDynamicTenantId).not.toHaveBeenCalled();
+  });
+
+  it('does not wrap an existing login redirect when getInfo already redirected', async () => {
+    mockHistory.location = {
+      hash: '',
+      pathname: '/ai-call/tasks',
+      search: '',
+    };
+    mockGetInfo.mockImplementationOnce(async () => {
+      mockHistory.location = {
+        hash: '',
+        pathname: '/user/login',
+        search: '?redirect=%2Fai-call%2Ftasks',
+      };
+      throw new Error('会话已过期');
+    });
+    const { getInitialState } = require('./app');
+
+    await getInitialState();
+
+    expect(mockHistory.replace).not.toHaveBeenCalled();
   });
 });
 

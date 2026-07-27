@@ -534,9 +534,11 @@ export async function getInitialState(): Promise<{
       return toCurrentUser(response.data);
     } catch (_error) {
       const { pathname, search, hash } = history.location;
-      history.replace(
-        `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
-      );
+      if (pathname !== loginPath) {
+        history.replace(
+          `${loginPath}?redirect=${encodeURIComponent(pathname + search + hash)}`,
+        );
+      }
     }
     return undefined;
   };
