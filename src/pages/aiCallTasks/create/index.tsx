@@ -1,3 +1,371 @@
-const CreateAiCallTaskPage = () => null;
+import { history } from '@umijs/max';
+import {
+  Button,
+  DatePicker,
+  Form,
+  Input,
+  message,
+  Radio,
+  Select,
+  Space,
+} from 'antd';
+import type { Dayjs } from 'dayjs';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { AiCallRule } from '@/pages/aiCallRules/domain';
+import { listAiCallRules } from '@/pages/aiCallRules/service';
+import {
+  RecovListPage,
+  RecovListStack,
+  RecovTableCard,
+} from '@/pages/recov/components/RecovListLayout';
+import {
+  type AiCallLabPromptProfile,
+  type AiCallLabVoiceProfile,
+  getAiCallLabPromptProfiles,
+  getAiCallLabVoiceProfiles,
+} from '@/services/ruoyi/ai-call-lab';
+import type { ExecutionMode } from '../domain';
+import {
+  createAiCallTask,
+  type SingleTargetValidationRequest,
+  type ValidationResult,
+  validateSingleTarget,
+} from '../service';
+import TaskConfirmation from './TaskConfirmation';
+import { validateExecutionPlan } from './validation';
+
+type TaskFormValues = {
+  taskName: string;
+  taskMode: 'single';
+  phoneNumber: string;
+  customerName?: string;
+  promptKey: string;
+  voice: string;
+  ruleId: string;
+  executionMode: ExecutionMode;
+  scheduledAt?: Dayjs;
+};
+
+type ValidatedTask = {
+  request: SingleTargetValidationRequest;
+  validation: ValidationResult;
+  values: TaskFormValues;
+  prompt: AiCallLabPromptProfile;
+  voice: AiCallLabVoiceProfile;
+  rule: AiCallRule;
+};
+
+const createIdempotencyKey = () =>
+  globalThis.crypto?.randomUUID?.() ||
+  `ai-call-task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const formatRuleSummary = (rule: AiCallRule) => {
+  const windows = rule.callWindows
+    .map((window) => `${window.startTime}–${window.endTime}`)
+    .join('、');
+  return `${windows}，最多重试 ${rule.retryCount} 次`;
+};
+
+const getPromptKey = (profile: AiCallLabPromptProfile) =>
+  String(profile.id ?? profile.sceneCode);
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : '操作失败，请稍后重试';
+
+const CreateAiCallTaskPage = () => {
+  const [form] = Form.useForm<TaskFormValues>();
+  const [messageApi, messageContextHolder] = message.useMessage();
+  const [promptProfiles, setPromptProfiles] = useState<
+    AiCallLabPromptProfile[]
+  >([]);
+  const [voiceProfiles, setVoiceProfiles] = useState<AiCallLabVoiceProfile[]>(
+    [],
+  );
+  const [rules, setRules] = useState<AiCallRule[]>([]);
+  const [loadingConfig, setLoadingConfig] = useState(true);
+  const [validating, setValidating] = useState(false);
+  const [validatedTask, setValidatedTask] = useState<ValidatedTask>();
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  const executionMode = Form.useWatch('executionMode', form);
+  const ruleId = Form.useWatch('ruleId', form);
+
+  useEffect(() => {
+    Promise.all([
+      getAiCallLabPromptProfiles(),
+      getAiCallLabVoiceProfiles(),
+      listAiCallRules({
+        pageNum: 1,
+        pageSize: 200,
+        enabled: true,
+      }),
+    ])
+      .then(([promptResult, voiceResult, ruleResult]) => {
+        setPromptProfiles(promptResult.rows);
+        setVoiceProfiles(voiceResult.rows);
+        setRules(ruleResult.rows);
+        form.setFieldsValue({
+          taskMode: 'single',
+          executionMode: 'immediate',
+          promptKey: promptResult.rows[0]
+            ? getPromptKey(promptResult.rows[0])
+            : undefined,
+          voice: voiceResult.rows[0]?.voice,
+          ruleId: ruleResult.rows[0]?.ruleId,
+        } as Partial<TaskFormValues>);
+      })
+      .catch((error: unknown) => {
+        messageApi.error(getErrorMessage(error));
+      })
+      .finally(() => {
+        setLoadingConfig(false);
+      });
+  }, [form, messageApi]);
+
+  const selectedRule = useMemo(
+    () => rules.find((rule) => rule.ruleId === ruleId),
+    [ruleId, rules],
+  );
+
+  const validateTask = async (values: TaskFormValues) => {
+    const prompt = promptProfiles.find(
+      (item) => getPromptKey(item) === values.promptKey,
+    );
+    const voice = voiceProfiles.find((item) => item.voice === values.voice);
+    const rule = rules.find((item) => item.ruleId === values.ruleId);
+    if (!prompt || !voice || !rule) {
+      messageApi.error('任务配置尚未加载完成');
+      return;
+    }
+
+    const scheduledAt = values.scheduledAt?.format('YYYY-MM-DD HH:mm:ss');
+    const executionError = validateExecutionPlan({
+      executionMode: values.executionMode,
+      scheduledAt,
+      rule,
+    });
+    if (executionError) {
+      messageApi.error(executionError);
+      return;
+    }
+
+    const request: SingleTargetValidationRequest = {
+      taskName: values.taskName.trim(),
+      taskMode: 'single',
+      phoneNumber: values.phoneNumber.trim(),
+      customerName: values.customerName?.trim() || undefined,
+      promptProfileId: prompt.id === undefined ? undefined : String(prompt.id),
+      sceneCode: prompt.sceneCode,
+      voice: voice.voice,
+      ruleId: rule.ruleId,
+      executionMode: values.executionMode,
+      scheduledAt,
+    };
+
+    setValidating(true);
+    try {
+      const validation = await validateSingleTarget(request);
+      if (validation.status !== 'PASSED') {
+        messageApi.error(validation.errorMessage || '任务校验未通过');
+        return;
+      }
+      setValidatedTask({ request, validation, values, prompt, voice, rule });
+    } catch (error) {
+      messageApi.error(getErrorMessage(error));
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const confirmCreate = async () => {
+    if (!validatedTask || creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
+    try {
+      const result = await createAiCallTask(
+        validatedTask.request,
+        validatedTask.validation.validationId,
+        createIdempotencyKey(),
+      );
+      history.push(`/ai-call/tasks/${result.taskId}`);
+    } catch (error) {
+      messageApi.error(getErrorMessage(error));
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
+    }
+  };
+
+  return (
+    <RecovListPage breadcrumbRender={false} title="新建外呼任务">
+      {messageContextHolder}
+      <RecovListStack>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="m-0 text-xl font-semibold">新建外呼任务</h2>
+          <Button onClick={() => history.push('/ai-call/tasks')}>
+            返回任务列表
+          </Button>
+        </div>
+
+        <RecovTableCard>
+          <Form<TaskFormValues>
+            form={form}
+            layout="vertical"
+            onFinish={validateTask}
+            onValuesChange={() => setValidatedTask(undefined)}
+          >
+            <Form.Item
+              label="任务名称"
+              name="taskName"
+              rules={[
+                { required: true, whitespace: true, message: '请输入任务名称' },
+              ]}
+            >
+              <Input maxLength={50} placeholder="请输入任务名称" />
+            </Form.Item>
+
+            <Form.Item label="外呼方式" name="taskMode">
+              <Radio.Group options={[{ label: '单号码', value: 'single' }]} />
+            </Form.Item>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Form.Item
+                label="手机号"
+                name="phoneNumber"
+                rules={[
+                  { required: true, message: '请输入手机号' },
+                  {
+                    pattern: /^1\d{10}$/,
+                    message: '请输入正确的 11 位手机号',
+                  },
+                ]}
+              >
+                <Input maxLength={11} placeholder="请输入手机号" />
+              </Form.Item>
+              <Form.Item label="客户名称" name="customerName">
+                <Input maxLength={50} placeholder="请输入客户名称（选填）" />
+              </Form.Item>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Form.Item
+                label="提示词"
+                name="promptKey"
+                rules={[{ required: true, message: '请选择提示词' }]}
+              >
+                <Select
+                  loading={loadingConfig}
+                  options={promptProfiles.map((profile) => ({
+                    value: getPromptKey(profile),
+                    label: `${profile.name} / ${profile.sceneCode}`,
+                  }))}
+                  placeholder="请选择提示词"
+                />
+              </Form.Item>
+              <Form.Item
+                label="音色"
+                name="voice"
+                rules={[{ required: true, message: '请选择音色' }]}
+              >
+                <Select
+                  loading={loadingConfig}
+                  options={voiceProfiles.map((voice) => ({
+                    value: voice.voice,
+                    label: voice.displayName
+                      ? `${voice.displayName} / ${voice.voice}`
+                      : voice.voice,
+                  }))}
+                  placeholder="请选择音色"
+                />
+              </Form.Item>
+            </div>
+
+            <Form.Item
+              label="呼叫规则"
+              name="ruleId"
+              rules={[{ required: true, message: '请选择呼叫规则' }]}
+            >
+              <Select
+                loading={loadingConfig}
+                options={rules.map((rule) => ({
+                  value: rule.ruleId,
+                  label: rule.ruleName,
+                }))}
+                placeholder="请选择呼叫规则"
+              />
+            </Form.Item>
+            {selectedRule ? (
+              <div className="-mt-4 mb-6 text-sm text-gray-500">
+                {formatRuleSummary(selectedRule)}
+              </div>
+            ) : null}
+
+            <Form.Item label="执行计划" name="executionMode">
+              <Radio.Group
+                options={[
+                  { label: '立即执行', value: 'immediate' },
+                  { label: '定时执行', value: 'scheduled' },
+                ]}
+              />
+            </Form.Item>
+            {executionMode === 'scheduled' ? (
+              <Form.Item
+                label="计划执行时间"
+                name="scheduledAt"
+                rules={[{ required: true, message: '请选择计划执行时间' }]}
+              >
+                <DatePicker
+                  className="w-full"
+                  format="YYYY-MM-DD HH:mm:ss"
+                  showTime
+                />
+              </Form.Item>
+            ) : null}
+
+            <div className="flex justify-end">
+              <Button htmlType="submit" loading={validating} type="primary">
+                校验任务
+              </Button>
+            </div>
+          </Form>
+        </RecovTableCard>
+
+        {validatedTask ? (
+          <>
+            <RecovTableCard>
+              <Space orientation="vertical" size={0}>
+                <strong>校验通过</strong>
+                <span className="text-gray-500">
+                  有效外呼对象 {validatedTask.validation.validTargetCount} 个
+                </span>
+              </Space>
+            </RecovTableCard>
+            <RecovTableCard>
+              <TaskConfirmation
+                creating={creating}
+                customerName={validatedTask.values.customerName}
+                executionTime={
+                  validatedTask.request.executionMode === 'immediate'
+                    ? '立即执行'
+                    : validatedTask.request.scheduledAt || '—'
+                }
+                phoneNumber={validatedTask.values.phoneNumber}
+                promptName={validatedTask.prompt.name}
+                ruleName={validatedTask.rule.ruleName}
+                ruleSummary={formatRuleSummary(validatedTask.rule)}
+                sceneCode={validatedTask.prompt.sceneCode}
+                taskName={validatedTask.values.taskName}
+                voiceName={
+                  validatedTask.voice.displayName || validatedTask.voice.voice
+                }
+                onConfirm={() => void confirmCreate()}
+              />
+            </RecovTableCard>
+          </>
+        ) : null}
+      </RecovListStack>
+    </RecovListPage>
+  );
+};
 
 export default CreateAiCallTaskPage;
