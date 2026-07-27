@@ -6,6 +6,7 @@ import {
   within,
 } from '@testing-library/react';
 import * as React from 'react';
+import { listAiCallTasks } from '@/pages/aiCallTasks/service';
 import AiCallRecordsPage from '.';
 import {
   getAiCallRecordDetail,
@@ -27,27 +28,15 @@ jest.mock('./service', () => ({
   listAiCallRecords: jest.fn(),
 }));
 
-jest.mock('@/components/TableActions', () => {
-  const React = require('react');
-  return {
-    __esModule: true,
-    default: (props: Record<string, unknown>) => {
-      const actions = props.actions as Array<Record<string, unknown>>;
-      return React.createElement(
-        React.Fragment,
-        null,
-        ...actions.map((action) =>
-          React.createElement('button', {
-            'aria-label': String(action.label),
-            key: String(action.key),
-            onClick: action.onClick,
-            type: 'button',
-          }),
-        ),
-      );
-    },
-  };
-});
+jest.mock('@/pages/aiCallTasks/service', () => ({
+  listAiCallTasks: jest.fn(),
+}));
+
+jest.mock('@umijs/max', () => ({
+  useSearchParams: () => [
+    new URLSearchParams('taskId=task-1&targetId=target-1'),
+  ],
+}));
 
 jest.mock('@ant-design/pro-components', () => {
   const React = require('react');
@@ -68,6 +57,8 @@ jest.mock('@ant-design/pro-components', () => {
         title?: unknown;
         valueType?: string;
         render?: (value: unknown, row: unknown) => unknown;
+        renderText?: (value: unknown, row: unknown) => unknown;
+        dataIndex?: string;
       }>;
       const request = props.request as CallableFunction;
       const [rows, setRows] = React.useState([]);
@@ -78,9 +69,6 @@ jest.mock('@ant-design/pro-components', () => {
           },
         );
       }, [request]);
-      const optionColumn = columns.find(
-        (column) => column.valueType === 'option',
-      );
       return React.createElement(
         'section',
         null,
@@ -88,7 +76,10 @@ jest.mock('@ant-design/pro-components', () => {
           'div',
           { 'data-testid': 'search-fields' },
           ...columns
-            .filter((column) => column.search !== false)
+            .filter(
+              (column) =>
+                column.search !== false && column.valueType !== 'option',
+            )
             .map((column) =>
               React.createElement(
                 'span',
@@ -108,7 +99,33 @@ jest.mock('@ant-design/pro-components', () => {
           React.createElement(
             'div',
             { key: index },
-            optionColumn?.render?.(undefined, row),
+            ...columns
+              .filter(
+                (column) =>
+                  column.search === false || column.valueType === 'option',
+              )
+              .map((column) =>
+                React.createElement(
+                  'div',
+                  { key: String(column.key || column.title) },
+                  column.render
+                    ? column.render(undefined, row)
+                    : column.renderText
+                      ? column.renderText(
+                          column.dataIndex
+                            ? (row as Record<string, unknown>)[column.dataIndex]
+                            : undefined,
+                          row,
+                        )
+                      : column.dataIndex
+                        ? String(
+                            (row as Record<string, unknown>)[
+                              column.dataIndex
+                            ] ?? '',
+                          )
+                        : null,
+                ),
+              ),
           ),
         ),
       );
@@ -119,6 +136,16 @@ jest.mock('@ant-design/pro-components', () => {
 const mockRecord = {
   id: '1',
   callId: 'call-1',
+  taskId: 'task-1',
+  targetId: 'target-1',
+  taskName: '新品回访',
+  customerName: '张三',
+  phoneNumber: '13800138000',
+  attemptNo: 2,
+  callResult: 'connected',
+  aiOutcome: '有兴趣',
+  summary: '客户希望明天下午再次联系，并进一步了解产品价格。',
+  recordingPlayUrl: 'https://example.com/call-1.mp3',
   entryType: 'web',
   sceneCode: 'intro_geo',
   status: 'completed',
@@ -135,8 +162,25 @@ describe('AI Call 通话记录页面', () => {
       rows: [mockRecord],
       total: 1,
     });
+    (listAiCallTasks as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          taskId: 'task-1',
+          taskName: '新品回访',
+        },
+      ],
+      total: 1,
+    });
     (getAiCallRecordDetail as jest.Mock).mockResolvedValue({
       record: mockRecord,
+      executionConfig: {
+        promptProfileId: 'prompt-1',
+        promptName: '新品回访提示词',
+        sceneCode: 'intro_geo',
+        voice: 'Cherry',
+        voiceName: '芊悦',
+        ruleName: '工作日规则',
+      },
     });
     (getAiCallRecordRecording as jest.Mock).mockResolvedValue(null);
     (getAiCallRecordDialogue as jest.Mock).mockResolvedValue({
@@ -154,19 +198,23 @@ describe('AI Call 通话记录页面', () => {
     });
   });
 
-  it('提供统一记录筛选、来源列和服务端分页', async () => {
+  it('提供业务筛选、复合列，并继承任务与外呼对象上下文', async () => {
     render(<AiCallRecordsPage />);
 
     for (const text of [
       '通话记录',
-      '通话 ID',
-      '业务类型',
-      '业务 ID',
+      '所属任务',
+      '手机号',
+      '客户名称',
       '通话来源',
-      '通话状态',
-      '开始时间',
-      '通话时长',
-      '结束结果',
+      '呼叫结果',
+      '通话时间范围',
+      '通话时间',
+      '客户信息',
+      '任务信息',
+      '呼叫情况',
+      'AI 分析',
+      '录音',
     ]) {
       expect(screen.getAllByText(text).length).toBeGreaterThan(0);
     }
@@ -174,8 +222,14 @@ describe('AI Call 通话记录页面', () => {
       expect(listAiCallRecords).toHaveBeenCalledWith({
         pageNum: 1,
         pageSize: 10,
+        taskId: 'task-1',
+        targetId: 'target-1',
       }),
     );
+    expect(await screen.findByText('张三')).toBeTruthy();
+    expect(screen.getAllByText('新品回访').length).toBeGreaterThan(0);
+    expect(screen.getByText('有兴趣')).toBeTruthy();
+    expect(screen.getByText(/客户希望明天下午再次联系/)).toBeTruthy();
     const detailButton = await screen.findByRole('button', {
       name: '查看详情',
     });
@@ -183,11 +237,12 @@ describe('AI Call 通话记录页面', () => {
 
     const searchFields = screen.getByTestId('search-fields');
     for (const text of [
-      '开始时间',
-      '业务场景',
-      '业务标识',
-      '通话时长',
-      '结束结果',
+      '通话时间',
+      '客户信息',
+      '任务信息',
+      '呼叫情况',
+      'AI 分析',
+      '录音',
     ]) {
       expect(
         within(searchFields).queryByText(text, { exact: true }),
@@ -228,6 +283,10 @@ describe('AI Call 通话记录页面', () => {
     expect(screen.getByText('我需要人工协助')).toBeTruthy();
     expect(screen.getByText(/无有效客户话术/)).toBeTruthy();
     expect(screen.getByText('human_service')).toBeTruthy();
+    expect(screen.getByText('执行配置')).toBeTruthy();
+    expect(screen.getByText('新品回访提示词')).toBeTruthy();
+    expect(screen.getByText(/芊悦/)).toBeTruthy();
+    expect(screen.getByText('工作日规则')).toBeTruthy();
     expect(screen.getByText(/技术事件/)).toBeTruthy();
   });
 });

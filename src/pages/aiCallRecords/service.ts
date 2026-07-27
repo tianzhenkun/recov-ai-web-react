@@ -11,6 +11,16 @@ type AiCallResponse<T> = {
 export type AiCallRecord = {
   id: string;
   callId: string;
+  taskId?: string | null;
+  targetId?: string | null;
+  taskName?: string | null;
+  customerName?: string | null;
+  phoneNumber?: string | null;
+  attemptNo?: number | null;
+  callResult?: string | null;
+  aiOutcome?: string | null;
+  summary?: string | null;
+  recordingPlayUrl?: string | null;
   businessType?: string | null;
   businessId?: string | null;
   sceneCode?: string | null;
@@ -41,6 +51,16 @@ export type AiCallRecordEvent = {
 export type AiCallRecordDetail = {
   record: AiCallRecord;
   lastEvent?: AiCallRecordEvent | null;
+  executionConfig?: {
+    promptProfileId?: string | null;
+    promptName?: string | null;
+    sceneCode?: string | null;
+    promptText?: string | null;
+    openingMessage?: string | null;
+    voice?: string | null;
+    voiceName?: string | null;
+    ruleName?: string | null;
+  } | null;
 };
 
 export type AiCallRecordingTrack = {
@@ -111,6 +131,11 @@ export type AiCallRecordPage<T> = {
 
 export type AiCallRecordQuery = {
   callId?: string;
+  taskId?: string;
+  targetId?: string;
+  phoneNumber?: string;
+  customerName?: string;
+  callResult?: string;
   businessType?: string;
   businessId?: string;
   status?: string;

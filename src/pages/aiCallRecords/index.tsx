@@ -4,6 +4,7 @@ import {
   type ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
+import { useSearchParams } from '@umijs/max';
 import {
   Alert,
   Button,
@@ -18,7 +19,8 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import * as React from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { listAiCallTasks } from '@/pages/aiCallTasks/service';
 import {
   type AiCallDialogueSegment,
   type AiCallHandoff,
@@ -54,14 +56,20 @@ const statusLabels: Record<string, string> = {
   failed: '失败',
 };
 
-const statusColors: Record<string, string> = {
-  created: 'default',
-  starting: 'processing',
-  running: 'processing',
-  active: 'processing',
-  ending: 'warning',
-  completed: 'success',
-  failed: 'error',
+const callResultLabels: Record<string, string> = {
+  connected: '已接通',
+  no_answer: '无人接听',
+  busy: '占线',
+  call_failed: '呼叫失败',
+  invalid_number: '号码无效',
+};
+
+const callResultColors: Record<string, string> = {
+  connected: 'success',
+  no_answer: 'default',
+  busy: 'warning',
+  call_failed: 'error',
+  invalid_number: 'error',
 };
 
 const analysisStatusLabels: Record<string, string> = {
@@ -115,6 +123,12 @@ type DetailErrors = Partial<
 
 const AiCallRecordsPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);
+  const [searchParams] = useSearchParams();
+  const presetTaskId = searchParams.get('taskId') || undefined;
+  const presetTargetId = searchParams.get('targetId') || undefined;
+  const [taskOptions, setTaskOptions] = useState<
+    Array<{ label: string; value: string }>
+  >(presetTaskId ? [{ label: presetTaskId, value: presetTaskId }] : []);
   const [selectedCallId, setSelectedCallId] = useState<string>();
   const [detail, setDetail] = useState<AiCallRecordDetail>();
   const [recording, setRecording] = useState<AiCallRecording | null>();
@@ -124,6 +138,38 @@ const AiCallRecordsPage = () => {
   const [events, setEvents] = useState<AiCallRecordEvent[]>([]);
   const [detailErrors, setDetailErrors] = useState<DetailErrors>({});
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const loadTaskOptions = useCallback(
+    async (taskName?: string) => {
+      try {
+        const page = await listAiCallTasks({
+          pageNum: 1,
+          pageSize: 20,
+          ...(taskName ? { taskName } : {}),
+        });
+        setTaskOptions((current) => {
+          const next = page.rows.map((task) => ({
+            label: task.taskName,
+            value: task.taskId,
+          }));
+          const currentPreset = current.find(
+            (option) => option.value === presetTaskId,
+          );
+          return currentPreset &&
+            !next.some((option) => option.value === currentPreset.value)
+            ? [currentPreset, ...next]
+            : next;
+        });
+      } catch {
+        // 任务筛选加载失败不阻塞通话记录主列表。
+      }
+    },
+    [presetTaskId],
+  );
+
+  useEffect(() => {
+    void loadTaskOptions();
+  }, [loadTaskOptions]);
 
   const closeDetail = () => {
     setSelectedCallId(undefined);
@@ -195,18 +241,27 @@ const AiCallRecordsPage = () => {
   const columns = useMemo<ProColumns<AiCallRecord>[]>(
     () => [
       {
-        title: '通话 ID',
-        dataIndex: 'callId',
+        title: '所属任务',
+        dataIndex: 'taskId',
+        valueType: 'select',
+        initialValue: presetTaskId,
+        fieldProps: {
+          allowClear: true,
+          filterOption: false,
+          options: taskOptions,
+          placeholder: '搜索任务名称',
+          showSearch: true,
+          onSearch: (value: string) => void loadTaskOptions(value.trim()),
+        },
+      },
+      {
+        title: '手机号',
+        dataIndex: 'phoneNumber',
         hideInTable: true,
       },
       {
-        title: '业务类型',
-        dataIndex: 'businessType',
-        hideInTable: true,
-      },
-      {
-        title: '业务 ID',
-        dataIndex: 'businessId',
+        title: '客户名称',
+        dataIndex: 'customerName',
         hideInTable: true,
       },
       {
@@ -218,77 +273,124 @@ const AiCallRecordsPage = () => {
           sip_outbound: { text: entryTypeLabels.sip_outbound },
           sip_inbound: { text: entryTypeLabels.sip_inbound },
         },
-        render: (_, row) => (
-          <Tag color={row.entryType === 'web' ? 'blue' : 'purple'}>
-            {entryTypeLabels[row.entryType] || row.entryType}
-          </Tag>
-        ),
+        hideInTable: true,
       },
       {
-        title: '通话状态',
-        dataIndex: 'status',
+        title: '呼叫结果',
+        dataIndex: 'callResult',
         valueType: 'select',
         valueEnum: Object.fromEntries(
-          Object.entries(statusLabels).map(([value, text]) => [
+          Object.entries(callResultLabels).map(([value, text]) => [
             value,
             { text },
           ]),
         ),
-        render: (_, row) => (
-          <Tag color={statusColors[row.status] || 'default'}>
-            {statusLabels[row.status] || row.status}
-          </Tag>
-        ),
+        hideInTable: true,
       },
       {
-        title: '开始时间范围',
+        title: '通话时间范围',
         dataIndex: 'startedAtRange',
         valueType: 'dateTimeRange',
         hideInTable: true,
       },
       {
-        title: '开始时间',
+        title: '通话时间',
         dataIndex: 'startedAt',
         search: false,
         width: 176,
-        renderText: (value) => formatDateTime(value),
-      },
-      {
-        title: '业务场景',
-        dataIndex: 'sceneCode',
-        search: false,
-        renderText: (value) => value || '-',
-      },
-      {
-        title: '业务标识',
-        key: 'business',
-        search: false,
         render: (_, row) => (
-          <div>
-            <div>{row.businessId || '-'}</div>
-            {row.businessType ? (
-              <Text type="secondary">{row.businessType}</Text>
+          <Flex vertical gap={2}>
+            <Text>{formatDateTime(row.startedAt)}</Text>
+            <Text type="secondary">{formatDuration(row.durationMs)}</Text>
+          </Flex>
+        ),
+      },
+      {
+        title: '客户信息',
+        key: 'customer',
+        search: false,
+        width: 160,
+        render: (_, row) => (
+          <Flex vertical gap={2}>
+            <Text>{row.customerName || '-'}</Text>
+            <Text type="secondary">{row.phoneNumber || '-'}</Text>
+          </Flex>
+        ),
+      },
+      {
+        title: '任务信息',
+        key: 'task',
+        search: false,
+        width: 180,
+        render: (_, row) => (
+          <Flex vertical gap={2}>
+            <Text>{row.taskName || '-'}</Text>
+            <Text type="secondary">{row.taskId || '-'}</Text>
+          </Flex>
+        ),
+      },
+      {
+        title: '呼叫情况',
+        key: 'call',
+        search: false,
+        width: 160,
+        render: (_, row) => (
+          <Flex vertical gap={4}>
+            <Tag color={callResultColors[row.callResult || ''] || 'default'}>
+              {row.callResult
+                ? callResultLabels[row.callResult] || row.callResult
+                : statusLabels[row.status] || row.status}
+            </Tag>
+            <Text type="secondary">
+              {entryTypeLabels[row.entryType] || row.entryType}
+              {row.attemptNo ? ` · 第 ${row.attemptNo} 次` : ''}
+            </Text>
+          </Flex>
+        ),
+      },
+      {
+        title: 'AI 分析',
+        key: 'analysis',
+        search: false,
+        width: 240,
+        render: (_, row) => (
+          <Flex vertical gap={2}>
+            <Text>{row.aiOutcome || '—'}</Text>
+            {row.summary ? (
+              <Text
+                type="secondary"
+                style={{
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: 2,
+                  overflow: 'hidden',
+                }}
+              >
+                {row.summary}
+              </Text>
             ) : null}
-          </div>
+          </Flex>
         ),
       },
       {
-        title: '通话时长',
-        dataIndex: 'durationMs',
+        title: '录音',
+        key: 'recording',
         search: false,
-        width: 110,
-        renderText: (value) => formatDuration(value),
-      },
-      {
-        title: '结束结果',
-        key: 'result',
-        search: false,
-        ellipsis: true,
-        render: (_, row) => (
-          <Text type={row.status === 'failed' ? 'danger' : undefined}>
-            {describeError(row)}
-          </Text>
-        ),
+        width: 220,
+        render: (_, row) =>
+          row.recordingPlayUrl ? (
+            <audio
+              aria-label={`播放 ${row.callId} 录音`}
+              controls
+              preload="none"
+              src={row.recordingPlayUrl}
+              style={{ width: 200 }}
+            >
+              <track kind="captions" />
+            </audio>
+          ) : (
+            <Text type="secondary">—</Text>
+          ),
       },
       {
         title: '操作',
@@ -307,13 +409,15 @@ const AiCallRecordsPage = () => {
         ),
       },
     ],
-    [],
+    [loadTaskOptions, presetTaskId, taskOptions],
   );
 
   const record = detail?.record;
   const recordingUrl =
+    record?.recordingPlayUrl ||
     recording?.playUrl ||
     recording?.tracks?.find((track) => track.playUrl)?.playUrl;
+  const executionConfig = detail?.executionConfig;
   const analysisItems = Object.entries(analysis?.analysisResult || {}).map(
     ([key, value]) => ({
       key,
@@ -343,6 +447,8 @@ const AiCallRecordsPage = () => {
             : undefined;
           const page = await listAiCallRecords({
             ...filters,
+            taskId: (filters.taskId as string | undefined) || presetTaskId,
+            targetId: presetTargetId,
             pageNum: current,
             pageSize,
             ...(range?.[0]
@@ -432,6 +538,47 @@ const AiCallRecordsPage = () => {
                   },
                 ]}
               />
+            </section>
+
+            <section>
+              <Title level={5}>执行配置</Title>
+              {executionConfig ? (
+                <Descriptions
+                  column={2}
+                  items={[
+                    {
+                      key: 'promptName',
+                      label: '提示词',
+                      children: executionConfig.promptName || '-',
+                    },
+                    {
+                      key: 'sceneCode',
+                      label: '业务场景',
+                      children: executionConfig.sceneCode || '-',
+                    },
+                    {
+                      key: 'voice',
+                      label: '音色',
+                      children:
+                        executionConfig.voiceName && executionConfig.voice
+                          ? `${executionConfig.voiceName}（${executionConfig.voice}）`
+                          : executionConfig.voiceName ||
+                            executionConfig.voice ||
+                            '-',
+                    },
+                    {
+                      key: 'ruleName',
+                      label: '呼叫规则',
+                      children: executionConfig.ruleName || '-',
+                    },
+                  ]}
+                />
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="暂无执行配置快照"
+                />
+              )}
             </section>
 
             <section>

@@ -28,6 +28,8 @@ describe('AI Call 通话记录服务', () => {
     const result = await listAiCallRecords({
       pageNum: 1,
       pageSize: 10,
+      taskId: 'task-1',
+      targetId: 'target-1',
       entryType: 'web',
     });
 
@@ -35,7 +37,13 @@ describe('AI Call 通话记录服务', () => {
       '/ai-call-agent-api/ai-call/records',
       {
         method: 'get',
-        params: { pageNum: 1, pageSize: 10, entryType: 'web' },
+        params: {
+          pageNum: 1,
+          pageSize: 10,
+          taskId: 'task-1',
+          targetId: 'target-1',
+          entryType: 'web',
+        },
       },
     );
     expect(result).toEqual({
