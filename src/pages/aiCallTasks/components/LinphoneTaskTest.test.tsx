@@ -6,8 +6,10 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { Modal } from 'antd';
 import * as React from 'react';
 import {
+  endAiCallTaskActiveCall,
   getAiCallTaskTestCapability,
   getAiCallTaskTestStatus,
   listAiCallTaskTargets,
@@ -22,12 +24,14 @@ jest.mock('@umijs/max', () => ({
 }));
 
 jest.mock('../service', () => ({
+  endAiCallTaskActiveCall: jest.fn(),
   getAiCallTaskTestCapability: jest.fn(),
   getAiCallTaskTestStatus: jest.fn(),
   listAiCallTaskTargets: jest.fn(),
   runAiCallTaskTest: jest.fn(),
 }));
 
+const mockedEndActiveCall = endAiCallTaskActiveCall as jest.Mock;
 const mockedGetCapability = getAiCallTaskTestCapability as jest.Mock;
 const mockedGetStatus = getAiCallTaskTestStatus as jest.Mock;
 const mockedListTargets = listAiCallTaskTargets as jest.Mock;
@@ -107,6 +111,7 @@ const activeStatus = {
 describe('Linphone task test entry', () => {
   beforeEach(() => {
     mockPush.mockReset();
+    mockedEndActiveCall.mockReset();
     mockedGetCapability.mockReset();
     mockedGetStatus.mockReset();
     mockedListTargets.mockReset();
@@ -115,6 +120,7 @@ describe('Linphone task test entry', () => {
   });
 
   afterEach(() => {
+    Modal.destroyAll();
     cleanup();
     jest.useRealTimers();
     Object.defineProperty(document, 'visibilityState', {
@@ -280,6 +286,65 @@ describe('Linphone task test entry', () => {
     expect(mockPush).toHaveBeenCalledWith(
       '/ai-call/records?taskId=task-1&targetId=target-1',
     );
+  });
+
+  it('shows the end action only when the current status allows it', async () => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue({
+      ...activeStatus,
+      canEndActiveCall: false,
+    });
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    expect(await screen.findByText('AI 通话中')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '结束当前通话' })).toBeNull();
+  });
+
+  it('ends only the active call after explicit danger confirmation', async () => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue(activeStatus);
+    mockedEndActiveCall.mockResolvedValue({ accepted: true });
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '结束当前通话' }),
+    );
+    expect(
+      await screen.findByText(
+        '仅结束当前通话，不会停止整个外呼任务。通话结束后将按真实结果更新任务。',
+      ),
+    ).toBeTruthy();
+    const confirm = screen.getByRole('button', { name: '确认结束通话' });
+    expect(confirm.classList.contains('ant-btn-dangerous')).toBe(true);
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(mockedEndActiveCall).toHaveBeenCalledWith(
+        'task-1',
+        expect.stringMatching(/^linphone-end-call-1-/),
+      ),
+    );
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps the status panel and shows the backend end error verbatim', async () => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue(activeStatus);
+    mockedEndActiveCall.mockRejectedValue(new Error('当前通话已经结束'));
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: '结束当前通话' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: '确认结束通话' }),
+    );
+
+    expect(await screen.findByText('当前通话已经结束')).toBeTruthy();
+    expect(screen.getByText('AI 通话中')).toBeTruthy();
+    expect(screen.getByText('call-1')).toBeTruthy();
   });
 
   it('restores polling from activeCallId and pauses while hidden', async () => {

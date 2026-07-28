@@ -22,6 +22,7 @@ import type {
 } from '../domain';
 import { useVisiblePolling } from '../hooks/useVisiblePolling';
 import {
+  endAiCallTaskActiveCall,
   getAiCallTaskTestCapability,
   getAiCallTaskTestStatus,
   listAiCallTaskTargets,
@@ -67,6 +68,13 @@ const createCommandKey = (taskId: string) => {
   return `linphone-test-${taskId}-${suffix}`;
 };
 
+const createEndCommandKey = (callId: string) => {
+  const suffix =
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `linphone-end-${callId}-${suffix}`;
+};
+
 const buildRecordsUrl = (taskId: string, targetId: string) => {
   const search = new URLSearchParams({ taskId, targetId });
   return `/ai-call/records?${search.toString()}`;
@@ -85,6 +93,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
   const [testStatus, setTestStatus] = useState<AiCallTaskTestStatus>();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string>();
+  const [endError, setEndError] = useState<string>();
   const taskIdRef = useRef(task.taskId);
   const startingRef = useRef(false);
   const commandKeyRef = useRef<string | undefined>(undefined);
@@ -118,6 +127,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
     setCapability(null);
     setActiveCallId(undefined);
     setTestStatus(undefined);
+    setEndError(undefined);
     processedTerminalAttemptRef.current = undefined;
     commandKeyRef.current = undefined;
     void loadCapability();
@@ -196,6 +206,30 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
     }
   };
 
+  const confirmEndActiveCall = () => {
+    if (!testStatus?.canEndActiveCall) return;
+    setEndError(undefined);
+    Modal.confirm({
+      title: '结束当前通话',
+      content:
+        '仅结束当前通话，不会停止整个外呼任务。通话结束后将按真实结果更新任务。',
+      okText: '确认结束通话',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await endAiCallTaskActiveCall(
+            task.taskId,
+            createEndCommandKey(testStatus.callId),
+          );
+          await loadTestStatus();
+        } catch (error) {
+          setEndError(getErrorMessage(error));
+        }
+      },
+    });
+  };
+
   if (!capability?.enabled) return null;
 
   return (
@@ -253,7 +287,8 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
           {testStatus.errorMessage ? (
             <Alert showIcon title={testStatus.errorMessage} type="error" />
           ) : null}
-          <div>
+          {endError ? <Alert showIcon title={endError} type="error" /> : null}
+          <Space>
             <Button
               onClick={() =>
                 history.push(
@@ -263,7 +298,12 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
             >
               查看通话记录
             </Button>
-          </div>
+            {testStatus.canEndActiveCall ? (
+              <Button danger onClick={confirmEndActiveCall}>
+                结束当前通话
+              </Button>
+            ) : null}
+          </Space>
         </Space>
       ) : null}
 
