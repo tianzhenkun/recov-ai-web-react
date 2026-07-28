@@ -335,6 +335,7 @@ const AiCallTasksPage = () => {
       <Modal
         confirmLoading={savingSchedule}
         destroyOnHidden
+        forceRender
         okText="保存"
         open={scheduleTask !== undefined}
         title="修改定时任务"

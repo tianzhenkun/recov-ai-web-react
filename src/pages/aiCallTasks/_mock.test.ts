@@ -119,4 +119,93 @@ describe('AI Call task mock', () => {
       }),
     );
   });
+
+  it('creates pageable target rows for a validated batch task', () => {
+    const validationResponse = createResponse();
+    getHandler('POST /ai-call-agent-api/ai-call/outbound-validations/batch')(
+      {
+        body: {
+          ossId: 'oss-batch',
+          originalFilename: '外呼名单.xlsx',
+          request: {
+            taskName: '浏览器验收名单任务',
+            taskMode: 'batch',
+            promptProfileId: '1',
+            sceneCode: 'intro_geo',
+            voice: 'Tina',
+            ruleId: 'rule-workday',
+            executionMode: 'scheduled',
+            scheduledAt: '2026-07-28 10:00:00',
+          },
+        },
+        params: {},
+        query: {},
+      },
+      validationResponse,
+    );
+
+    const validationId = (
+      validationResponse.body as {
+        data: { validationId: string };
+      }
+    ).data.validationId;
+    const createResponseBody = createResponse();
+    getHandler('POST /ai-call-agent-api/ai-call/outbound-tasks')(
+      {
+        body: {
+          taskName: '浏览器验收名单任务',
+          taskMode: 'batch',
+          promptProfileId: '1',
+          sceneCode: 'intro_geo',
+          voice: 'Tina',
+          ruleId: 'rule-workday',
+          executionMode: 'scheduled',
+          scheduledAt: '2026-07-28 10:00:00',
+          validationId,
+        },
+        params: {},
+        query: {},
+      },
+      createResponseBody,
+    );
+
+    const taskId = (
+      createResponseBody.body as {
+        data: { taskId: string };
+      }
+    ).data.taskId;
+    const firstPageResponse = createResponse();
+    getHandler('GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/targets')(
+      {
+        body: {},
+        params: { taskId },
+        query: { pageNum: 1, pageSize: 10 },
+      },
+      firstPageResponse,
+    );
+    const secondPageResponse = createResponse();
+    getHandler('GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/targets')(
+      {
+        body: {},
+        params: { taskId },
+        query: { pageNum: 2, pageSize: 10 },
+      },
+      secondPageResponse,
+    );
+
+    expect(firstPageResponse.body).toEqual(
+      expect.objectContaining({
+        rows: expect.arrayContaining([
+          expect.objectContaining({
+            taskId,
+            phoneNumber: expect.stringMatching(/^1\d{10}$/),
+          }),
+        ]),
+        total: 18,
+      }),
+    );
+    expect((secondPageResponse.body as { rows: unknown[] }).rows).toHaveLength(
+      8,
+    );
+  });
 });

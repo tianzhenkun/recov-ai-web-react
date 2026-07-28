@@ -195,6 +195,20 @@ const getPageRange = (req: Request) => {
 const findTask = (taskId: string) =>
   tasks.find((item) => item.taskId === taskId);
 
+const createBatchTargets = (
+  taskId: string,
+  count: number,
+): AiCallTaskTarget[] =>
+  Array.from({ length: count }, (_item, index) => ({
+    targetId: `target-${taskId}-${index + 1}`,
+    taskId,
+    customerName: `名单客户${String(index + 1).padStart(2, '0')}`,
+    phoneNumber: `1990000${String(2001 + index).padStart(4, '0')}`,
+    status: 'PENDING',
+    attemptCount: 0,
+    updatedAt: now,
+  }));
+
 const getRouteParam = (req: Request, key: string): string => {
   const value = req.params[key];
   return Array.isArray(value) ? value[0] : String(value || '');
@@ -267,19 +281,21 @@ const createTask = (req: Request, res: Response) => {
   };
   tasks = [task, ...tasks];
   taskTargets[taskId] =
-    body.taskMode === 'single' && singleValidation
-      ? [
-          {
-            targetId: `target-${taskId}-1`,
-            taskId,
-            customerName: singleValidation.customerName,
-            phoneNumber: singleValidation.phoneNumber,
-            status: 'PENDING',
-            attemptCount: 0,
-            updatedAt: now,
-          },
-        ]
-      : [];
+    body.taskMode === 'single'
+      ? singleValidation
+        ? [
+            {
+              targetId: `target-${taskId}-1`,
+              taskId,
+              customerName: singleValidation.customerName,
+              phoneNumber: singleValidation.phoneNumber,
+              status: 'PENDING',
+              attemptCount: 0,
+              updatedAt: now,
+            },
+          ]
+        : []
+      : createBatchTargets(taskId, task.totalTargets);
   return success(res, { taskId, accepted: true }, '任务创建已受理');
 };
 
