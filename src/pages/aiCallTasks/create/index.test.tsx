@@ -177,14 +177,16 @@ describe('single target AI Call task creation', () => {
         value: 720,
       });
 
-      render(<AiCallTaskCreatePage />);
+      const { container } = render(<AiCallTaskCreatePage />);
       await screen.findAllByText('客户回访 / intro_follow_up');
       await screen.findByText('00:00–23:59，最多重试 1 次');
 
+      const pageStack = container.querySelector('.recov-list-stack');
       const actionButton = screen.getByRole('button', {
         name: '校验任务',
       });
       const actionArea = actionButton.parentElement;
+      expect(pageStack?.classList.contains('pb-20')).toBe(true);
       expect(actionArea?.classList.contains('sticky')).toBe(true);
       expect(actionArea?.classList.contains('bottom-10')).toBe(true);
       expect(actionArea?.classList.contains('pointer-events-none')).toBe(true);

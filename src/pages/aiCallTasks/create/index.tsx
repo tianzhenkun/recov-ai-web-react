@@ -354,7 +354,7 @@ const CreateAiCallTaskPage = () => {
   return (
     <RecovListPage breadcrumbRender={false} title="新建外呼任务">
       {messageContextHolder}
-      <RecovListStack>
+      <RecovListStack className="pb-20">
         <div className="flex items-center justify-between gap-4">
           <h2 className="m-0 text-xl font-semibold">新建外呼任务</h2>
           <Button onClick={() => history.push('/ai-call/tasks')}>
