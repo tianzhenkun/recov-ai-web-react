@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -6,16 +7,31 @@ import {
   waitFor,
 } from '@testing-library/react';
 import * as React from 'react';
-import { getAiCallTaskTestCapability, listAiCallTaskTargets } from '../service';
+import {
+  getAiCallTaskTestCapability,
+  getAiCallTaskTestStatus,
+  listAiCallTaskTargets,
+  runAiCallTaskTest,
+} from '../service';
 import LinphoneTaskTest from './LinphoneTaskTest';
+
+const mockPush = jest.fn();
+
+jest.mock('@umijs/max', () => ({
+  history: { push: (...args: unknown[]) => mockPush(...args) },
+}));
 
 jest.mock('../service', () => ({
   getAiCallTaskTestCapability: jest.fn(),
+  getAiCallTaskTestStatus: jest.fn(),
   listAiCallTaskTargets: jest.fn(),
+  runAiCallTaskTest: jest.fn(),
 }));
 
 const mockedGetCapability = getAiCallTaskTestCapability as jest.Mock;
+const mockedGetStatus = getAiCallTaskTestStatus as jest.Mock;
 const mockedListTargets = listAiCallTaskTargets as jest.Mock;
+const mockedRunTest = runAiCallTaskTest as jest.Mock;
 
 const scheduledTask = {
   taskId: 'task-1',
@@ -63,14 +79,49 @@ const singleTarget = {
   updatedAt: '2026-07-28 09:00:00',
 } as const;
 
+const activeCapability = {
+  enabled: true,
+  eligible: false,
+  reasons: ['当前任务已有测试通话'],
+  availableAgentCount: 1,
+  activeCallId: 'call-1',
+  canEndActiveCall: true,
+} as const;
+
+const activeStatus = {
+  taskId: 'task-1',
+  targetId: 'target-1',
+  attemptId: 'attempt-1',
+  callId: 'call-1',
+  targetStatus: 'IN_CALL',
+  attemptStatus: 'IN_CALL',
+  callStatus: 'connected',
+  handoffStatus: null,
+  phase: 'ai_call',
+  elapsedSeconds: 65,
+  endReason: null,
+  errorMessage: null,
+  canEndActiveCall: true,
+} as const;
+
 describe('Linphone task test entry', () => {
   beforeEach(() => {
+    mockPush.mockReset();
     mockedGetCapability.mockReset();
+    mockedGetStatus.mockReset();
     mockedListTargets.mockReset();
+    mockedRunTest.mockReset();
     mockedListTargets.mockResolvedValue({ rows: [singleTarget], total: 1 });
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    jest.useRealTimers();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+  });
 
   it('hides the entry when the backend capability is disabled', async () => {
     mockedGetCapability.mockResolvedValue({
@@ -141,5 +192,155 @@ describe('Linphone task test entry', () => {
     const handoff = await screen.findByLabelText('AI 转人工通话');
     expect(handoff.hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('暂无可用坐席，请先到坐席工作台上线')).toBeTruthy();
+  });
+
+  it('starts once with one idempotency key and loads status immediately', async () => {
+    let resolveRun:
+      | ((value: {
+          accepted: true;
+          taskId: string;
+          attemptId: string;
+          callId: string;
+        }) => void)
+      | undefined;
+    mockedGetCapability.mockResolvedValue(eligibleCapability);
+    mockedRunTest.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRun = resolve;
+        }),
+    );
+    mockedGetStatus.mockResolvedValue({
+      ...activeStatus,
+      phase: 'dialing',
+    });
+
+    render(<LinphoneTaskTest task={scheduledTask} onTaskChanged={jest.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '测试拨打' }));
+    await screen.findByText('张先生');
+    const confirm = screen.getByRole('button', { name: '确认拨打' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(mockedRunTest).toHaveBeenCalledTimes(1));
+    expect(mockedRunTest).toHaveBeenCalledWith(
+      'task-1',
+      'ai_only',
+      expect.stringMatching(/^linphone-test-task-1-/),
+    );
+
+    await act(async () => {
+      resolveRun?.({
+        accepted: true,
+        taskId: 'task-1',
+        attemptId: 'attempt-1',
+        callId: 'call-1',
+      });
+    });
+
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledWith('task-1'));
+  });
+
+  it.each([
+    ['dialing', '正在拨号'],
+    ['ai_call', 'AI 通话中'],
+    ['waiting_handoff', '等待坐席接单'],
+    ['human_call', '人工通话中'],
+    ['completed', '通话已完成'],
+    ['failed', '测试失败'],
+  ] as const)('renders %s as %s', async (phase, text) => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue({
+      ...activeStatus,
+      phase,
+      errorMessage: phase === 'failed' ? 'Linphone 未注册' : null,
+    });
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    expect(await screen.findByText(text)).toBeTruthy();
+    if (phase === 'failed') {
+      expect(screen.getByText('Linphone 未注册')).toBeTruthy();
+    }
+  });
+
+  it('shows call details and opens the filtered record page', async () => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue(activeStatus);
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    expect(await screen.findByText('AI 通话中')).toBeTruthy();
+    expect(screen.getByText('call-1')).toBeTruthy();
+    expect(screen.getByText('01:05')).toBeTruthy();
+    expect(screen.getByText('未触发')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看通话记录' }));
+    expect(mockPush).toHaveBeenCalledWith(
+      '/ai-call/records?taskId=task-1&targetId=target-1',
+    );
+  });
+
+  it('restores polling from activeCallId and pauses while hidden', async () => {
+    jest.useFakeTimers();
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue(activeStatus);
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(1));
+    act(() => {
+      jest.advanceTimersByTime(999);
+    });
+    expect(mockedGetStatus).toHaveBeenCalledTimes(1);
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(2));
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(3_000);
+    });
+    expect(mockedGetStatus).toHaveBeenCalledTimes(2);
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledTimes(3));
+  });
+
+  it('refreshes task and capability only once for one terminal attempt', async () => {
+    const onTaskChanged = jest.fn().mockResolvedValue(undefined);
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue({
+      ...activeStatus,
+      phase: 'completed',
+      attemptStatus: 'COMPLETED',
+      targetStatus: 'COMPLETED',
+      canEndActiveCall: false,
+    });
+
+    const view = render(
+      <LinphoneTaskTest task={runningTask} onTaskChanged={onTaskChanged} />,
+    );
+
+    await waitFor(() => expect(onTaskChanged).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockedGetCapability).toHaveBeenCalledTimes(2));
+    view.rerender(
+      <LinphoneTaskTest task={runningTask} onTaskChanged={onTaskChanged} />,
+    );
+    await act(async () => Promise.resolve());
+
+    expect(onTaskChanged).toHaveBeenCalledTimes(1);
+    expect(mockedGetCapability).toHaveBeenCalledTimes(2);
   });
 });

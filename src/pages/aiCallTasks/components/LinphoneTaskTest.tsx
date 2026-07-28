@@ -1,4 +1,5 @@
 import { PhoneOutlined } from '@ant-design/icons';
+import { history } from '@umijs/max';
 import {
   Alert,
   Button,
@@ -10,14 +11,22 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AiCallTask,
   AiCallTaskTarget,
   AiCallTaskTestCapability,
+  AiCallTaskTestStatus,
+  LinphoneTestPhase,
   LinphoneTestScenario,
 } from '../domain';
-import { getAiCallTaskTestCapability, listAiCallTaskTargets } from '../service';
+import { useVisiblePolling } from '../hooks/useVisiblePolling';
+import {
+  getAiCallTaskTestCapability,
+  getAiCallTaskTestStatus,
+  listAiCallTaskTargets,
+  runAiCallTaskTest,
+} from '../service';
 
 const { Text } = Typography;
 
@@ -32,7 +41,38 @@ const maskPhone = (value: string) =>
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : '外呼对象加载失败';
 
-const LinphoneTaskTest = ({ task }: LinphoneTaskTestProps) => {
+const phaseText: Record<LinphoneTestPhase, string> = {
+  dialing: '正在拨号',
+  ai_call: 'AI 通话中',
+  waiting_handoff: '等待坐席接单',
+  human_call: '人工通话中',
+  completed: '通话已完成',
+  failed: '测试失败',
+};
+
+const isTerminalStatus = (status?: AiCallTaskTestStatus) =>
+  status?.phase === 'completed' || status?.phase === 'failed';
+
+const formatDuration = (seconds: number) => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const rest = safeSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+};
+
+const createCommandKey = (taskId: string) => {
+  const suffix =
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `linphone-test-${taskId}-${suffix}`;
+};
+
+const buildRecordsUrl = (taskId: string, targetId: string) => {
+  const search = new URLSearchParams({ taskId, targetId });
+  return `/ai-call/records?${search.toString()}`;
+};
+
+const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
   const [capability, setCapability] = useState<AiCallTaskTestCapability | null>(
     null,
   );
@@ -41,21 +81,65 @@ const LinphoneTaskTest = ({ task }: LinphoneTaskTestProps) => {
   const [target, setTarget] = useState<AiCallTaskTarget>();
   const [targetLoading, setTargetLoading] = useState(false);
   const [targetError, setTargetError] = useState<string>();
+  const [activeCallId, setActiveCallId] = useState<string>();
+  const [testStatus, setTestStatus] = useState<AiCallTaskTestStatus>();
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string>();
+  const taskIdRef = useRef(task.taskId);
+  const startingRef = useRef(false);
+  const commandKeyRef = useRef<string | undefined>(undefined);
+  const processedTerminalAttemptRef = useRef<string | undefined>(undefined);
+
+  taskIdRef.current = task.taskId;
+
+  const loadCapability = useCallback(async () => {
+    const requestedTaskId = task.taskId;
+    try {
+      const result = await getAiCallTaskTestCapability(requestedTaskId);
+      if (taskIdRef.current !== requestedTaskId) return;
+      setCapability(result);
+      setActiveCallId(result.activeCallId || undefined);
+    } catch {
+      if (taskIdRef.current !== requestedTaskId) return;
+      setCapability(null);
+      setActiveCallId(undefined);
+    }
+  }, [task.taskId]);
+
+  const loadTestStatus = useCallback(async () => {
+    const requestedTaskId = task.taskId;
+    const result = await getAiCallTaskTestStatus(requestedTaskId);
+    if (taskIdRef.current !== requestedTaskId) return;
+    setTestStatus(result);
+    setActiveCallId(isTerminalStatus(result) ? undefined : result.callId);
+  }, [task.taskId]);
 
   useEffect(() => {
-    let cancelled = false;
     setCapability(null);
-    void getAiCallTaskTestCapability(task.taskId)
-      .then((result) => {
-        if (!cancelled) setCapability(result);
-      })
-      .catch(() => {
-        if (!cancelled) setCapability(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [task.taskId]);
+    setActiveCallId(undefined);
+    setTestStatus(undefined);
+    processedTerminalAttemptRef.current = undefined;
+    commandKeyRef.current = undefined;
+    void loadCapability();
+  }, [loadCapability]);
+
+  useVisiblePolling({
+    enabled: Boolean(activeCallId && !isTerminalStatus(testStatus)),
+    intervalMs: 1_000,
+    onTick: loadTestStatus,
+  });
+
+  useEffect(() => {
+    if (
+      !testStatus ||
+      !isTerminalStatus(testStatus) ||
+      processedTerminalAttemptRef.current === testStatus.attemptId
+    ) {
+      return;
+    }
+    processedTerminalAttemptRef.current = testStatus.attemptId;
+    void Promise.all([onTaskChanged(), loadCapability()]);
+  }, [loadCapability, onTaskChanged, testStatus]);
 
   const loadTarget = async () => {
     if (target || targetLoading) return;
@@ -76,41 +160,133 @@ const LinphoneTaskTest = ({ task }: LinphoneTaskTestProps) => {
 
   const openModal = () => {
     setScenario('ai_only');
+    setStartError(undefined);
+    commandKeyRef.current = undefined;
     setModalOpen(true);
     void loadTarget();
+  };
+
+  const closeModal = () => {
+    if (startingRef.current) return;
+    setModalOpen(false);
+    setStartError(undefined);
+    commandKeyRef.current = undefined;
+  };
+
+  const startTest = async () => {
+    if (startingRef.current || !target) return;
+    startingRef.current = true;
+    setStarting(true);
+    setStartError(undefined);
+    commandKeyRef.current ||= createCommandKey(task.taskId);
+    try {
+      const accepted = await runAiCallTaskTest(
+        task.taskId,
+        scenario,
+        commandKeyRef.current,
+      );
+      setModalOpen(false);
+      setActiveCallId(accepted.callId);
+      await loadTestStatus();
+    } catch (error) {
+      setStartError(getErrorMessage(error));
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
   };
 
   if (!capability?.enabled) return null;
 
   return (
-    <>
-      <Tooltip
-        title={capability.eligible ? undefined : capability.reasons.join('；')}
-      >
-        <span>
-          <Button
-            disabled={!capability.eligible}
-            icon={<PhoneOutlined aria-hidden />}
-            onClick={openModal}
-          >
-            测试拨打
-          </Button>
-        </span>
-      </Tooltip>
+    <Space orientation="vertical" size={12}>
+      <div>
+        <Tooltip
+          title={
+            capability.eligible ? undefined : capability.reasons.join('；')
+          }
+        >
+          <span>
+            <Button
+              disabled={!capability.eligible}
+              icon={<PhoneOutlined aria-hidden />}
+              onClick={openModal}
+            >
+              测试拨打
+            </Button>
+          </span>
+        </Tooltip>
+      </div>
+
+      {testStatus ? (
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+          <Descriptions
+            bordered
+            column={{ xs: 1, sm: 2 }}
+            items={[
+              {
+                key: 'phase',
+                label: '当前阶段',
+                children: phaseText[testStatus.phase],
+              },
+              {
+                key: 'callId',
+                label: 'Call ID',
+                children: (
+                  <Text copyable={{ text: testStatus.callId }}>
+                    {testStatus.callId}
+                  </Text>
+                ),
+              },
+              {
+                key: 'elapsed',
+                label: '通话时长',
+                children: formatDuration(testStatus.elapsedSeconds),
+              },
+              {
+                key: 'handoff',
+                label: '转人工状态',
+                children: testStatus.handoffStatus || '未触发',
+              },
+            ]}
+          />
+          {testStatus.errorMessage ? (
+            <Alert showIcon title={testStatus.errorMessage} type="error" />
+          ) : null}
+          <div>
+            <Button
+              onClick={() =>
+                history.push(
+                  buildRecordsUrl(testStatus.taskId, testStatus.targetId),
+                )
+              }
+            >
+              查看通话记录
+            </Button>
+          </div>
+        </Space>
+      ) : null}
 
       <Modal
         cancelText="取消"
-        okButtonProps={{ disabled: true }}
+        okButtonProps={{
+          disabled: !target || targetLoading || Boolean(targetError),
+        }}
         okText="确认拨打"
         open={modalOpen}
+        confirmLoading={starting}
         title="确认测试拨打"
         width={680}
-        onCancel={() => setModalOpen(false)}
+        onCancel={closeModal}
+        onOk={() => void startTest()}
       >
         <Spin spinning={targetLoading}>
           <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             {targetError ? (
               <Alert showIcon title={targetError} type="error" />
+            ) : null}
+            {startError ? (
+              <Alert showIcon title={startError} type="error" />
             ) : null}
             <Descriptions
               bordered
@@ -181,7 +357,7 @@ const LinphoneTaskTest = ({ task }: LinphoneTaskTestProps) => {
           </Space>
         </Spin>
       </Modal>
-    </>
+    </Space>
   );
 };
 
