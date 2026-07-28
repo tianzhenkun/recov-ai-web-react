@@ -10,6 +10,7 @@ import { getAiCallTask, listAiCallTaskTargets } from '../service';
 import AiCallTaskDetailPage from './index';
 
 const mockPush = jest.fn();
+const mockLinphoneTaskTest = jest.fn();
 
 jest.mock('@umijs/max', () => ({
   history: { push: (...args: unknown[]) => mockPush(...args) },
@@ -21,12 +22,28 @@ jest.mock('../service', () => ({
   listAiCallTaskTargets: jest.fn(),
 }));
 
+jest.mock('../components/LinphoneTaskTest', () => ({
+  __esModule: true,
+  default: (props: {
+    task: { taskId: string };
+    onTaskChanged: () => Promise<void> | void;
+  }) => {
+    mockLinphoneTaskTest(props);
+    return (
+      <button type="button" onClick={() => void props.onTaskChanged()}>
+        测试拨打入口
+      </button>
+    );
+  },
+}));
+
 const mockedGetTask = getAiCallTask as jest.Mock;
 const mockedListTargets = listAiCallTaskTargets as jest.Mock;
 
 describe('AI Call task detail page', () => {
   beforeEach(() => {
     mockPush.mockReset();
+    mockLinphoneTaskTest.mockReset();
     mockedGetTask.mockReset();
     mockedListTargets.mockReset();
     mockedGetTask.mockResolvedValue({
@@ -107,6 +124,30 @@ describe('AI Call task detail page', () => {
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
         '/ai-call/records?taskId=task-1&targetId=target-1',
+      ),
+    );
+  });
+
+  it('mounts the Linphone test entry and refreshes task and targets', async () => {
+    render(<AiCallTaskDetailPage />);
+    await screen.findByText('批量客户回访');
+
+    expect(mockLinphoneTaskTest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: expect.objectContaining({ taskId: 'task-1' }),
+        onTaskChanged: expect.any(Function),
+      }),
+    );
+
+    mockedGetTask.mockClear();
+    mockedListTargets.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: '测试拨打入口' }));
+
+    await waitFor(() => expect(mockedGetTask).toHaveBeenCalledWith('task-1'));
+    await waitFor(() =>
+      expect(mockedListTargets).toHaveBeenCalledWith(
+        'task-1',
+        expect.objectContaining({ pageNum: 1, pageSize: 20 }),
       ),
     );
   });

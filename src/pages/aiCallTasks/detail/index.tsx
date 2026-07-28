@@ -22,6 +22,7 @@ import {
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
+import LinphoneTaskTest from '../components/LinphoneTaskTest';
 import TaskStatusTag from '../components/TaskStatusTag';
 import {
   type AiCallTask,
@@ -216,6 +217,13 @@ const AiCallTaskDetailPage = () => {
             <TaskStatusTag status={task.status} />
           </Space>
           <Space>
+            <LinphoneTaskTest
+              key={task.taskId}
+              task={task}
+              onTaskChanged={async () => {
+                await Promise.all([loadTask(), actionRef.current?.reload()]);
+              }}
+            />
             <Button onClick={() => history.push(buildRecordsUrl(task.taskId))}>
               查看全部通话记录
             </Button>
