@@ -182,8 +182,15 @@ describe('Linphone task test entry', () => {
     expect(screen.getByText('工作日规则')).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('AI 转人工通话'));
-    expect(screen.getByText('保持坐席工作台在线')).toBeTruthy();
-    expect(screen.getByText('在坐席工作台接单')).toBeTruthy();
+    expect(
+      screen.getAllByRole('listitem').map((item) => item.textContent),
+    ).toEqual([
+      '接听 Linphone',
+      '保持坐席工作台在线',
+      '向 AI 明确要求转人工',
+      '在坐席工作台接单',
+      '完成人工通话并结束',
+    ]);
   });
 
   it('disables handoff and explains how to make an agent available', async () => {
@@ -246,6 +253,31 @@ describe('Linphone task test entry', () => {
     });
 
     await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledWith('task-1'));
+    const startButton = screen.getByRole('button', { name: '测试拨打' });
+    expect(startButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(startButton);
+    fireEvent.click(startButton);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockedRunTest).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a restored active call even if capability eligibility is stale', async () => {
+    mockedGetCapability.mockResolvedValue({
+      ...eligibleCapability,
+      activeCallId: 'call-1',
+      canEndActiveCall: true,
+    });
+    mockedGetStatus.mockResolvedValue(activeStatus);
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledWith('task-1'));
+    const startButton = screen.getByRole('button', { name: '测试拨打' });
+    expect(startButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(startButton);
+    fireEvent.click(startButton);
+    expect(mockedListTargets).not.toHaveBeenCalled();
+    expect(mockedRunTest).not.toHaveBeenCalled();
   });
 
   it.each([

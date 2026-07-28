@@ -100,6 +100,9 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
   const processedTerminalAttemptRef = useRef<string | undefined>(undefined);
 
   taskIdRef.current = task.taskId;
+  const hasActiveTest = Boolean(
+    activeCallId || (testStatus && !isTerminalStatus(testStatus)),
+  );
 
   const loadCapability = useCallback(async () => {
     const requestedTaskId = task.taskId;
@@ -169,6 +172,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
   };
 
   const openModal = () => {
+    if (hasActiveTest || startingRef.current) return;
     setScenario('ai_only');
     setStartError(undefined);
     commandKeyRef.current = undefined;
@@ -184,7 +188,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
   };
 
   const startTest = async () => {
-    if (startingRef.current || !target) return;
+    if (startingRef.current || hasActiveTest || !target) return;
     startingRef.current = true;
     setStarting(true);
     setStartError(undefined);
@@ -237,12 +241,16 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
       <div>
         <Tooltip
           title={
-            capability.eligible ? undefined : capability.reasons.join('；')
+            hasActiveTest
+              ? '当前任务已有测试通话'
+              : capability.eligible
+                ? undefined
+                : capability.reasons.join('；')
           }
         >
           <span>
             <Button
-              disabled={!capability.eligible}
+              disabled={!capability.eligible || hasActiveTest || starting}
               icon={<PhoneOutlined aria-hidden />}
               onClick={openModal}
             >
@@ -390,8 +398,11 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
 
             {scenario === 'handoff' ? (
               <ol className="m-0 pl-5">
+                <li>接听 Linphone</li>
                 <li>保持坐席工作台在线</li>
+                <li>向 AI 明确要求转人工</li>
                 <li>在坐席工作台接单</li>
+                <li>完成人工通话并结束</li>
               </ol>
             ) : null}
           </Space>
