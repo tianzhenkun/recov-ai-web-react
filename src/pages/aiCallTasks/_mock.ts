@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import type {
   AiCallTask,
   AiCallTaskTarget,
+  LinphoneTestPhase,
+  LinphoneTestScenario,
   TaskStatus,
   ValidationIssue,
   ValidationRetryAction,
@@ -177,6 +179,30 @@ const validations = new Map<string, MockValidation>();
 const singleValidations = new Map<string, SingleTargetValidationRequest>();
 let validationCount = 0;
 let createdTaskCount = 0;
+let linphoneTestCount = 0;
+
+type MockLinphoneTest = {
+  taskId: string;
+  targetId: string;
+  attemptId: string;
+  callId: string;
+  scenario: LinphoneTestScenario;
+  idempotencyKey: string;
+  startedAt: number;
+  phaseIndex: number;
+  finished: boolean;
+};
+
+let activeLinphoneTest: MockLinphoneTest | undefined;
+
+const aiOnlyPhases = ['dialing', 'ai_call', 'completed'] as const;
+const handoffPhases = [
+  'dialing',
+  'ai_call',
+  'waiting_handoff',
+  'human_call',
+  'completed',
+] as const;
 
 const promptNames: Record<string, string> = {
   intro_geo: 'GEO 产品介绍',
@@ -200,6 +226,173 @@ const getPageRange = (req: Request) => {
 
 const findTask = (taskId: string) =>
   tasks.find((item) => item.taskId === taskId);
+
+const getLinphonePhases = (
+  scenario: LinphoneTestScenario,
+): readonly LinphoneTestPhase[] =>
+  scenario === 'handoff' ? handoffPhases : aiOnlyPhases;
+
+const getIdempotencyKey = (req: Request): string => {
+  const value = req.headers['idempotency-key'];
+  return Array.isArray(value) ? value[0] : String(value || '');
+};
+
+const getTestEligibilityReasons = (taskId: string): string[] => {
+  const task = findTask(taskId);
+  const targets = taskTargets[taskId] || [];
+  const reasons: string[] = [];
+
+  if (!task) return ['外呼任务不存在'];
+  if (task.status !== 'SCHEDULED') reasons.push('任务不是待执行状态');
+  if (task.taskMode !== 'single') reasons.push('仅支持单号码外呼任务');
+  if (targets.length !== 1) reasons.push('任务必须且只能包含一个外呼对象');
+  if (targets[0]?.status !== 'PENDING') reasons.push('外呼对象不是待拨打状态');
+  if (targets[0]?.phoneNumber !== '19900001001') {
+    reasons.push('外呼号码不在本机测试白名单');
+  }
+  if (activeLinphoneTest && !activeLinphoneTest.finished) {
+    reasons.push(
+      activeLinphoneTest.taskId === taskId
+        ? '当前任务已有本机测试通话进行中'
+        : '当前已有本机测试通话进行中',
+    );
+  }
+  return reasons;
+};
+
+const getTestCapability = (req: Request, res: Response) => {
+  const taskId = getRouteParam(req, 'taskId');
+  const currentTest = activeLinphoneTest;
+  const activeCallId =
+    currentTest?.taskId === taskId && !currentTest.finished
+      ? currentTest.callId
+      : null;
+  const reasons = getTestEligibilityReasons(taskId);
+  return success(res, {
+    enabled: true,
+    eligible: reasons.length === 0,
+    reasons,
+    availableAgentCount: 1,
+    activeCallId,
+    canEndActiveCall: activeCallId !== null,
+  });
+};
+
+const startTestRun = (req: Request, res: Response) => {
+  const taskId = getRouteParam(req, 'taskId');
+  const scenario = req.body.scenario as LinphoneTestScenario;
+  const idempotencyKey = getIdempotencyKey(req);
+  if (
+    activeLinphoneTest?.taskId === taskId &&
+    activeLinphoneTest.idempotencyKey === idempotencyKey
+  ) {
+    return success(
+      res,
+      {
+        accepted: true,
+        taskId,
+        attemptId: activeLinphoneTest.attemptId,
+        callId: activeLinphoneTest.callId,
+      },
+      '测试拨打已受理',
+    );
+  }
+  if (!idempotencyKey) {
+    return res.status(400).json({ code: 400, msg: '缺少 Idempotency-Key' });
+  }
+  if (scenario !== 'ai_only' && scenario !== 'handoff') {
+    return res.status(400).json({ code: 400, msg: '不支持的测试场景' });
+  }
+  const reasons = getTestEligibilityReasons(taskId);
+  if (reasons.length > 0) {
+    return res.status(409).json({ code: 409, msg: reasons.join('；') });
+  }
+
+  const target = taskTargets[taskId][0];
+  linphoneTestCount += 1;
+  const suffix = `${Date.now()}-${linphoneTestCount}`;
+  activeLinphoneTest = {
+    taskId,
+    targetId: target.targetId,
+    attemptId: `attempt-test-${suffix}`,
+    callId: `call-test-${suffix}`,
+    scenario,
+    idempotencyKey,
+    startedAt: Date.now(),
+    phaseIndex: 0,
+    finished: false,
+  };
+  return success(
+    res,
+    {
+      accepted: true,
+      taskId,
+      attemptId: activeLinphoneTest.attemptId,
+      callId: activeLinphoneTest.callId,
+    },
+    '测试拨打已受理',
+  );
+};
+
+const getTestStatus = (req: Request, res: Response) => {
+  const taskId = getRouteParam(req, 'taskId');
+  if (!activeLinphoneTest || activeLinphoneTest.taskId !== taskId) {
+    return res.status(404).json({ code: 404, msg: '测试通话不存在' });
+  }
+
+  const phases = getLinphonePhases(activeLinphoneTest.scenario);
+  const phase = phases[activeLinphoneTest.phaseIndex];
+  const completed = phase === 'completed';
+  const dialing = phase === 'dialing';
+  const waitingHandoff = phase === 'waiting_handoff';
+  const humanCall = phase === 'human_call';
+  const data = {
+    taskId,
+    targetId: activeLinphoneTest.targetId,
+    attemptId: activeLinphoneTest.attemptId,
+    callId: activeLinphoneTest.callId,
+    targetStatus: completed ? 'COMPLETED' : dialing ? 'DIALING' : 'IN_CALL',
+    attemptStatus: completed ? 'COMPLETED' : dialing ? 'DIALING' : 'IN_CALL',
+    callStatus: completed ? 'ENDED' : dialing ? 'DIALING' : 'IN_PROGRESS',
+    handoffStatus: waitingHandoff
+      ? 'WAITING'
+      : humanCall
+        ? 'ACCEPTED'
+        : completed && activeLinphoneTest.scenario === 'handoff'
+          ? 'COMPLETED'
+          : null,
+    phase,
+    elapsedSeconds: Math.max(
+      Math.floor((Date.now() - activeLinphoneTest.startedAt) / 1000),
+      0,
+    ),
+    endReason: completed ? 'mock_completed' : null,
+    errorMessage: null,
+    canEndActiveCall: !completed,
+  };
+
+  if (completed) {
+    activeLinphoneTest.finished = true;
+  } else {
+    activeLinphoneTest.phaseIndex += 1;
+  }
+  return success(res, data);
+};
+
+const endActiveTestCall = (req: Request, res: Response) => {
+  const taskId = getRouteParam(req, 'taskId');
+  if (
+    !activeLinphoneTest ||
+    activeLinphoneTest.taskId !== taskId ||
+    activeLinphoneTest.finished
+  ) {
+    return res.status(409).json({ code: 409, msg: '当前任务没有进行中的通话' });
+  }
+  activeLinphoneTest.phaseIndex =
+    getLinphonePhases(activeLinphoneTest.scenario).length - 1;
+  activeLinphoneTest.finished = true;
+  return success(res, { accepted: true }, '结束通话已受理');
+};
 
 const createBatchTargets = (
   taskId: string,
@@ -488,6 +681,14 @@ export default {
     undefined,
     '取消操作已受理',
   ),
+  'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability':
+    getTestCapability,
+  'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run':
+    startTestRun,
+  'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status':
+    getTestStatus,
+  'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/active-call/end':
+    endActiveTestCall,
   'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/targets': listTargets,
   'POST /ai-call-agent-api/ai-call/outbound-targets/import-template': (
     _req: Request,

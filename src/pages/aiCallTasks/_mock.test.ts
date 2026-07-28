@@ -3,6 +3,7 @@ import mockRoutes from './_mock';
 type MockHandler = (
   req: {
     body?: Record<string, unknown>;
+    headers?: Record<string, string>;
     params: Record<string, string>;
     query: Record<string, unknown>;
   },
@@ -33,6 +34,54 @@ const createResponse = (): MockResponse => {
 
 const getHandler = (route: string) =>
   (mockRoutes as unknown as Record<string, MockHandler>)[route];
+
+const invoke = (
+  route: string,
+  params: Record<string, string>,
+  body: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) => {
+  const response = createResponse();
+  getHandler(route)({ body, headers, params, query: {} }, response);
+  return response;
+};
+
+const createScheduledSingleTask = (phoneNumber = '19900001001'): string => {
+  const validation = invoke(
+    'POST /ai-call-agent-api/ai-call/outbound-validations/single',
+    {},
+    {
+      taskName: 'Linphone Mock 验收任务',
+      taskMode: 'single',
+      phoneNumber,
+      customerName: '验收客户',
+      promptProfileId: '1',
+      sceneCode: 'intro_geo',
+      voice: 'Tina',
+      ruleId: 'rule-workday',
+      executionMode: 'scheduled',
+      scheduledAt: '2026-07-28 10:00:00',
+    },
+  );
+  const validationId = (validation.body as { data: { validationId: string } })
+    .data.validationId;
+  const created = invoke(
+    'POST /ai-call-agent-api/ai-call/outbound-tasks',
+    {},
+    {
+      taskName: 'Linphone Mock 验收任务',
+      taskMode: 'single',
+      promptProfileId: '1',
+      sceneCode: 'intro_geo',
+      voice: 'Tina',
+      ruleId: 'rule-workday',
+      executionMode: 'scheduled',
+      scheduledAt: '2026-07-28 10:00:00',
+      validationId,
+    },
+  );
+  return (created.body as { data: { taskId: string } }).data.taskId;
+};
 
 describe('AI Call task mock', () => {
   it('keeps the validated single target and configuration in task detail', () => {
@@ -298,5 +347,153 @@ describe('AI Call task mock', () => {
       rejectedResponse,
     );
     expect(rejectedResponse.statusCode).toBe(409);
+  });
+
+  it('simulates an idempotent AI-only Linphone test lifecycle', () => {
+    const taskId = createScheduledSingleTask();
+    const capability = invoke(
+      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability',
+      { taskId },
+    );
+
+    expect(capability.body).toEqual(
+      expect.objectContaining({
+        code: 200,
+        data: expect.objectContaining({
+          enabled: true,
+          eligible: true,
+          activeCallId: null,
+          canEndActiveCall: false,
+        }),
+      }),
+    );
+
+    const accepted = invoke(
+      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      { taskId },
+      { scenario: 'ai_only' },
+      { 'idempotency-key': 'mock-ai-only-1' },
+    );
+    const repeated = invoke(
+      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      { taskId },
+      { scenario: 'ai_only' },
+      { 'idempotency-key': 'mock-ai-only-1' },
+    );
+
+    expect(accepted.body).toEqual(
+      expect.objectContaining({
+        code: 200,
+        data: expect.objectContaining({
+          accepted: true,
+          taskId,
+          attemptId: expect.stringMatching(/^attempt-test-/),
+          callId: expect.stringMatching(/^call-test-/),
+        }),
+      }),
+    );
+    expect(repeated.body).toEqual(accepted.body);
+
+    const phases = Array.from({ length: 3 }, () => {
+      const status = invoke(
+        'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status',
+        { taskId },
+      );
+      return (status.body as { data: { phase: string } }).data.phase;
+    });
+    expect(phases).toEqual(['dialing', 'ai_call', 'completed']);
+  });
+
+  it('guards the global slot and advances the handoff lifecycle', () => {
+    const activeTaskId = createScheduledSingleTask();
+    const blockedTaskId = createScheduledSingleTask();
+    invoke(
+      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      { taskId: activeTaskId },
+      { scenario: 'handoff' },
+      { 'idempotency-key': 'mock-handoff-1' },
+    );
+
+    const activeCapability = invoke(
+      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability',
+      { taskId: activeTaskId },
+    );
+    expect(activeCapability.body).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eligible: false,
+          activeCallId: expect.stringMatching(/^call-test-/),
+          canEndActiveCall: true,
+        }),
+      }),
+    );
+
+    const blockedCapability = invoke(
+      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability',
+      { taskId: blockedTaskId },
+    );
+    expect(blockedCapability.body).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eligible: false,
+          activeCallId: null,
+          canEndActiveCall: false,
+          reasons: expect.arrayContaining(['当前已有本机测试通话进行中']),
+        }),
+      }),
+    );
+
+    const phases = Array.from({ length: 5 }, () => {
+      const status = invoke(
+        'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status',
+        { taskId: activeTaskId },
+      );
+      return (status.body as { data: { phase: string } }).data.phase;
+    });
+    expect(phases).toEqual([
+      'dialing',
+      'ai_call',
+      'waiting_handoff',
+      'human_call',
+      'completed',
+    ]);
+  });
+
+  it('ends the active mock call immediately', () => {
+    const taskId = createScheduledSingleTask();
+    invoke(
+      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      { taskId },
+      { scenario: 'handoff' },
+      { 'idempotency-key': 'mock-end-1' },
+    );
+
+    const ended = invoke(
+      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/active-call/end',
+      { taskId },
+      {},
+      { 'idempotency-key': 'mock-end-command-1' },
+    );
+    const status = invoke(
+      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status',
+      { taskId },
+    );
+
+    expect(ended.body).toEqual({
+      code: 200,
+      msg: '结束通话已受理',
+      data: { accepted: true },
+    });
+    expect(status.body).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          taskId,
+          phase: 'completed',
+          targetStatus: 'COMPLETED',
+          attemptStatus: 'COMPLETED',
+          canEndActiveCall: false,
+        }),
+      }),
+    );
   });
 });
