@@ -6,7 +6,7 @@
 
 - 外呼接口统一通过前端代理前缀 `/ai-call-agent-api` 访问。
 - 下文业务路径均以 `/ai-call` 开头。
-- 公共 OSS 上传沿用若依接口 `POST /resource/oss/upload`。
+- 批量名单由通用外呼校验接口直接接收，不调用公共 OSS 或 AI Call OSS。
 - 所有 ID 均以字符串返回，禁止以前端 `number` 承载 `bigint`。
 - 本契约不包含物业催收适配、数据看板、任务事件页和真实 SIP 调度实现。
 
@@ -236,12 +236,15 @@ Content-Type: application/json
 | POST | `/ai-call/outbound-validations/single` | `ApiResponse<ValidationResult>` | 同步校验单号码任务 |
 | POST | `/ai-call/outbound-validations/batch` | `ApiResponse<ValidationResult>` | 创建批量异步校验 |
 | GET | `/ai-call/outbound-validations/{validationId}` | `ApiResponse<ValidationResult>` | 查询校验状态与摘要 |
+| POST | `/ai-call/outbound-validations/{validationId}/retry` | `ApiResponse<ValidationResult>` | 重试已落库名单的系统校验 |
 | GET | `/ai-call/outbound-validations/{validationId}/issues` | `TableDataInfo<ValidationIssue>` | 问题数据分页 |
-| GET | `/ai-call/outbound-validations/{validationId}/issues/export` | Blob | 下载全部问题明细 |
+| POST | `/ai-call/outbound-validations/{validationId}/issues/export` | Blob | 下载全部问题明细 |
 
 `ValidationResult`：
 
 ```ts
+type ValidationRetryAction = 'REUPLOAD' | 'RETRY_VALIDATION';
+
 type ValidationResult = {
   validationId: string;
   status: ValidationStatus;
@@ -249,32 +252,24 @@ type ValidationResult = {
   issueCount: number;
   issueStats?: Record<string, number>;
   errorMessage?: string | null;
+  retryAction?: ValidationRetryAction;
   accepted?: boolean;
 };
 ```
 
-批量名单固定使用两段式处理：
+`SYSTEM_ERROR` 必须返回 `retryAction`；其他状态不得返回该字段。
 
-1. 前端调用 `POST /resource/oss/upload` 上传原文件，取得字符串 `ossId`。
-2. 前端以 JSON 调用批量校验接口。
+批量名单固定使用一次直接上传：
 
-批量校验请求示例：
+1. 前端构造 `FormData`，向 `POST /ai-call/outbound-validations/batch` 提交单个 `.xlsx` 文件。
+2. multipart 的 `file` part 放原始二进制文件，`request` part 放任务配置的 JSON 字符串。
+3. 前端不手工设置 `Content-Type`，由浏览器生成包含 boundary 的请求头。
 
-```json
-{
-  "ossId": "220000000000000001",
-  "originalFilename": "外呼名单.xlsx",
-  "request": {
-    "taskName": "合同审查客户回访",
-    "taskMode": "batch",
-    "promptProfileId": "prompt-1",
-    "sceneCode": "intro_contract",
-    "voice": "Cherry",
-    "ruleId": "rule-1",
-    "executionMode": "scheduled",
-    "scheduledAt": "2026-07-28 10:00:00"
-  }
-}
+multipart part 示例：
+
+```text
+file: <外呼名单.xlsx 二进制>
+request: {"taskName":"合同审查客户回访","taskMode":"batch","promptProfileId":"prompt-1","sceneCode":"intro_contract","voice":"Cherry","ruleId":"rule-1","executionMode":"scheduled","scheduledAt":"2026-07-28 10:00:00"}
 ```
 
 受理响应：
@@ -297,9 +292,10 @@ type ValidationResult = {
 
 - `PASSED`：显示有效对象数量与人工确认摘要。
 - `FAILED`：禁止创建任务，分页显示原文件行号、手机号、原因和重复行。
-- `SYSTEM_ERROR`：显示 `errorMessage`；文件仍有效时允许复用原 `ossId` 重新创建校验。
+- `SYSTEM_ERROR + REUPLOAD`：解析阶段失败且没有可复用行数据，用户必须重新上传完整名单。
+- `SYSTEM_ERROR + RETRY_VALIDATION`：解析数据已入库，前端按同一个 `validationId` 调用 retry 接口，不重复上传。
 
-批量校验接口不接收 `multipart/form-data`，也不接收公开文件 URL。
+后端在受理后把解析结果写入独立校验批次表和校验行表，再基于落库数据执行系统校验、问题分页、导出与重试。上传文件只作为 `VALIDATING` 期间的临时解析输入；进入 `PASSED`、`FAILED` 或 `SYSTEM_ERROR` 终态后必须清理临时文件，不需要保存原文件。前端契约不包含文件 URL、对象存储路径或存储标识。
 
 ## 6. 呼叫规则接口
 
@@ -379,7 +375,8 @@ PENDING / RETRY_WAIT → CANCELLED
 | 任务、规则或校验不存在 | 404 | 指明失效对象 |
 | 状态冲突或配置已失效 | 409 | 指明当前状态及允许动作 |
 | 幂等键冲突 | 409 | 返回原任务或明确冲突原因 |
-| 文件不存在或租户无权读取 | 422 | 要求重新上传完整名单 |
+| `file` 缺失、不是 `.xlsx` 或超过 10 MB | 400 | 指明文件约束 |
+| 文件解析失败且没有可复用行数据 | 422 | 返回 `SYSTEM_ERROR + REUPLOAD` |
 | 名单业务校验失败 | 422 | 返回 `FAILED` 和问题明细 |
 | 系统内部错误 | 500 | 返回可展示的 `errorMessage` |
 

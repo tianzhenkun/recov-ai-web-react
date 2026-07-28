@@ -510,7 +510,7 @@ const CreateAiCallTaskPage = () => {
               </Form.Item>
             ) : null}
 
-            <div className="flex justify-end">
+            <div className="sticky bottom-10 z-10 flex justify-end">
               <Button htmlType="submit" loading={validating} type="primary">
                 校验任务
               </Button>

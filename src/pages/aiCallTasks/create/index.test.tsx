@@ -164,6 +164,40 @@ describe('single target AI Call task creation', () => {
     expect(screen.getByText('00:00–23:59，最多重试 1 次')).toBeTruthy();
   });
 
+  it('reserves bottom space for the primary action at 1280x720', async () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    try {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: 1280,
+      });
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: 720,
+      });
+
+      render(<AiCallTaskCreatePage />);
+      await screen.findAllByText('客户回访 / intro_follow_up');
+      await screen.findByText('00:00–23:59，最多重试 1 次');
+
+      const actionArea = screen.getByRole('button', {
+        name: '校验任务',
+      }).parentElement;
+      expect(actionArea?.classList.contains('sticky')).toBe(true);
+      expect(actionArea?.classList.contains('bottom-10')).toBe(true);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: originalWidth,
+      });
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: originalHeight,
+      });
+    }
+  });
+
   it('validates a target, shows an inline confirmation and creates once', async () => {
     render(<AiCallTaskCreatePage />);
     await screen.findAllByText('客户回访 / intro_follow_up');
