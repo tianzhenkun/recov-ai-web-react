@@ -11,10 +11,15 @@ import {
 
 type ValidationResultProps = {
   result: ValidationResultData;
+  retrying?: boolean;
   onRetry: () => void;
 };
 
-const ValidationResult = ({ result, onRetry }: ValidationResultProps) => {
+const ValidationResult = ({
+  result,
+  retrying = false,
+  onRetry,
+}: ValidationResultProps) => {
   const actionRef = useRef<ActionType>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -23,11 +28,23 @@ const ValidationResult = ({ result, onRetry }: ValidationResultProps) => {
   }
 
   if (result.status === 'SYSTEM_ERROR') {
+    const canRetry = result.retryAction === 'RETRY_VALIDATION';
     return (
       <Alert
         showIcon
-        action={<Button onClick={onRetry}>重新校验</Button>}
-        description={result.errorMessage || '名单校验服务异常'}
+        action={
+          canRetry ? (
+            <Button loading={retrying} onClick={onRetry}>
+              重新校验
+            </Button>
+          ) : undefined
+        }
+        description={
+          <>
+            <div>{result.errorMessage || '名单校验服务异常'}</div>
+            {!canRetry ? <div>请重新上传完整名单</div> : null}
+          </>
+        }
         title="名单校验失败"
         type="error"
       />

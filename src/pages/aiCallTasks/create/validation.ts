@@ -9,6 +9,18 @@ type ExecutionPlan = {
   now?: Date;
 };
 
+export const MAX_BATCH_TARGET_FILE_SIZE = 10 * 1024 * 1024;
+
+export const validateBatchTargetFile = (file: File): string | undefined => {
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    return '仅支持 .xlsx 格式的名单文件';
+  }
+  if (file.size > MAX_BATCH_TARGET_FILE_SIZE) {
+    return '名单文件大小不能超过 10 MB';
+  }
+  return undefined;
+};
+
 const isAllowedTime = (time: string, rule: AiCallRule) =>
   rule.callWindows.some(
     (window) => time >= window.startTime && time < window.endTime,

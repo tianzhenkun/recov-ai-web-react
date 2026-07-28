@@ -34,7 +34,7 @@
 - `src/pages/aiCallTasks/domain.ts`：任务、外呼对象、校验结果、状态和展示映射。
 - `src/pages/aiCallTasks/domain.test.ts`：状态动作、终态、轮询条件和进度计算测试。
 - `src/pages/aiCallTasks/service.ts`：任务、名单校验、外呼对象和任务动作请求。
-- `src/pages/aiCallTasks/service.test.ts`：路径、参数、OSS 文件标识、幂等头、模板和问题明细下载测试。
+- `src/pages/aiCallTasks/service.test.ts`：路径、multipart 参数、按校验批次重试、幂等头、模板和问题明细下载测试。
 - `src/pages/aiCallTasks/_mock.ts`：开发环境任务、校验、问题明细和状态动作 Mock。
 - `src/pages/aiCallTasks/hooks/useVisiblePolling.ts`：页面可见时的定时刷新。
 - `src/pages/aiCallTasks/hooks/useVisiblePolling.test.tsx`：计时器、页面隐藏和卸载清理测试。
@@ -78,7 +78,7 @@
 
 ## 2. 后端接口契约
 
-除项目已有的公共 OSS 上传接口外，通用外呼接口均经 `/ai-call-agent-api` 代理访问 `19011`。以下路径是前端实现的唯一契约；真实后端路径若需调整，必须先修改契约文档、service 测试和 service，再修改页面。
+通用外呼接口均经 `/ai-call-agent-api` 代理访问 `19011`。批量名单直接提交给通用外呼校验接口，不调用公共 OSS 或 AI Call OSS。以下路径是前端实现的唯一契约；真实后端路径若需调整，必须先修改契约文档、service 测试和 service，再修改页面。
 
 ### 2.1 任务
 
@@ -102,17 +102,21 @@
 | --- | --- | --- |
 | POST | `/ai-call/outbound-targets/import-template` | 下载外呼名单 Excel 模板 |
 | POST | `/ai-call/outbound-validations/single` | 同步校验单号码任务 |
-| POST | `/ai-call/outbound-validations/batch` | 以 `ossId` 和待校验外呼参数创建异步校验 |
+| POST | `/ai-call/outbound-validations/batch` | 以 multipart 的 `file` 和 `request` 创建异步校验 |
 | GET | `/ai-call/outbound-validations/{validationId}` | 查询校验状态和摘要 |
+| POST | `/ai-call/outbound-validations/{validationId}/retry` | 重试已完成解析的系统校验 |
 | GET | `/ai-call/outbound-validations/{validationId}/issues` | 问题数据分页 |
-| GET | `/ai-call/outbound-validations/{validationId}/issues/export` | 下载全部问题明细 |
+| POST | `/ai-call/outbound-validations/{validationId}/issues/export` | 下载全部问题明细 |
 
-批量名单使用两段式处理：
+批量名单使用一次直接上传：
 
-1. 前端调用现有 `POST /resource/oss/upload` 上传原始文件并取得字符串 `ossId`。
-2. 前端以 JSON 调用批量校验接口，提交 `ossId`、`originalFilename` 和待校验外呼参数。
+1. 前端构造 `FormData`，`file` 放单个 `.xlsx` 文件，`request` 放 `JSON.stringify(validationRequest)`。
+2. 前端调用批量校验接口；请求发出到取得 `validationId` 前显示“正在上传名单”。
+3. 接口返回字符串 `validationId` 和 `VALIDATING` 后，页面切换为“名单校验中”并每 2 秒轮询。
 
-批量校验接口不接收 `multipart/form-data`，也不接收前端传递的公开文件 URL。
+前端不设置 multipart 的 `Content-Type`，由浏览器生成包含 boundary 的请求头。前端不解析 Excel，不传文件 URL、存储标识或对象存储路径；后端负责解析并把结果写入校验批次和明细。
+
+`SYSTEM_ERROR` 返回 `retryAction: 'REUPLOAD' | 'RETRY_VALIDATION'`。`REUPLOAD` 只允许重新选择并上传完整文件；`RETRY_VALIDATION` 调用 retry 接口并复用同一 `validationId`。
 
 ### 2.3 呼叫规则
 
@@ -179,6 +183,8 @@ export type ValidationStatus =
   | 'FAILED'
   | 'SYSTEM_ERROR';
 
+export type ValidationRetryAction = 'REUPLOAD' | 'RETRY_VALIDATION';
+
 export type TaskMode = 'single' | 'batch';
 export type ExecutionMode = 'immediate' | 'scheduled';
 
@@ -227,6 +233,29 @@ export type ValidationIssue = {
   customerName?: string | null;
   reasons: string[];
   duplicateRowNumbers?: number[];
+};
+
+type ValidationResultBase = {
+  validationId: string;
+  validTargetCount: number;
+  issueCount: number;
+  issueStats?: Record<string, number>;
+  errorMessage?: string | null;
+  accepted?: boolean;
+};
+
+export type ValidationResult =
+  | (ValidationResultBase & {
+      status: Exclude<ValidationStatus, 'SYSTEM_ERROR'>;
+      retryAction?: never;
+    })
+  | (ValidationResultBase & {
+      status: 'SYSTEM_ERROR';
+      retryAction: ValidationRetryAction;
+    });
+
+export type BatchTargetValidationRequest = ValidationRequest & {
+  taskMode: 'batch';
 };
 ```
 
@@ -401,24 +430,24 @@ await expect(listAiCallTasks({ pageNum: 1, pageSize: 20 })).rejects.toThrow(
 批量校验请求测试必须断言：
 
 ```ts
-await createBatchValidation({
-  ossId: 'oss-1',
-  originalFilename: '外呼名单.xlsx',
-  request: validationRequest,
+const file = new File(['xlsx'], '外呼名单.xlsx', {
+  type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 });
+await createBatchValidation({ file, request: validationRequest });
 expect(mockedRuoyiRequest).toHaveBeenCalledWith(
   '/ai-call/outbound-validations/batch',
   expect.objectContaining({
     baseApi: '/ai-call-agent-api',
     method: 'post',
-    data: {
-      ossId: 'oss-1',
-      originalFilename: '外呼名单.xlsx',
-      request: validationRequest,
-    },
+    data: expect.any(FormData),
   }),
 );
+const formData = mockedRuoyiRequest.mock.calls[0][1].data as FormData;
+expect(formData.get('file')).toBe(file);
+expect(formData.get('request')).toBe(JSON.stringify(validationRequest));
 ```
+
+重试测试必须断言 `retryBatchValidation('validation-1')` 以 POST 请求 `/ai-call/outbound-validations/validation-1/retry`，且不构造或上传文件。
 
 模板下载测试必须断言 `downloadOutboundTargetTemplate` 通过现有 `ruoyiDownload` 请求 `/ai-call/outbound-targets/import-template`，文件名固定为 `外呼名单导入模板.xlsx`，并传入 `baseApi: '/ai-call-agent-api'`。
 
@@ -483,6 +512,7 @@ const unwrapPage = <T>(response: RuoyiResponse<T> | T) => {
 - `downloadOutboundTargetTemplate`
 - `validateSingleTarget`
 - `createBatchValidation`
+- `retryBatchValidation`
 - `getValidationResult`
 - `listValidationIssues`
 - `downloadValidationIssues`
@@ -500,13 +530,15 @@ Mock 初始数据必须覆盖：
 - 同一对象两次拨打的关联数据；
 - 批量校验 `VALIDATING → FAILED`；
 - 模板下载返回 Excel Blob；
-- 批量校验请求保存并返回对应 `ossId`；
+- 批量校验直接返回 `validationId` 和 `VALIDATING`；
 - 问题行包含手机号格式错误和重复行号；
 - 第二次上传后 `VALIDATING → PASSED`；
+- 后续 Mock 批次分别覆盖 `SYSTEM_ERROR + RETRY_VALIDATION` 和 `SYSTEM_ERROR + REUPLOAD`；
+- retry 路由只接受 `SYSTEM_ERROR + RETRY_VALIDATION`，其他状态返回 `409`；
 - 暂停 `RUNNING → PAUSING → PAUSED`；
 - 停止 `RUNNING → STOPPING → STOPPED`。
 
-为保证无真实后端时也能完成浏览器流程，`_mock.ts` 同时提供 `POST /dev-api/resource/oss/upload`，返回 `{ code: 200, data: { ossId: 'oss-1', fileName, url } }`；该路由只模拟公共 OSS 上传结果，不在前端解析名单内容。
+Mock 只提供通用外呼接口，不提供文件上传兼容路由。批量校验 Mock 不在前端解析名单内容，只模拟后端已经受理 multipart、落库解析结果并返回 `validationId` 的契约。
 
 Mock 的普通响应固定使用 `{ code: 200, msg, data }`，分页响应固定使用 `{ code: 200, msg, rows, total }`。Mock 只在 Umi Mock 模式加载，生产构建不得导入它。
 
@@ -889,14 +921,16 @@ git commit -m "feat: 增加单号码外呼任务创建"
 - 上传区域提供“下载名单模板”，下载文件名为 `外呼名单导入模板.xlsx`；
 - 模板表头只有“手机号”和“客户名称”，分别映射 `phoneNumber` 必填、`customerName` 选填；
 - 模板下载失败时不清空当前表单或已选择文件；
-- `Upload.Dragger` 限制单文件，接受 `.xlsx,.xls,.csv`；
-- 新文件替换旧文件、旧 `ossId` 和旧校验结果；
-- 点击“校验任务”后先调用 `uploadOssFile`，取得 `ossId` 后再调用 `createBatchValidation`；
-- OSS 上传失败时不调用批量校验接口；
-- OSS 上传成功但校验任务创建失败时保留 `ossId`，点击“重新校验”不重复上传；
-- 名单业务校验失败后选择修正文件，必须重新上传并取得新的 `ossId`；
+- `Upload.Dragger` 限制单文件，只接受 `.xlsx`，选择非 `.xlsx` 或大于 10 MB 的文件时不进入表单状态；
+- 新文件替换旧文件和旧校验结果；
+- 点击“校验任务”后只调用一次 `createBatchValidation({ file, request })`；
+- 请求发出到取得 `validationId` 前显示“正在上传名单”；
 - 校验接口返回 `VALIDATING` 后每 2 秒查询；
+- 同一校验批次保持单飞轮询，上一请求未结束时跳过新的 tick；
 - 页面隐藏或终态后停止校验轮询；
+- `SYSTEM_ERROR + REUPLOAD` 只提示重新上传，不调用 retry 接口；
+- `SYSTEM_ERROR + RETRY_VALIDATION` 点击“重新校验”按原 `validationId` 调用 retry 接口，不重复上传；
+- 文件或表单变化后，未完成的旧上传、旧轮询和旧重试响应不能恢复旧 `validationId` 或确认摘要；
 - `FAILED` 时确认按钮不可用；
 - 问题列表展示原文件行号、手机号、客户名称、多个错误原因和重复行号；
 - 问题列表使用服务端分页；
@@ -919,10 +953,10 @@ npx jest src/pages/aiCallTasks/create/index.test.tsx --runInBand
 
 点击“校验任务”时按固定顺序执行：
 
-1. 没有可复用的 `ossId` 时，调用项目已有的 `uploadOssFile(file)`；
-2. 取得字符串 `ossId` 后，调用 `createBatchValidation({ ossId, originalFilename, request })`；
-3. 创建校验失败但文件仍有效时保留 `ossId`，重新校验只重试第 2 步；
-4. `onChange` 接收到新文件后清空旧 `ossId`、`validationId`、状态、摘要和问题页。
+1. 前端先校验文件名后缀严格为 `.xlsx` 且大小不超过 `10 * 1024 * 1024`；
+2. 调用 `createBatchValidation({ file, request })`，service 构造包含 `file` 与 JSON 字符串 `request` 的 `FormData`；
+3. 接口返回 `validationId` 后保存校验上下文并进入轮询；
+4. `onChange` 接收到新文件后清空旧 `validationId`、状态、摘要和问题页。
 
 页面依次显示“正在上传名单”和“名单校验中”，但用户仍只点击一次“校验任务”。
 
@@ -932,7 +966,7 @@ npx jest src/pages/aiCallTasks/create/index.test.tsx --runInBand
 
 - [ ] **步骤 4：实现 ValidationResult**
 
-`VALIDATING` 显示 Spin 和“名单校验中”；`FAILED` 显示错误统计、筛选、分页表格和下载按钮；`SYSTEM_ERROR` 显示后端 `errorMessage` 和“重新校验”；`PASSED` 显示有效对象数量。
+`VALIDATING` 显示 Spin 和“名单校验中”；`FAILED` 显示错误统计、筛选、分页表格和下载按钮；`SYSTEM_ERROR` 显示后端 `errorMessage`，`REUPLOAD` 显示“请重新上传完整名单”，`RETRY_VALIDATION` 显示“重新校验”；`PASSED` 显示有效对象数量。
 
 - [ ] **步骤 5：接入创建页**
 
@@ -1216,7 +1250,7 @@ npm start
 1. `/ai-call/tasks` 能筛选、分页和进入创建/详情。
 2. 单号码校验通过后，确认卡片显示在创建页底部；确认后进入任务详情。
 3. 批量上传区域可以下载 `外呼名单导入模板.xlsx`，第一行只有“手机号、客户名称”。
-4. 批量名单点击一次“校验任务”后依次显示上传中和校验中，页面不展示 `ossId`。
+4. 批量名单点击一次“校验任务”后依次显示“正在上传名单”和“名单校验中”，网络请求是直接 multipart 上传且页面不展示存储标识。
 5. 批量名单第一次校验失败，能看到行号、手机号、原因和重复行。
 6. 下载问题明细后，替换上传完整名单，第二次校验通过。
 7. 删除呼叫规则需要二次确认，删除后规则从列表和新建任务选项中消失。
@@ -1235,8 +1269,9 @@ npm start
 - 任务列表 HTTP 200；
 - 单号码校验最终 `PASSED`；
 - 模板下载返回可打开的 Excel，表头为“手机号、客户名称”；
-- 公共 OSS 上传返回字符串 `ossId`，批量校验接口仅接收该 `ossId` 和待校验外呼参数；
+- 批量校验请求是单个 multipart，请求体只包含 `.xlsx` 的 `file` 和 JSON 字符串 `request`，响应返回字符串 `validationId` 和 `VALIDATING`；
 - 批量校验出现一次真实 `FAILED` 和问题明细；
+- 解析失败返回 `REUPLOAD`；解析数据已入库后的系统校验错误返回 `RETRY_VALIDATION`，并能按原 `validationId` 重试；
 - 删除规则后分页接口和新建任务选项均不再返回该规则；
 - 使用已删除规则的旧校验结果不能创建任务；
 - 任务创建返回 `taskId`，且重复幂等请求不创建第二个任务；

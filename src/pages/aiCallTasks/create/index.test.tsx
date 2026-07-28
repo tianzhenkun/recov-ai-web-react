@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,11 +12,12 @@ import {
   getAiCallLabPromptProfiles,
   getAiCallLabVoiceProfiles,
 } from '@/services/ruoyi/ai-call-lab';
-import { uploadOssFile } from '@/services/ruoyi/oss';
 import {
   createAiCallTask,
   createBatchValidation,
   downloadOutboundTargetTemplate,
+  getValidationResult,
+  retryBatchValidation,
   validateSingleTarget,
 } from '../service';
 import AiCallTaskCreatePage from './index';
@@ -42,11 +44,8 @@ jest.mock('../service', () => ({
   downloadValidationIssues: jest.fn(),
   getValidationResult: jest.fn(),
   listValidationIssues: jest.fn(),
+  retryBatchValidation: jest.fn(),
   validateSingleTarget: jest.fn(),
-}));
-
-jest.mock('@/services/ruoyi/oss', () => ({
-  uploadOssFile: jest.fn(),
 }));
 
 const mockedPromptProfiles = getAiCallLabPromptProfiles as jest.Mock;
@@ -56,7 +55,20 @@ const mockedValidateSingle = validateSingleTarget as jest.Mock;
 const mockedCreateTask = createAiCallTask as jest.Mock;
 const mockedCreateBatch = createBatchValidation as jest.Mock;
 const mockedDownloadTemplate = downloadOutboundTargetTemplate as jest.Mock;
-const mockedUploadOss = uploadOssFile as jest.Mock;
+const mockedGetValidation = getValidationResult as jest.Mock;
+const mockedRetryBatch = retryBatchValidation as jest.Mock;
+
+const findFileInput = async (container: HTMLElement) => {
+  await waitFor(() => {
+    const nextInput = container.querySelector('input[type="file"]');
+    expect(nextInput).toBeInstanceOf(HTMLInputElement);
+  });
+  const input = container.querySelector('input[type="file"]');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error('未找到名单文件选择框');
+  }
+  return input;
+};
 
 describe('single target AI Call task creation', () => {
   beforeEach(() => {
@@ -68,7 +80,8 @@ describe('single target AI Call task creation', () => {
     mockedCreateTask.mockReset();
     mockedCreateBatch.mockReset();
     mockedDownloadTemplate.mockReset();
-    mockedUploadOss.mockReset();
+    mockedGetValidation.mockReset();
+    mockedRetryBatch.mockReset();
     mockedPromptProfiles.mockResolvedValue({
       rows: [
         {
@@ -115,12 +128,17 @@ describe('single target AI Call task creation', () => {
       issueCount: 0,
     });
     mockedDownloadTemplate.mockResolvedValue(undefined);
-    mockedUploadOss.mockResolvedValue({
-      data: {
-        ossId: 'oss-1',
-        fileName: 'targets.xlsx',
-        url: '/targets.xlsx',
-      },
+    mockedGetValidation.mockResolvedValue({
+      validationId: 'validation-pending',
+      status: 'VALIDATING',
+      validTargetCount: 0,
+      issueCount: 0,
+    });
+    mockedRetryBatch.mockResolvedValue({
+      validationId: 'validation-batch',
+      status: 'VALIDATING',
+      validTargetCount: 2,
+      issueCount: 0,
     });
   });
 
@@ -186,7 +204,7 @@ describe('single target AI Call task creation', () => {
     );
   });
 
-  it('downloads the template, uploads one complete list and validates by ossId', async () => {
+  it('downloads the template and directly uploads one xlsx list for validation', async () => {
     const { container } = render(<AiCallTaskCreatePage />);
     await screen.findAllByText('客户回访 / intro_follow_up');
 
@@ -201,23 +219,18 @@ describe('single target AI Call task creation', () => {
     fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
       target: { value: '批量客户回访' },
     });
-    const input = container.querySelector('input[type="file"]');
-    if (!(input instanceof HTMLInputElement)) {
-      throw new Error('未找到名单文件选择框');
-    }
-    expect(input.accept).toBe('.xlsx,.xls,.csv');
+    const input = await findFileInput(container);
+    expect(input.accept).toBe('.xlsx');
     const file = new File(['手机号,客户名称'], 'targets.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
 
-    await waitFor(() => expect(mockedUploadOss).toHaveBeenCalledWith(file));
     await waitFor(() =>
       expect(mockedCreateBatch).toHaveBeenCalledWith(
         expect.objectContaining({
-          ossId: 'oss-1',
-          originalFilename: 'targets.xlsx',
+          file,
           request: expect.objectContaining({
             taskMode: 'batch',
             taskName: '批量客户回访',
@@ -227,5 +240,228 @@ describe('single target AI Call task creation', () => {
     );
     expect(await screen.findByText('有效外呼对象 2 个')).toBeTruthy();
     expect(screen.getByText('人工确认摘要')).toBeTruthy();
+  });
+
+  it('shows upload then validation phases around validationId acceptance', async () => {
+    let resolveBatch:
+      | ((value: {
+          validationId: string;
+          status: 'VALIDATING';
+          validTargetCount: number;
+          issueCount: number;
+        }) => void)
+      | undefined;
+    mockedCreateBatch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveBatch = resolve;
+      }),
+    );
+
+    const { container } = render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+    fireEvent.click(screen.getByRole('radio', { name: '名单外呼' }));
+    fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
+      target: { value: '批量客户回访' },
+    });
+    const input = await findFileInput(container);
+    const file = new File(['xlsx'], 'targets.xlsx');
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+
+    expect(await screen.findByText('正在上传名单')).toBeTruthy();
+    await act(async () => {
+      resolveBatch?.({
+        validationId: 'validation-pending',
+        status: 'VALIDATING',
+        validTargetCount: 0,
+        issueCount: 0,
+      });
+    });
+    expect(await screen.findByText('名单校验中')).toBeTruthy();
+  });
+
+  it('retries persisted system validation by validationId without reuploading', async () => {
+    mockedCreateBatch.mockResolvedValueOnce({
+      validationId: 'validation-system-error',
+      status: 'SYSTEM_ERROR',
+      validTargetCount: 18,
+      issueCount: 0,
+      errorMessage: '系统校验服务暂时不可用',
+      retryAction: 'RETRY_VALIDATION',
+    });
+
+    const { container } = render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+    fireEvent.click(screen.getByRole('radio', { name: '名单外呼' }));
+    fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
+      target: { value: '批量客户回访' },
+    });
+    const input = await findFileInput(container);
+    fireEvent.change(input, {
+      target: { files: [new File(['xlsx'], 'targets.xlsx')] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+
+    const retryButton = await screen.findByRole('button', {
+      name: '重新校验',
+    });
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+    await waitFor(() =>
+      expect(mockedRetryBatch).toHaveBeenCalledWith('validation-system-error'),
+    );
+    expect(mockedRetryBatch).toHaveBeenCalledTimes(1);
+    expect(mockedCreateBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores an upload response after the selected task configuration changes', async () => {
+    let resolveBatch:
+      | ((value: {
+          validationId: string;
+          status: 'PASSED';
+          validTargetCount: number;
+          issueCount: number;
+        }) => void)
+      | undefined;
+    mockedCreateBatch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveBatch = resolve;
+      }),
+    );
+
+    const { container } = render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+    fireEvent.click(screen.getByRole('radio', { name: '名单外呼' }));
+    const taskNameInput = screen.getByPlaceholderText('请输入任务名称');
+    fireEvent.change(taskNameInput, {
+      target: { value: '旧批量任务' },
+    });
+    const input = await findFileInput(container);
+    fireEvent.change(input, {
+      target: { files: [new File(['xlsx'], 'old-targets.xlsx')] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+    expect(await screen.findByText('正在上传名单')).toBeTruthy();
+
+    fireEvent.change(taskNameInput, {
+      target: { value: '新批量任务' },
+    });
+    await act(async () => {
+      resolveBatch?.({
+        validationId: 'stale-upload-validation',
+        status: 'PASSED',
+        validTargetCount: 20,
+        issueCount: 0,
+      });
+    });
+
+    expect(screen.queryByText('人工确认摘要')).toBeNull();
+    expect(screen.queryByText('有效外呼对象 20 个')).toBeNull();
+  });
+
+  it('ignores a polling response after the selected file changes', async () => {
+    let resolvePolling:
+      | ((value: {
+          validationId: string;
+          status: 'PASSED';
+          validTargetCount: number;
+          issueCount: number;
+        }) => void)
+      | undefined;
+    mockedCreateBatch.mockResolvedValueOnce({
+      validationId: 'stale-poll-validation',
+      status: 'VALIDATING',
+      validTargetCount: 0,
+      issueCount: 0,
+    });
+    mockedGetValidation.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePolling = resolve;
+      }),
+    );
+
+    const { container } = render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+    fireEvent.click(screen.getByRole('radio', { name: '名单外呼' }));
+    fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
+      target: { value: '批量任务' },
+    });
+    const input = await findFileInput(container);
+    fireEvent.change(input, {
+      target: { files: [new File(['xlsx'], 'old-targets.xlsx')] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+    await waitFor(() =>
+      expect(mockedGetValidation).toHaveBeenCalledWith('stale-poll-validation'),
+    );
+
+    const replacementInput = await findFileInput(container);
+    fireEvent.change(replacementInput, {
+      target: { files: [new File(['xlsx'], 'new-targets.xlsx')] },
+    });
+    expect(await screen.findByText('new-targets.xlsx')).toBeTruthy();
+    await act(async () => {
+      resolvePolling?.({
+        validationId: 'stale-poll-validation',
+        status: 'PASSED',
+        validTargetCount: 30,
+        issueCount: 0,
+      });
+    });
+
+    expect(screen.queryByText('人工确认摘要')).toBeNull();
+    expect(screen.queryByText('有效外呼对象 30 个')).toBeNull();
+  });
+
+  it('keeps validation polling single-flight when a response exceeds the interval', async () => {
+    let resolvePolling:
+      | ((value: {
+          validationId: string;
+          status: 'VALIDATING';
+          validTargetCount: number;
+          issueCount: number;
+        }) => void)
+      | undefined;
+    mockedCreateBatch.mockResolvedValueOnce({
+      validationId: 'slow-poll-validation',
+      status: 'VALIDATING',
+      validTargetCount: 0,
+      issueCount: 0,
+    });
+    mockedGetValidation.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePolling = resolve;
+      }),
+    );
+
+    const { container } = render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+    fireEvent.click(screen.getByRole('radio', { name: '名单外呼' }));
+    fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
+      target: { value: '慢校验任务' },
+    });
+    const input = await findFileInput(container);
+    fireEvent.change(input, {
+      target: { files: [new File(['xlsx'], 'slow-targets.xlsx')] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+    await waitFor(() =>
+      expect(mockedGetValidation).toHaveBeenCalledWith('slow-poll-validation'),
+    );
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 2_100)));
+    expect(mockedGetValidation).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePolling?.({
+        validationId: 'slow-poll-validation',
+        status: 'VALIDATING',
+        validTargetCount: 0,
+        issueCount: 0,
+      });
+    });
+    await waitFor(() => expect(mockedGetValidation).toHaveBeenCalledTimes(2), {
+      timeout: 2_500,
+    });
   });
 });

@@ -2,12 +2,14 @@ import { DownloadOutlined, InboxOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { Button, Upload } from 'antd';
 import React from 'react';
+import { validateBatchTargetFile } from './validation';
 
 type BatchTargetUploadProps = {
   file?: File;
   downloading: boolean;
   onDownload: () => void;
   onFileChange: (file?: File) => void;
+  onFileError: (errorMessage: string) => void;
 };
 
 const BatchTargetUpload = ({
@@ -15,6 +17,7 @@ const BatchTargetUpload = ({
   downloading,
   onDownload,
   onFileChange,
+  onFileError,
 }: BatchTargetUploadProps) => {
   const fileList: UploadFile[] = file
     ? [{ uid: 'selected-target-list', name: file.name, status: 'done' }]
@@ -32,8 +35,15 @@ const BatchTargetUpload = ({
         </Button>
       </div>
       <Upload.Dragger
-        accept=".xlsx,.xls,.csv"
-        beforeUpload={() => false}
+        accept=".xlsx"
+        beforeUpload={(nextFile) => {
+          const errorMessage = validateBatchTargetFile(nextFile);
+          if (errorMessage) {
+            onFileError(errorMessage);
+            return Upload.LIST_IGNORE;
+          }
+          return false;
+        }}
         fileList={fileList}
         maxCount={1}
         multiple={false}
@@ -51,7 +61,7 @@ const BatchTargetUpload = ({
         </p>
         <p>上传完整外呼名单</p>
         <p className="text-gray-500">
-          支持 xlsx、xls、csv；手机号必填，客户名称选填
+          仅支持单个不超过 10 MB 的 xlsx；手机号必填，客户名称选填
         </p>
       </Upload.Dragger>
     </div>

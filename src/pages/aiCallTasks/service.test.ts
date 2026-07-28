@@ -14,6 +14,7 @@ import {
   listValidationIssues,
   pauseAiCallTask,
   resumeAiCallTask,
+  retryBatchValidation,
   stopAiCallTask,
   updateAiCallTaskSchedule,
   validateSingleTarget,
@@ -243,7 +244,7 @@ describe('AI Call task service', () => {
     ]);
   });
 
-  it('maps single and batch validation requests', async () => {
+  it('maps single validation and direct multipart batch upload requests', async () => {
     mockedRuoyiRequest
       .mockResolvedValueOnce({
         code: 200,
@@ -271,11 +272,10 @@ describe('AI Call task service', () => {
       phoneNumber: '19900001001',
       customerName: '王先生',
     });
-    await createBatchValidation({
-      ossId: 'oss-1',
-      originalFilename: '外呼名单.xlsx',
-      request: validationRequest,
+    const file = new File(['xlsx'], '外呼名单.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
+    await createBatchValidation({ file, request: validationRequest });
 
     expect(mockedRuoyiRequest).toHaveBeenNthCalledWith(
       1,
@@ -291,17 +291,42 @@ describe('AI Call task service', () => {
         },
       },
     );
-    expect(mockedRuoyiRequest).toHaveBeenNthCalledWith(
-      2,
-      '/ai-call/outbound-validations/batch',
+    const [batchPath, batchOptions] = mockedRuoyiRequest.mock.calls[1] as [
+      string,
+      { baseApi: string; method: string; data: FormData },
+    ];
+    expect(batchPath).toBe('/ai-call/outbound-validations/batch');
+    expect(batchOptions).toEqual({
+      baseApi: '/ai-call-agent-api',
+      method: 'post',
+      data: expect.any(FormData),
+      headers: { repeatSubmit: false },
+    });
+    expect(batchOptions.data.get('file')).toBe(file);
+    expect(batchOptions.data.get('request')).toBe(
+      JSON.stringify(validationRequest),
+    );
+  });
+
+  it('retries system validation by validationId without uploading a file', async () => {
+    mockedRuoyiRequest.mockResolvedValueOnce({
+      code: 200,
+      data: {
+        validationId: 'validation-1',
+        status: 'VALIDATING',
+        validTargetCount: 18,
+        issueCount: 0,
+        accepted: true,
+      },
+    });
+
+    await retryBatchValidation('validation-1');
+
+    expect(mockedRuoyiRequest).toHaveBeenCalledWith(
+      '/ai-call/outbound-validations/validation-1/retry',
       {
         baseApi: '/ai-call-agent-api',
         method: 'post',
-        data: {
-          ossId: 'oss-1',
-          originalFilename: '外呼名单.xlsx',
-          request: validationRequest,
-        },
       },
     );
   });

@@ -9,6 +9,7 @@ import type {
   TaskMode,
   TaskStatus,
   ValidationIssue,
+  ValidationRetryAction,
   ValidationStatus,
 } from './domain';
 
@@ -64,21 +65,33 @@ export type SingleTargetValidationRequest = ValidationRequest & {
   customerName?: string;
 };
 
-export type CreateBatchValidationPayload = {
-  ossId: string;
-  originalFilename: string;
-  request: ValidationRequest;
+export type BatchTargetValidationRequest = ValidationRequest & {
+  taskMode: 'batch';
 };
 
-export type ValidationResult = {
+export type CreateBatchValidationPayload = {
+  file: File;
+  request: BatchTargetValidationRequest;
+};
+
+type ValidationResultBase = {
   validationId: string;
-  status: ValidationStatus;
   validTargetCount: number;
   issueCount: number;
   issueStats?: Record<string, number>;
   errorMessage?: string | null;
   accepted?: boolean;
 };
+
+export type ValidationResult =
+  | (ValidationResultBase & {
+      status: Exclude<ValidationStatus, 'SYSTEM_ERROR'>;
+      retryAction?: never;
+    })
+  | (ValidationResultBase & {
+      status: 'SYSTEM_ERROR';
+      retryAction: ValidationRetryAction;
+    });
 
 export type CreateAiCallTaskPayload = ValidationRequest;
 
@@ -237,13 +250,31 @@ export const validateSingleTarget = async (
 
 export const createBatchValidation = async (
   payload: CreateBatchValidationPayload,
-): Promise<ValidationResult> =>
-  unwrapData(
+): Promise<ValidationResult> => {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  formData.append('request', JSON.stringify(payload.request));
+  return unwrapData(
     await ruoyiRequest<ValidationResult>(`${VALIDATIONS_PATH}/batch`, {
       ...requestOptions,
       method: 'post',
-      data: payload,
+      data: formData,
+      headers: { repeatSubmit: false },
     }),
+  );
+};
+
+export const retryBatchValidation = async (
+  validationId: string,
+): Promise<ValidationResult> =>
+  unwrapData(
+    await ruoyiRequest<ValidationResult>(
+      `${VALIDATIONS_PATH}/${validationId}/retry`,
+      {
+        ...requestOptions,
+        method: 'post',
+      },
+    ),
   );
 
 export const getValidationResult = async (

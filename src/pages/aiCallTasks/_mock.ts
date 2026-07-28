@@ -4,11 +4,10 @@ import type {
   AiCallTaskTarget,
   TaskStatus,
   ValidationIssue,
+  ValidationRetryAction,
+  ValidationStatus,
 } from './domain';
-import type {
-  SingleTargetValidationRequest,
-  ValidationResult,
-} from './service';
+import type { SingleTargetValidationRequest } from './service';
 
 const now = '2026-07-27 10:00:00';
 
@@ -160,15 +159,22 @@ const validationIssues: ValidationIssue[] = [
   },
 ];
 
-type MockValidation = ValidationResult & {
+type MockValidation = {
+  validationId: string;
+  status: ValidationStatus;
+  validTargetCount: number;
+  issueCount: number;
+  issueStats?: Record<string, number>;
+  errorMessage?: string | null;
+  retryAction?: ValidationRetryAction;
+  accepted?: boolean;
   pollCount: number;
-  finalStatus: 'PASSED' | 'FAILED';
-  ossId?: string;
+  finalStatus: 'PASSED' | 'FAILED' | 'SYSTEM_ERROR';
+  finalRetryAction?: ValidationRetryAction;
 };
 
 const validations = new Map<string, MockValidation>();
 const singleValidations = new Map<string, SingleTargetValidationRequest>();
-let uploadCount = 0;
 let validationCount = 0;
 let createdTaskCount = 0;
 
@@ -353,10 +359,12 @@ const validateSingle = (req: Request, res: Response) => {
   });
 };
 
-const createBatchValidation = (req: Request, res: Response) => {
+const createBatchValidation = (_req: Request, res: Response) => {
   validationCount += 1;
   const validationId = `validation-batch-${validationCount}`;
-  const shouldPass = validationCount > 1;
+  const scenario = validationCount % 4;
+  const finalStatus =
+    scenario === 1 ? 'FAILED' : scenario === 2 ? 'PASSED' : 'SYSTEM_ERROR';
   validations.set(validationId, {
     validationId,
     status: 'VALIDATING',
@@ -364,10 +372,37 @@ const createBatchValidation = (req: Request, res: Response) => {
     issueCount: 0,
     accepted: true,
     pollCount: 0,
-    finalStatus: shouldPass ? 'PASSED' : 'FAILED',
-    ossId: req.body.ossId,
+    finalStatus,
+    finalRetryAction:
+      scenario === 3
+        ? 'RETRY_VALIDATION'
+        : scenario === 0
+          ? 'REUPLOAD'
+          : undefined,
   });
   return success(res, validations.get(validationId), '名单校验已受理');
+};
+
+const retryBatchValidation = (req: Request, res: Response) => {
+  const validation = validations.get(getRouteParam(req, 'validationId'));
+  if (!validation) {
+    return res.status(404).json({ code: 404, msg: '校验结果不存在' });
+  }
+  if (
+    validation.status !== 'SYSTEM_ERROR' ||
+    validation.retryAction !== 'RETRY_VALIDATION'
+  ) {
+    return res.status(409).json({
+      code: 409,
+      msg: '当前校验状态不允许重试，请重新上传完整名单',
+    });
+  }
+  validation.status = 'VALIDATING';
+  validation.pollCount = 0;
+  validation.finalStatus = 'PASSED';
+  validation.errorMessage = null;
+  validation.retryAction = undefined;
+  return success(res, validation, '名单校验重试已受理');
 };
 
 const getValidation = (req: Request, res: Response) => {
@@ -378,13 +413,23 @@ const getValidation = (req: Request, res: Response) => {
   validation.pollCount += 1;
   if (validation.pollCount >= 2) {
     validation.status = validation.finalStatus;
-    validation.validTargetCount = validation.finalStatus === 'PASSED' ? 18 : 1;
+    validation.validTargetCount = validation.finalStatus === 'PASSED' ? 18 : 0;
     validation.issueCount =
       validation.finalStatus === 'FAILED' ? validationIssues.length : 0;
     validation.issueStats =
       validation.finalStatus === 'FAILED'
         ? { 手机号格式错误: 1, 手机号重复: 1 }
         : {};
+    validation.errorMessage =
+      validation.finalStatus === 'SYSTEM_ERROR'
+        ? validation.finalRetryAction === 'REUPLOAD'
+          ? '名单解析失败，请重新上传完整名单'
+          : '系统校验服务暂时不可用'
+        : null;
+    validation.retryAction =
+      validation.finalStatus === 'SYSTEM_ERROR'
+        ? validation.finalRetryAction
+        : undefined;
   }
   return success(res, validation);
 };
@@ -415,15 +460,6 @@ const sendExcel = (res: Response, filename: string) => {
     `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
   );
   return res.send(Buffer.from(TEMPLATE_XLSX_BASE64, 'base64'));
-};
-
-const uploadOss = (req: Request, res: Response) => {
-  uploadCount += 1;
-  return success(res, {
-    ossId: `oss-${uploadCount}`,
-    fileName: req.body?.file?.name || `outbound-list-${uploadCount}.xlsx`,
-    url: `/mock-oss/outbound-list-${uploadCount}.xlsx`,
-  });
 };
 
 export default {
@@ -460,11 +496,12 @@ export default {
   'POST /ai-call-agent-api/ai-call/outbound-validations/single': validateSingle,
   'POST /ai-call-agent-api/ai-call/outbound-validations/batch':
     createBatchValidation,
+  'POST /ai-call-agent-api/ai-call/outbound-validations/:validationId/retry':
+    retryBatchValidation,
   'GET /ai-call-agent-api/ai-call/outbound-validations/:validationId':
     getValidation,
   'GET /ai-call-agent-api/ai-call/outbound-validations/:validationId/issues':
     listIssues,
   'POST /ai-call-agent-api/ai-call/outbound-validations/:validationId/issues/export':
     (_req: Request, res: Response) => sendExcel(res, '外呼名单问题明细.xlsx'),
-  'POST /dev-api/resource/oss/upload': uploadOss,
 };

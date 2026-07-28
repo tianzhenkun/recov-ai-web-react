@@ -23,6 +23,8 @@ export type ValidationStatus =
   | 'FAILED'
   | 'SYSTEM_ERROR';
 
+export type ValidationRetryAction = 'REUPLOAD' | 'RETRY_VALIDATION';
+
 export type TaskMode = 'single' | 'batch';
 export type ExecutionMode = 'immediate' | 'scheduled';
 

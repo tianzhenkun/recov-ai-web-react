@@ -1,5 +1,9 @@
 import type { AiCallRule } from '@/pages/aiCallRules/domain';
-import { validateExecutionPlan } from './validation';
+import {
+  MAX_BATCH_TARGET_FILE_SIZE,
+  validateBatchTargetFile,
+  validateExecutionPlan,
+} from './validation';
 
 const rule: AiCallRule = {
   ruleId: 'rule-1',
@@ -49,5 +53,28 @@ describe('task execution plan validation', () => {
         now,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('batch target file validation', () => {
+  it('accepts one xlsx file up to 10 MB', () => {
+    expect(
+      validateBatchTargetFile({
+        name: 'targets.XLSX',
+        size: MAX_BATCH_TARGET_FILE_SIZE,
+      } as File),
+    ).toBeUndefined();
+  });
+
+  it('rejects non-xlsx files and files larger than 10 MB', () => {
+    expect(
+      validateBatchTargetFile({ name: 'targets.csv', size: 1024 } as File),
+    ).toBe('仅支持 .xlsx 格式的名单文件');
+    expect(
+      validateBatchTargetFile({
+        name: 'targets.xlsx',
+        size: MAX_BATCH_TARGET_FILE_SIZE + 1,
+      } as File),
+    ).toBe('名单文件大小不能超过 10 MB');
   });
 });

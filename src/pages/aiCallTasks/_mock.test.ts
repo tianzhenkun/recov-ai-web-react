@@ -125,9 +125,8 @@ describe('AI Call task mock', () => {
     getHandler('POST /ai-call-agent-api/ai-call/outbound-validations/batch')(
       {
         body: {
-          ossId: 'oss-batch',
-          originalFilename: '外呼名单.xlsx',
-          request: {
+          file: { name: '外呼名单.xlsx' },
+          request: JSON.stringify({
             taskName: '浏览器验收名单任务',
             taskMode: 'batch',
             promptProfileId: '1',
@@ -136,7 +135,7 @@ describe('AI Call task mock', () => {
             ruleId: 'rule-workday',
             executionMode: 'scheduled',
             scheduledAt: '2026-07-28 10:00:00',
-          },
+          }),
         },
         params: {},
         query: {},
@@ -207,5 +206,97 @@ describe('AI Call task mock', () => {
     expect((secondPageResponse.body as { rows: unknown[] }).rows).toHaveLength(
       8,
     );
+  });
+
+  it('exposes direct batch validation retry without a file upload route', () => {
+    expect(
+      Object.keys(mockRoutes).some(
+        (route) => route.includes('/resource/') && route.includes('/upload'),
+      ),
+    ).toBe(false);
+
+    const systemErrors: Array<{
+      validationId: string;
+      retryAction: 'REUPLOAD' | 'RETRY_VALIDATION';
+    }> = [];
+    for (let index = 0; index < 6 && systemErrors.length < 2; index += 1) {
+      const validationResponse = createResponse();
+      getHandler('POST /ai-call-agent-api/ai-call/outbound-validations/batch')(
+        {
+          body: {
+            file: { name: `外呼名单-${index}.xlsx` },
+            request: JSON.stringify({ taskMode: 'batch' }),
+          },
+          params: {},
+          query: {},
+        },
+        validationResponse,
+      );
+      const validationId = (
+        validationResponse.body as {
+          data: { validationId: string };
+        }
+      ).data.validationId;
+      const resultResponse = createResponse();
+      const getValidation = getHandler(
+        'GET /ai-call-agent-api/ai-call/outbound-validations/:validationId',
+      );
+      getValidation(
+        { body: {}, params: { validationId }, query: {} },
+        resultResponse,
+      );
+      getValidation(
+        { body: {}, params: { validationId }, query: {} },
+        resultResponse,
+      );
+      const result = (
+        resultResponse.body as {
+          data: {
+            status: string;
+            retryAction?: 'REUPLOAD' | 'RETRY_VALIDATION';
+          };
+        }
+      ).data;
+      if (result.status === 'SYSTEM_ERROR' && result.retryAction) {
+        systemErrors.push({ validationId, retryAction: result.retryAction });
+      }
+    }
+
+    expect(systemErrors.map((item) => item.retryAction)).toEqual(
+      expect.arrayContaining(['REUPLOAD', 'RETRY_VALIDATION']),
+    );
+    const retryable = systemErrors.find(
+      (item) => item.retryAction === 'RETRY_VALIDATION',
+    );
+    const reupload = systemErrors.find(
+      (item) => item.retryAction === 'REUPLOAD',
+    );
+    if (!retryable || !reupload) {
+      throw new Error('Mock 未生成两类系统错误');
+    }
+
+    const retryResponse = createResponse();
+    const retryHandler = getHandler(
+      'POST /ai-call-agent-api/ai-call/outbound-validations/:validationId/retry',
+    );
+    retryHandler(
+      { body: {}, params: { validationId: retryable.validationId }, query: {} },
+      retryResponse,
+    );
+    expect(retryResponse.body).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          validationId: retryable.validationId,
+          status: 'VALIDATING',
+        }),
+      }),
+    );
+
+    const rejectedResponse = createResponse();
+    retryHandler(
+      { body: {}, params: { validationId: reupload.validationId }, query: {} },
+      rejectedResponse,
+    );
+    expect(rejectedResponse.statusCode).toBe(409);
   });
 });

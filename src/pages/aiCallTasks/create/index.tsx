@@ -24,7 +24,6 @@ import {
   getAiCallLabPromptProfiles,
   getAiCallLabVoiceProfiles,
 } from '@/services/ruoyi/ai-call-lab';
-import { uploadOssFile } from '@/services/ruoyi/oss';
 import type { ExecutionMode } from '../domain';
 import { useVisiblePolling } from '../hooks/useVisiblePolling';
 import {
@@ -32,6 +31,7 @@ import {
   createBatchValidation,
   downloadOutboundTargetTemplate,
   getValidationResult,
+  retryBatchValidation,
   type SingleTargetValidationRequest,
   type ValidationRequest,
   type ValidationResult as ValidationResultData,
@@ -40,7 +40,7 @@ import {
 import BatchTargetUpload from './BatchTargetUpload';
 import TaskConfirmation from './TaskConfirmation';
 import ValidationResultPanel from './ValidationResult';
-import { validateExecutionPlan } from './validation';
+import { validateBatchTargetFile, validateExecutionPlan } from './validation';
 
 type TaskFormValues = {
   taskName: string;
@@ -97,13 +97,16 @@ const CreateAiCallTaskPage = () => {
   const [validatedTask, setValidatedTask] = useState<ValidatedTask>();
   const [creating, setCreating] = useState(false);
   const [batchFile, setBatchFile] = useState<File>();
-  const [batchOssId, setBatchOssId] = useState<string>();
   const [batchValidation, setBatchValidation] =
     useState<ValidationResultData>();
   const [batchContext, setBatchContext] = useState<BatchValidationContext>();
   const [batchPhase, setBatchPhase] = useState<'uploading' | 'validating'>();
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const creatingRef = useRef(false);
+  const batchRetryingRef = useRef(false);
+  const validationGenerationRef = useRef(0);
+  const activeValidationIdRef = useRef<string | undefined>(undefined);
+  const pollOwnerRef = useRef<symbol | null>(null);
   const taskMode = Form.useWatch('taskMode', form);
   const executionMode = Form.useWatch('executionMode', form);
   const ruleId = Form.useWatch('ruleId', form);
@@ -156,9 +159,28 @@ const CreateAiCallTaskPage = () => {
     enabled: batchValidation?.status === 'VALIDATING',
     intervalMs: 2_000,
     onTick: async () => {
-      if (!batchValidation?.validationId) return;
-      const next = await getValidationResult(batchValidation.validationId);
-      finalizeBatchValidation(next);
+      if (!batchValidation?.validationId || pollOwnerRef.current) return;
+      const validationId = batchValidation.validationId;
+      const generation = validationGenerationRef.current;
+      const pollOwner = Symbol(validationId);
+      pollOwnerRef.current = pollOwner;
+      try {
+        const next = await getValidationResult(validationId);
+        if (
+          generation !== validationGenerationRef.current ||
+          pollOwnerRef.current !== pollOwner ||
+          activeValidationIdRef.current !== validationId
+        ) {
+          return;
+        }
+        finalizeBatchValidation(next);
+      } catch {
+        return;
+      } finally {
+        if (pollOwnerRef.current === pollOwner) {
+          pollOwnerRef.current = null;
+        }
+      }
     },
   });
 
@@ -195,6 +217,10 @@ const CreateAiCallTaskPage = () => {
       scheduledAt,
     };
 
+    const generation = validationGenerationRef.current + 1;
+    validationGenerationRef.current = generation;
+    activeValidationIdRef.current = undefined;
+    pollOwnerRef.current = null;
     setValidating(true);
     try {
       if (values.taskMode === 'single') {
@@ -205,6 +231,7 @@ const CreateAiCallTaskPage = () => {
           customerName: values.customerName?.trim() || undefined,
         };
         const validation = await validateSingleTarget(singleRequest);
+        if (generation !== validationGenerationRef.current) return;
         if (validation.status !== 'PASSED') {
           messageApi.error(validation.errorMessage || '任务校验未通过');
           return;
@@ -224,24 +251,23 @@ const CreateAiCallTaskPage = () => {
         messageApi.error('请上传完整外呼名单');
         return;
       }
-      let nextOssId = batchOssId;
-      if (!nextOssId) {
-        setBatchPhase('uploading');
-        const uploadResult = await uploadOssFile(batchFile);
-        const returnedOssId = uploadResult.data?.ossId;
-        if (returnedOssId === undefined || returnedOssId === null) {
-          throw new Error('文件上传成功但未返回 OSS ID');
-        }
-        nextOssId = String(returnedOssId);
-        setBatchOssId(nextOssId);
+      const fileError = validateBatchTargetFile(batchFile);
+      if (fileError) {
+        messageApi.error(fileError);
+        return;
       }
 
-      setBatchPhase('validating');
+      setBatchPhase('uploading');
       const validation = await createBatchValidation({
-        ossId: nextOssId,
-        originalFilename: batchFile.name,
-        request,
+        file: batchFile,
+        request: { ...request, taskMode: 'batch' },
       });
+      if (generation !== validationGenerationRef.current) return;
+      if (!validation.validationId) {
+        throw new Error('名单校验受理响应缺少 validationId');
+      }
+      setBatchPhase('validating');
+      activeValidationIdRef.current = validation.validationId;
       const context = { request, values, prompt, voice, rule };
       setBatchContext(context);
       setBatchValidation(validation);
@@ -249,11 +275,61 @@ const CreateAiCallTaskPage = () => {
         setValidatedTask({ ...context, validation });
       }
     } catch (error) {
-      messageApi.error(getErrorMessage(error));
+      if (generation === validationGenerationRef.current) {
+        messageApi.error(getErrorMessage(error));
+      }
     } finally {
-      setBatchPhase(undefined);
-      setValidating(false);
+      if (generation === validationGenerationRef.current) {
+        setBatchPhase(undefined);
+        setValidating(false);
+      }
     }
+  };
+
+  const retryBatchSystemValidation = async () => {
+    if (
+      batchValidation?.status !== 'SYSTEM_ERROR' ||
+      batchValidation.retryAction !== 'RETRY_VALIDATION' ||
+      batchRetryingRef.current
+    ) {
+      return;
+    }
+    batchRetryingRef.current = true;
+    const generation = validationGenerationRef.current;
+    const validationId = batchValidation.validationId;
+    pollOwnerRef.current = null;
+    setValidating(true);
+    try {
+      const validation = await retryBatchValidation(validationId);
+      if (
+        generation !== validationGenerationRef.current ||
+        activeValidationIdRef.current !== validationId
+      ) {
+        return;
+      }
+      finalizeBatchValidation(validation);
+    } catch (error) {
+      if (generation === validationGenerationRef.current) {
+        messageApi.error(getErrorMessage(error));
+      }
+    } finally {
+      if (generation === validationGenerationRef.current) {
+        batchRetryingRef.current = false;
+        setValidating(false);
+      }
+    }
+  };
+
+  const invalidateValidation = () => {
+    validationGenerationRef.current += 1;
+    activeValidationIdRef.current = undefined;
+    pollOwnerRef.current = null;
+    batchRetryingRef.current = false;
+    setValidating(false);
+    setBatchPhase(undefined);
+    setValidatedTask(undefined);
+    setBatchValidation(undefined);
+    setBatchContext(undefined);
   };
 
   const confirmCreate = async () => {
@@ -292,9 +368,7 @@ const CreateAiCallTaskPage = () => {
             layout="vertical"
             onFinish={validateTask}
             onValuesChange={() => {
-              setValidatedTask(undefined);
-              setBatchValidation(undefined);
-              setBatchContext(undefined);
+              invalidateValidation();
             }}
           >
             <Form.Item
@@ -333,10 +407,10 @@ const CreateAiCallTaskPage = () => {
                   }}
                   onFileChange={(file) => {
                     setBatchFile(file);
-                    setBatchOssId(undefined);
-                    setBatchValidation(undefined);
-                    setBatchContext(undefined);
-                    setValidatedTask(undefined);
+                    invalidateValidation();
+                  }}
+                  onFileError={(errorMessage) => {
+                    messageApi.error(errorMessage);
                   }}
                 />
               </Form.Item>
@@ -451,7 +525,8 @@ const CreateAiCallTaskPage = () => {
           <RecovTableCard>
             <ValidationResultPanel
               result={batchValidation}
-              onRetry={() => form.submit()}
+              retrying={validating}
+              onRetry={() => void retryBatchSystemValidation()}
             />
           </RecovTableCard>
         ) : null}
