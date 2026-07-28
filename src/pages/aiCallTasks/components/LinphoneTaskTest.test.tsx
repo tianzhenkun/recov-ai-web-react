@@ -185,8 +185,8 @@ describe('Linphone task test entry', () => {
     expect(
       screen.getAllByRole('listitem').map((item) => item.textContent),
     ).toEqual([
-      '接听 Linphone',
       '保持坐席工作台在线',
+      '接听 Linphone',
       '向 AI 明确要求转人工',
       '在坐席工作台接单',
       '完成人工通话并结束',

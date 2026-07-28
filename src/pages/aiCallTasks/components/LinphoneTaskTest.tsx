@@ -398,8 +398,8 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
 
             {scenario === 'handoff' ? (
               <ol className="m-0 pl-5">
-                <li>接听 Linphone</li>
                 <li>保持坐席工作台在线</li>
+                <li>接听 Linphone</li>
                 <li>向 AI 明确要求转人工</li>
                 <li>在坐席工作台接单</li>
                 <li>完成人工通话并结束</li>
