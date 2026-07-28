@@ -17,6 +17,41 @@ export type TargetStatus =
   | 'COMPLETED'
   | 'CANCELLED';
 
+export type LinphoneTestScenario = 'ai_only' | 'handoff';
+
+export type LinphoneTestPhase =
+  | 'dialing'
+  | 'ai_call'
+  | 'waiting_handoff'
+  | 'human_call'
+  | 'completed'
+  | 'failed';
+
+export type AiCallTaskTestCapability = {
+  enabled: boolean;
+  eligible: boolean;
+  reasons: string[];
+  availableAgentCount: number;
+  activeCallId?: string | null;
+  canEndActiveCall: boolean;
+};
+
+export type AiCallTaskTestStatus = {
+  taskId: string;
+  targetId: string;
+  attemptId: string;
+  callId: string;
+  targetStatus: TargetStatus;
+  attemptStatus: 'DIALING' | 'IN_CALL' | 'COMPLETED' | 'FAILED';
+  callStatus?: string | null;
+  handoffStatus?: string | null;
+  phase: LinphoneTestPhase;
+  elapsedSeconds: number;
+  endReason?: string | null;
+  errorMessage?: string | null;
+  canEndActiveCall: boolean;
+};
+
 export type ValidationStatus =
   | 'VALIDATING'
   | 'PASSED'

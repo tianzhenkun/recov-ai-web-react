@@ -7,7 +7,10 @@ import {
   createBatchValidation,
   downloadOutboundTargetTemplate,
   downloadValidationIssues,
+  endAiCallTaskActiveCall,
   getAiCallTask,
+  getAiCallTaskTestCapability,
+  getAiCallTaskTestStatus,
   getValidationResult,
   listAiCallTasks,
   listAiCallTaskTargets,
@@ -15,6 +18,7 @@ import {
   pauseAiCallTask,
   resumeAiCallTask,
   retryBatchValidation,
+  runAiCallTaskTest,
   stopAiCallTask,
   updateAiCallTaskSchedule,
   validateSingleTarget,
@@ -239,6 +243,79 @@ describe('AI Call task service', () => {
           baseApi: '/ai-call-agent-api',
           method: 'post',
           headers: { 'Idempotency-Key': 'idem-cancel' },
+        },
+      ],
+    ]);
+  });
+
+  it('maps Linphone task test APIs and idempotency headers', async () => {
+    mockedRuoyiRequest
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          enabled: true,
+          eligible: true,
+          reasons: [],
+          availableAgentCount: 1,
+          activeCallId: null,
+          canEndActiveCall: false,
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          accepted: true,
+          taskId: 'task-1',
+          attemptId: 'attempt-1',
+          callId: 'call-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          taskId: 'task-1',
+          targetId: 'target-1',
+          attemptId: 'attempt-1',
+          callId: 'call-1',
+          targetStatus: 'IN_CALL',
+          attemptStatus: 'IN_CALL',
+          callStatus: 'connected',
+          phase: 'ai_call',
+          elapsedSeconds: 8,
+          canEndActiveCall: true,
+        },
+      })
+      .mockResolvedValueOnce({ code: 200, data: { accepted: true } });
+
+    await getAiCallTaskTestCapability('task-1');
+    await runAiCallTaskTest('task-1', 'handoff', 'run-key');
+    await getAiCallTaskTestStatus('task-1');
+    await endAiCallTaskActiveCall('task-1', 'end-key');
+
+    expect(mockedRuoyiRequest.mock.calls).toEqual([
+      [
+        '/ai-call/outbound-tasks/task-1/test-capability',
+        { baseApi: '/ai-call-agent-api', method: 'get' },
+      ],
+      [
+        '/ai-call/outbound-tasks/task-1/test-run',
+        {
+          baseApi: '/ai-call-agent-api',
+          method: 'post',
+          headers: { 'Idempotency-Key': 'run-key' },
+          data: { scenario: 'handoff' },
+        },
+      ],
+      [
+        '/ai-call/outbound-tasks/task-1/test-status',
+        { baseApi: '/ai-call-agent-api', method: 'get' },
+      ],
+      [
+        '/ai-call/outbound-tasks/task-1/active-call/end',
+        {
+          baseApi: '/ai-call-agent-api',
+          method: 'post',
+          headers: { 'Idempotency-Key': 'end-key' },
         },
       ],
     ]);

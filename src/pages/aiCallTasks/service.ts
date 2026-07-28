@@ -4,7 +4,10 @@ import type { RuoyiResponse } from '@/adapters/ruoyi/response';
 import type {
   AiCallTask,
   AiCallTaskTarget,
+  AiCallTaskTestCapability,
+  AiCallTaskTestStatus,
   ExecutionMode,
+  LinphoneTestScenario,
   TargetStatus,
   TaskMode,
   TaskStatus,
@@ -97,6 +100,12 @@ export type CreateAiCallTaskPayload = ValidationRequest;
 
 export type AcceptedCommand = {
   accepted: true;
+};
+
+export type AiCallTaskTestAccepted = AcceptedCommand & {
+  taskId: string;
+  attemptId: string;
+  callId: string;
 };
 
 export type CreateAiCallTaskResult = AcceptedCommand & {
@@ -216,6 +225,58 @@ export const cancelAiCallTask = (
   taskId: string,
   idempotencyKey: string,
 ): Promise<AcceptedCommand> => runTaskAction(taskId, 'cancel', idempotencyKey);
+
+export const getAiCallTaskTestCapability = async (
+  taskId: string,
+): Promise<AiCallTaskTestCapability> =>
+  unwrapData(
+    await ruoyiRequest<AiCallTaskTestCapability>(
+      `${TASKS_PATH}/${taskId}/test-capability`,
+      { ...requestOptions, method: 'get' },
+    ),
+  );
+
+export const runAiCallTaskTest = async (
+  taskId: string,
+  scenario: LinphoneTestScenario,
+  idempotencyKey: string,
+): Promise<AiCallTaskTestAccepted> =>
+  unwrapData(
+    await ruoyiRequest<AiCallTaskTestAccepted>(
+      `${TASKS_PATH}/${taskId}/test-run`,
+      {
+        ...requestOptions,
+        method: 'post',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        data: { scenario },
+      },
+    ),
+  );
+
+export const getAiCallTaskTestStatus = async (
+  taskId: string,
+): Promise<AiCallTaskTestStatus> =>
+  unwrapData(
+    await ruoyiRequest<AiCallTaskTestStatus>(
+      `${TASKS_PATH}/${taskId}/test-status`,
+      { ...requestOptions, method: 'get' },
+    ),
+  );
+
+export const endAiCallTaskActiveCall = async (
+  taskId: string,
+  idempotencyKey: string,
+): Promise<AcceptedCommand> =>
+  unwrapData(
+    await ruoyiRequest<AcceptedCommand>(
+      `${TASKS_PATH}/${taskId}/active-call/end`,
+      {
+        ...requestOptions,
+        method: 'post',
+        headers: { 'Idempotency-Key': idempotencyKey },
+      },
+    ),
+  );
 
 export const listAiCallTaskTargets = async (
   taskId: string,
