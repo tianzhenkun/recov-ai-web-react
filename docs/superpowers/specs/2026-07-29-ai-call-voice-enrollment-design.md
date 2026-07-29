@@ -442,6 +442,17 @@ POST /ai-call/voice-preview-sessions
 - 不混入正式通话记录。
 - 播放完成或 30 秒后自动释放。
 
+浏览器连接成功后通过独立接口触发固定开场白，不复用会写正式通话记录的通用
+browser-event 入口：
+
+```http
+POST /ai-call/voice-preview-sessions/{callId}/ready
+DELETE /ai-call/voice-preview-sessions/{callId}
+```
+
+两个接口都必须校验当前租户对试听会话的所有权。DELETE 用于主动停止；服务端仍保留
+30 秒兜底释放。
+
 ### 7.6 删除引用检查
 
 ```http
@@ -642,6 +653,8 @@ globalThis.crypto?.randomUUID?.() ||
 
 - 管理页面和写操作要求 `ai_call:voice:manage`。
 - 正式外呼音色列表可按现有外呼任务权限读取可用音色。
+- 生产环境必须从可信 JWT 或网关身份上下文解析权限声明；缺少
+  `ai_call:voice:manage` 时管理列表和写操作返回 `403`，不能只依赖前端隐藏菜单。
 - `tenant_id` 只取认证上下文。
 - 所有租户自定义音色、创建任务、删除任务查询都必须带 `tenant_id`。
 - 全局内置音色与租户自定义音色在服务层合并，不能通过关闭租户过滤读取所有自定义
