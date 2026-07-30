@@ -383,6 +383,53 @@ describe('AI Call voice management page', () => {
     expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
   });
 
+  it('does not show or poll an accepted custom voice excluded by the active filters', async () => {
+    jest.useFakeTimers();
+    mockList.mockResolvedValue({
+      rows: [
+        voice({
+          id: '2',
+          scope: 'GLOBAL',
+          voice: 'Cherry',
+          displayName: '芊悦',
+          voiceType: '内置',
+        }),
+      ],
+      total: 1,
+    });
+    mockCreate.mockResolvedValue({
+      voiceProfileId: '10',
+      enrollmentId: '11',
+      status: 'CREATING',
+      displayName: '客服小林',
+    });
+    render(<AiCallVoicesPage />);
+    await flushPromises();
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '类型' }));
+    fireEvent.click(await screen.findByTitle('内置'));
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+    await flushPromises();
+
+    await openCreateModal();
+    const submitButton = await fillEnrollment(
+      '客服小林',
+      new File(['voice'], 'voice.mp3', { type: 'audio/mpeg' }),
+    );
+    fireEvent.click(submitButton);
+    await flushPromises();
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('客服小林')).toBeNull();
+    const callsAfterAcceptance = mockList.mock.calls.length;
+
+    act(() => {
+      jest.advanceTimersByTime(4_000);
+    });
+    await flushPromises();
+    expect(mockList).toHaveBeenCalledTimes(callsAfterAcceptance);
+  });
+
   it('retains an idempotency key for an unknown result and clears it after acceptance', async () => {
     mockList.mockResolvedValue({ rows: [], total: 0 });
     mockCreate

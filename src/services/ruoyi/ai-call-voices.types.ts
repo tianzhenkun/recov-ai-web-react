@@ -43,7 +43,7 @@ export type PageResult<T> = {
 export type VoiceEnrollmentRequest = {
   displayName: string;
   gender: '未知' | '女声' | '男声';
-  language: string;
+  language: 'zh';
   transcript?: string;
   consentConfirmed: boolean;
 };
@@ -64,8 +64,37 @@ export type VoicePreviewSession = {
   callId: string;
   roomName: string;
   participantToken: string;
+  participantIdentity: string;
   livekitUrl: string;
-  expiresInSeconds?: number;
+  status:
+    | 'created'
+    | 'preparing'
+    | 'ready'
+    | 'connected'
+    | 'user_speaking'
+    | 'ai_thinking'
+    | 'ai_speaking'
+    | 'interrupted'
+    | 'waiting'
+    | 'ending'
+    | 'completed'
+    | 'failed';
+  effectiveConfig: {
+    model: string;
+    voice: string;
+    promptHash: string;
+    openingMessageHash: string;
+    promptSourceKey: string;
+    bargeInEnabled: boolean;
+    vadType: string;
+    vadThreshold: number;
+    vadSilenceDurationMs: number;
+  };
+  webAudioConstraints: {
+    echoCancellation: boolean;
+    noiseSuppression: boolean;
+    autoGainControl: boolean;
+  };
 };
 
 export type VoiceDeletionCheck = {
@@ -79,5 +108,5 @@ export type VoiceDeletionCheck = {
 export type VoiceDeletionAccepted = {
   voiceProfileId: string;
   deletionId: string;
-  status: 'DELETING';
+  status: 'DELETING' | 'DELETED' | 'DELETE_FAILED';
 };

@@ -31,6 +31,11 @@ type VoiceFilters = {
   status?: VoiceStatus;
 };
 
+const matchesFilters = (profile: AiCallVoiceProfile, filters: VoiceFilters) =>
+  (!filters.voiceType || profile.voiceType === filters.voiceType) &&
+  (!filters.gender || profile.gender === filters.gender) &&
+  (!filters.status || profile.status === filters.status);
+
 const statusOptions: Array<{ label: string; value: VoiceStatus }> = [
   { label: '创建中', value: 'CREATING' },
   { label: '可用', value: 'ENABLED' },
@@ -317,8 +322,13 @@ const AiCallVoicesPage = () => {
               if (serverHasOptimistic) {
                 optimisticProfileRef.current = undefined;
               }
+              const includeOptimistic = Boolean(
+                optimisticProfile &&
+                  !serverHasOptimistic &&
+                  matchesFilters(optimisticProfile, filters),
+              );
               const rows =
-                optimisticProfile && !serverHasOptimistic
+                optimisticProfile && includeOptimistic
                   ? [
                       optimisticProfile,
                       ...result.rows.filter(
@@ -335,7 +345,7 @@ const AiCallVoicesPage = () => {
                 data: rows,
                 total:
                   result.total +
-                  (optimisticProfile && !serverHasOptimistic ? 1 : 0),
+                  (optimisticProfile && includeOptimistic ? 1 : 0),
                 success: true,
               };
             }}

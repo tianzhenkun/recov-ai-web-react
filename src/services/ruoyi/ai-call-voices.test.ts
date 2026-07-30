@@ -38,7 +38,7 @@ const enrollmentPayload = {
   request: {
     displayName: '客服小林',
     gender: '女声' as const,
-    language: 'zh',
+    language: 'zh' as const,
     consentConfirmed: true,
   },
 };
@@ -132,7 +132,25 @@ describe('AI Call voice service', () => {
       callId: 'call-1',
       roomName: 'room-1',
       participantToken: 'token',
+      participantIdentity: 'customer-call-1',
       livekitUrl: 'ws://localhost',
+      status: 'ready',
+      effectiveConfig: {
+        model: 'qwen3.5-omni-plus-realtime',
+        voice: 'qwen-voice-1',
+        promptHash: 'prompt-hash',
+        openingMessageHash: 'opening-message-hash',
+        promptSourceKey: 'voice_preview',
+        bargeInEnabled: false,
+        vadType: 'server_vad',
+        vadThreshold: 0.5,
+        vadSilenceDurationMs: 500,
+      },
+      webAudioConstraints: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
     };
     mockRuoyiRequest
       .mockResolvedValueOnce({ code: 200, data: session })
