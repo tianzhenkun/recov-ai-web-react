@@ -578,6 +578,7 @@ git commit -m "feat(ai-call): 提供租户音色统一列表"
 **文件：**
 
 - 创建：`app/api/v1/ai_call/voice/service.py`
+- 修改：`app/api/v1/ai_call/voice/schema.py`
 - 修改：`tests/test_ai_call_voice_service.py`
 
 - [ ] **步骤 1：编写幂等和授权失败测试**
@@ -661,6 +662,21 @@ uv run pytest tests/test_ai_call_voice_service.py -q
 公开签名：
 
 ```python
+class VoiceEnrollmentRequest(BaseModel):
+    display_name: str
+    gender: Literal["未知", "女声", "男声"]
+    language: str
+    transcript: str | None = None
+    consent_confirmed: bool
+
+
+class VoiceEnrollmentAcceptedOut(BaseModel):
+    voice_profile_id: str
+    enrollment_id: str
+    status: Literal["CREATING"]
+    display_name: str
+
+
 async def create(
     self,
     db: AsyncSession,
@@ -705,9 +721,10 @@ async def create(
 ```bash
 uv run pytest tests/test_ai_call_voice_service.py -q
 uv run ruff check app/api/v1/ai_call/voice/service.py \
-  tests/test_ai_call_voice_service.py
+  app/api/v1/ai_call/voice/schema.py tests/test_ai_call_voice_service.py
 git diff --check
-git add app/api/v1/ai_call/voice/service.py tests/test_ai_call_voice_service.py
+git add app/api/v1/ai_call/voice/service.py app/api/v1/ai_call/voice/schema.py \
+  tests/test_ai_call_voice_service.py
 git commit -m "feat(ai-call): 幂等受理音色复刻任务"
 ```
 
