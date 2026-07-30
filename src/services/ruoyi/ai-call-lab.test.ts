@@ -23,12 +23,12 @@ describe('AI Call Lab configuration service', () => {
 
   it('unwraps data.rows and top-level rows responses', () => {
     expect(
-      unwrapAiCallLabPage({
+      unwrapAiCallLabPage<{ id: string }>({
         data: { rows: [{ id: 'profile-1' }], total: 1 },
       }),
     ).toEqual({ rows: [{ id: 'profile-1' }], total: 1 });
     expect(
-      unwrapAiCallLabPage({
+      unwrapAiCallLabPage<{ id: string }>({
         rows: [{ id: 'profile-2' }],
         total: 1,
       }),
@@ -47,7 +47,7 @@ describe('AI Call Lab configuration service', () => {
 
     expect(mockRequest).toHaveBeenCalledWith(
       '/ai-call-lab-api/ai-call/prompt-profiles',
-      { method: 'get', params: { pageSize: 200 } },
+      { method: 'get', params: { pageSize: 200 }, timeout: 10_000 },
     );
   });
 
