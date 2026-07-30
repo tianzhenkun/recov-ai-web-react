@@ -220,6 +220,55 @@ describe('RuoYi menu transform', () => {
     ).toBe(false);
   });
 
+  it('injects only voice management for a user with only the voice permission', () => {
+    const menuData = attachAiCallManagementMenu(
+      [
+        {
+          path: '/ai-call',
+          name: 'AI Call',
+          children: [
+            {
+              path: '/ai-call-lab/customer',
+              name: '通话测试台',
+            },
+          ],
+        },
+      ],
+      ['ai_call:voice:manage'],
+    );
+
+    expect(menuData[0].children?.map((item) => item.path)).toEqual([
+      '/ai-call/voices',
+      '/ai-call-lab/customer',
+    ]);
+  });
+
+  it('keeps voice management visible in its workspace with only the voice permission', () => {
+    const menuData = attachAiCallManagementMenu(
+      [
+        {
+          path: '/ai-call',
+          name: 'AI Call',
+          ruoyiComponent: 'Layout',
+          children: [
+            {
+              path: '/ai-call-lab/customer',
+              name: '通话测试台',
+            },
+          ],
+        },
+      ],
+      ['ai_call:voice:manage'],
+    );
+
+    const workspaceMenu = getScopedRuoyiMenuData(menuData, '/ai-call', [
+      'AI Call',
+    ]);
+    expect(workspaceMenu.some((item) => item.path === '/ai-call/voices')).toBe(
+      true,
+    );
+  });
+
   it('does not expose generic outbound entries without an AI Call management child', () => {
     const menuData = attachAiCallManagementMenu([
       {

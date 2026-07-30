@@ -120,10 +120,6 @@ const aiCallInjectedChildren: RuoyiMenuDataItem[] = [
   },
 ];
 
-const aiCallInjectedPaths = new Set(
-  aiCallInjectedChildren.map((item) => normalizePath(item.path)),
-);
-
 const isSalesAgentMenuItem = (item: MenuDataItem) => {
   const path = normalizePath(item.path);
   if (path === salesAgentPath) return true;
@@ -201,20 +197,26 @@ export const attachAiCallManagementMenu = (
     const hasManagementChild = children.some((child) =>
       aiCallManagementPaths.has(normalizePath(child.path)),
     );
+    const shouldInjectVoice =
+      permissions === undefined ? hasManagementChild : canManageVoices;
+    const injectedChildren = aiCallInjectedChildren.filter((child) => {
+      const path = normalizePath(child.path);
+      return path === aiCallVoicesPath ? shouldInjectVoice : hasManagementChild;
+    });
+    const injectedPaths = new Set(
+      injectedChildren.map((child) => normalizePath(child.path)),
+    );
 
-    if (!isAiCallRoot || !hasManagementChild) {
+    if (!isAiCallRoot || injectedChildren.length === 0) {
       return children.length > 0 ? { ...item, children } : item;
     }
 
     return {
       ...item,
       children: [
-        ...aiCallInjectedChildren.filter(
-          (child) =>
-            canManageVoices || normalizePath(child.path) !== aiCallVoicesPath,
-        ),
+        ...injectedChildren,
         ...children.filter(
-          (child) => !aiCallInjectedPaths.has(normalizePath(child.path)),
+          (child) => !injectedPaths.has(normalizePath(child.path)),
         ),
       ],
     };
