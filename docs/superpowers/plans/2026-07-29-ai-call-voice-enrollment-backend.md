@@ -123,7 +123,7 @@ uv run pytest tests/test_ai_call_voice_models.py -q
 
 预期：FAIL，`app.api.v1.ai_call.voice` 尚不存在。
 
-- [ ] **步骤 3：实现三张模型表**
+- [ ] **步骤 3：实现四张模型表**
 
 在 `model.py` 定义以下公开类型和字段：
 
@@ -152,6 +152,12 @@ class AiCallVoiceDeletionModel(MappedBase):
     # provider_request_id, attempt_count, next_retry_at, lease_owner,
     # lease_expires_at, historical_task_count, error_message,
     # requested_by, started_at, finished_at, created_at, updated_at
+
+
+class AiCallVoiceSampleCleanupModel(MappedBase):
+    __tablename__ = "ai_call_voice_sample_cleanup"
+    # id, tenant_id, object_key, status, attempt_count, next_retry_at,
+    # lease_owner, lease_expires_at, error_message, created_at, updated_at
 ```
 
 所有 bigint 关系均为逻辑 ID，不声明 `ForeignKey`。JSON 内容不用数据库 JSON 类型。
@@ -167,6 +173,8 @@ CONSTRAINT uk_voice_enrollment_tenant_key
     UNIQUE (tenant_id, idempotency_key);
 CONSTRAINT uk_voice_deletion_tenant_key
     UNIQUE (tenant_id, idempotency_key);
+CONSTRAINT uk_voice_sample_cleanup_object_key
+    UNIQUE (object_key);
 ```
 
 并为 Worker 建立：
@@ -176,6 +184,8 @@ CREATE INDEX IF NOT EXISTS idx_voice_enrollment_claim
     ON ai_call_voice_enrollment (status, next_retry_at, id);
 CREATE INDEX IF NOT EXISTS idx_voice_deletion_claim
     ON ai_call_voice_deletion (status, next_retry_at, id);
+CREATE INDEX IF NOT EXISTS idx_voice_sample_cleanup_claim
+    ON ai_call_voice_sample_cleanup (status, next_retry_at, id);
 ```
 
 - [ ] **步骤 5：运行模型、SQL 和格式验证**
@@ -578,7 +588,10 @@ git commit -m "feat(ai-call): 提供租户音色统一列表"
 **文件：**
 
 - 创建：`app/api/v1/ai_call/voice/service.py`
+- 修改：`app/api/v1/ai_call/voice/model.py`
 - 修改：`app/api/v1/ai_call/voice/schema.py`
+- 修改：`docs/livekit-ai-outbound/sql/phase-h6-voice-enrollment-postgres.sql`
+- 修改：`tests/test_ai_call_voice_models.py`
 - 修改：`tests/test_ai_call_voice_service.py`
 
 - [ ] **步骤 1：编写幂等和授权失败测试**
@@ -709,22 +722,28 @@ async def create(
 7. 同一事务新增资产 `CREATING` 和任务 `PENDING`。
 8. `preferred_name = f"vc{profile_id}"[-16:]`。
 
-数据库事务失败时删除刚上传对象；对象删除失败写安全日志并进入清理补偿。
+数据库事务失败时删除刚上传对象；对象删除失败时，在独立事务写入
+`ai_call_voice_sample_cleanup`，保存唯一 object key 供 Worker 重试。清理记录本身
+持久化失败时仅记录不含 object key、文件名、幂等 Key 和底层异常的安全日志。
 
 - [ ] **步骤 4：实现失败资产重新上传**
 
-`reenroll` 只接受当前租户 `CREATE_FAILED` 资产，生成新的 enrollment，更新
+`reenroll` 只接受当前租户 `CREATE_FAILED` 资产，并在事务中使用行锁或条件更新原子
+占用该状态；并发使用不同 Key 时只有一个请求可以生成 enrollment。成功后更新
 `latest_enrollment_id`，清空 `error_message`，状态回到 `CREATING`。
 
 - [ ] **步骤 5：验证并 Commit**
 
 ```bash
 uv run pytest tests/test_ai_call_voice_service.py -q
-uv run ruff check app/api/v1/ai_call/voice/service.py \
-  app/api/v1/ai_call/voice/schema.py tests/test_ai_call_voice_service.py
+uv run ruff check app/api/v1/ai_call/voice/model.py \
+  app/api/v1/ai_call/voice/service.py app/api/v1/ai_call/voice/schema.py \
+  tests/test_ai_call_voice_models.py tests/test_ai_call_voice_service.py
 git diff --check
-git add app/api/v1/ai_call/voice/service.py app/api/v1/ai_call/voice/schema.py \
-  tests/test_ai_call_voice_service.py
+git add app/api/v1/ai_call/voice/model.py app/api/v1/ai_call/voice/service.py \
+  app/api/v1/ai_call/voice/schema.py \
+  docs/livekit-ai-outbound/sql/phase-h6-voice-enrollment-postgres.sql \
+  tests/test_ai_call_voice_models.py tests/test_ai_call_voice_service.py
 git commit -m "feat(ai-call): 幂等受理音色复刻任务"
 ```
 
@@ -801,6 +820,8 @@ RETRY_DELAYS = (5, 30, 120)
 - 成功：先落 provider voice 和资产 `ENABLED`，再清理对象。
 - 成功或失败都清理对象并清空 `sample_object_key`。
 - 清理失败写 `cleanup_error_message`，下一次清理扫描继续尝试。
+- 同一 Worker 同时扫描 `ai_call_voice_sample_cleanup`；删除成功进入 `SUCCEEDED`，
+  失败按相同退避进入 `RETRY_WAIT`，不得把 object key 或底层存储异常写入日志。
 
 - [ ] **步骤 5：验证并 Commit**
 

@@ -316,6 +316,31 @@ PENDING
 - 同一音色只能存在一个未结束的删除任务。
 - 不创建物理外键。
 
+### 6.5 孤儿样本清理任务
+
+新增 `ai_call_voice_sample_cleanup`，用于数据库事务回滚且即时删除私有样本也失败时，
+持久化唯一的 `object_key`，避免只记日志后永久失去清理入口：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | bigint | 雪花主键 |
+| `tenant_id` | varchar(64) | 租户 |
+| `object_key` | varchar(500) | 待删除的私有对象键 |
+| `status` | varchar(32) | PENDING／PROCESSING／RETRY_WAIT／SUCCEEDED |
+| `attempt_count` | integer | 已执行次数 |
+| `next_retry_at` | timestamp, nullable | 下次重试时间 |
+| `lease_owner` | varchar(128), nullable | Worker 租约持有者 |
+| `lease_expires_at` | timestamp, nullable | 租约到期时间 |
+| `error_message` | varchar(1000), nullable | 脱敏后的清理错误 |
+| `created_at` | timestamp | 创建时间 |
+| `updated_at` | timestamp | 更新时间 |
+
+约束与索引：
+
+- 唯一约束：`object_key`。
+- 索引：`status + next_retry_at + id`。
+- 不创建物理外键。
+
 ## 7. API 契约
 
 ### 7.1 查询音色单列表
