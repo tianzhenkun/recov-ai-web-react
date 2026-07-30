@@ -24,6 +24,7 @@ jest.mock('livekit-client', () => ({
 const credential = {
   livekit_url: 'wss://livekit.example.com',
   participant_token: 'agent-token',
+  participant_identity: 'human-agent-9007199254740993',
   handoff: {
     handoff_id: '9007199254740993',
     call_id: 'call-1',
@@ -117,6 +118,13 @@ describe('useAgentCall', () => {
 
     await waitFor(() => expect(services.mediaReady).toHaveBeenCalledTimes(1));
     expect(room.publishMicrophone).toHaveBeenCalledTimes(1);
+    expect(services.mediaReady).toHaveBeenCalledWith(
+      credential.handoff.handoff_id,
+      expect.objectContaining({
+        consoleSessionId: 'session-1',
+        participantIdentity: credential.participant_identity,
+      }),
+    );
     expect(room.publishMicrophone.mock.invocationCallOrder[0]).toBeLessThan(
       services.mediaReady.mock.invocationCallOrder[0],
     );
@@ -167,6 +175,30 @@ describe('useAgentCall', () => {
     expect(room.disconnect).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('phase').textContent).toBe('error');
+  });
+
+  it('identifies microphone publication as the failed connection stage', async () => {
+    const room = createRoom();
+    room.publishMicrophone.mockRejectedValueOnce(
+      new Error('microphone publication rejected'),
+    );
+    render(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory: () => room,
+          services: createServices(),
+        }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('error'),
+    );
+    expect(screen.getByTestId('error').textContent).toBe(
+      '已连接房间，但麦克风发布失败',
+    );
   });
 
   it('requests a token for the same handoff after a network disconnect', async () => {

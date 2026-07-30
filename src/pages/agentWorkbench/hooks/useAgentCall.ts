@@ -28,6 +28,15 @@ export type AgentCallPhase =
   | 'wrap_up_quick'
   | 'error';
 
+export type AgentCallConnectionStage =
+  | 'idle'
+  | 'livekit_connecting'
+  | 'livekit_connected'
+  | 'microphone_publishing'
+  | 'microphone_published'
+  | 'media_ready_reporting'
+  | 'connected';
+
 export type AgentNetworkQuality =
   | 'excellent'
   | 'good'
@@ -86,6 +95,14 @@ const getErrorCode = (error: unknown) => {
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
+
+const stageErrorMessages: Partial<Record<AgentCallConnectionStage, string>> = {
+  livekit_connecting: '已认领，但无法连接通话房间',
+  livekit_connected: '已连接房间，但麦克风尚未开始发布',
+  microphone_publishing: '已连接房间，但麦克风发布失败',
+  microphone_published: '麦克风已发布，但坐席状态尚未确认',
+  media_ready_reporting: '麦克风已就绪，但坐席状态确认失败',
+};
 
 const unwrapCredential = (response: unknown): MediaCredentialDto => {
   if (response && typeof response === 'object') {
@@ -191,6 +208,8 @@ export const useAgentCall = ({
   connectTimeoutMs = 15_000,
 }: UseAgentCallOptions) => {
   const [phase, setPhase] = useState<AgentCallPhase>('idle');
+  const [connectionStage, setConnectionStage] =
+    useState<AgentCallConnectionStage>('idle');
   const [microphoneEnabled, setMicrophoneEnabledState] = useState(true);
   const [remoteAudioReady, setRemoteAudioReady] = useState(false);
   const [networkQuality, setNetworkQuality] =
@@ -198,8 +217,17 @@ export const useAgentCall = ({
   const [errorMessage, setErrorMessage] = useState('');
   const roomRef = useRef<AgentRoomConnection | undefined>(undefined);
   const generationRef = useRef(0);
+  const connectionStageRef = useRef<AgentCallConnectionStage>('idle');
   const intentionalDisconnectRef = useRef(false);
   const reconnectingRef = useRef(false);
+
+  const updateConnectionStage = useCallback(
+    (stage: AgentCallConnectionStage) => {
+      connectionStageRef.current = stage;
+      setConnectionStage(stage);
+    },
+    [],
+  );
 
   const disconnectCurrentRoom = useCallback(async () => {
     const room = roomRef.current;
@@ -217,6 +245,7 @@ export const useAgentCall = ({
       roomRef.current = room;
       intentionalDisconnectRef.current = false;
       setPhase(reconnecting ? 'reconnecting' : 'connecting');
+      updateConnectionStage('livekit_connecting');
       setErrorMessage('');
       setRemoteAudioReady(false);
       room.onRemoteAudio(() => {
@@ -271,25 +300,38 @@ export const useAgentCall = ({
             nextCredential.livekit_url,
             nextCredential.participant_token,
           );
+          updateConnectionStage('livekit_connected');
+          updateConnectionStage('microphone_publishing');
           await room.publishMicrophone();
+          updateConnectionStage('microphone_published');
         })(),
         connectTimeoutMs,
       );
       if (generation !== generationRef.current) return;
       if (!reconnecting) {
-        await services.mediaReady(
-          nextCredential.handoff.handoff_id,
-          idempotencyInput(consoleSessionId || ''),
-        );
+        updateConnectionStage('media_ready_reporting');
+        await services.mediaReady(nextCredential.handoff.handoff_id, {
+          ...idempotencyInput(consoleSessionId || ''),
+          participantIdentity: nextCredential.participant_identity,
+        });
       }
+      updateConnectionStage('connected');
       setPhase('connected');
     },
-    [connectTimeoutMs, consoleSessionId, onWrapUp, roomFactory, services],
+    [
+      connectTimeoutMs,
+      consoleSessionId,
+      onWrapUp,
+      roomFactory,
+      services,
+      updateConnectionStage,
+    ],
   );
 
   useEffect(() => {
     if (!credential || !consoleSessionId) {
       setPhase('idle');
+      updateConnectionStage('idle');
       return;
     }
     let active = true;
@@ -298,7 +340,8 @@ export const useAgentCall = ({
       await disconnectCurrentRoom();
       setPhase('error');
       setErrorMessage(
-        getErrorMessage(error, '人工通话接入失败，请刷新坐席状态'),
+        stageErrorMessages[connectionStageRef.current] ||
+          getErrorMessage(error, '人工通话接入失败，请刷新坐席状态'),
       );
       await refresh?.();
     });
@@ -313,6 +356,7 @@ export const useAgentCall = ({
     credential,
     disconnectCurrentRoom,
     refresh,
+    updateConnectionStage,
   ]);
 
   const toggleMicrophone = useCallback(async () => {
@@ -346,6 +390,7 @@ export const useAgentCall = ({
 
   return {
     phase,
+    connectionStage,
     microphoneEnabled,
     remoteAudioReady,
     networkQuality,

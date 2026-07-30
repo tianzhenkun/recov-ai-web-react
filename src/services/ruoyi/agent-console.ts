@@ -117,7 +117,7 @@ export type AdminAgentDto = AgentProfileDto & {
 
 export type DialogueTurnDto = {
   id?: BigintString;
-  speaker_type: 'customer' | 'ai' | 'agent' | string;
+  speaker_type: 'customer' | 'ai' | 'human_agent' | 'agent' | string;
   text: string;
   occurred_at?: string;
 };
@@ -168,7 +168,7 @@ export type MediaCredentialDto = {
   handoff: HandoffDto;
   livekit_url: string;
   participant_token: string;
-  participant_identity?: string;
+  participant_identity: string;
 };
 
 export type AfterCallWorkDto = {
@@ -246,6 +246,10 @@ export type OnlinePresenceInput = PresenceInput & {
 
 export type IdempotentSessionInput = PresenceInput & {
   idempotencyKey: string;
+};
+
+export type MediaReadyInput = IdempotentSessionInput & {
+  participantIdentity: string;
 };
 
 export type AfterCallWorkInput = {
@@ -374,14 +378,17 @@ export const claimHandoff = (
 
 export const confirmHandoffMediaReady = (
   handoffId: BigintString,
-  input: IdempotentSessionInput,
+  input: MediaReadyInput,
 ) =>
   agentConsoleRequest<HandoffDto>(
     `${AGENT_CONSOLE_API_PREFIX}/handoffs/${encodeId(handoffId)}/media-ready`,
     {
       method: 'post',
       headers: idempotencyHeaders(input.idempotencyKey),
-      data: presenceData(input),
+      data: {
+        ...presenceData(input),
+        participant_identity: input.participantIdentity,
+      },
     },
   );
 

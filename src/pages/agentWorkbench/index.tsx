@@ -356,6 +356,7 @@ const AgentWorkbenchPage = () => {
           ) : (
             <CurrentCallPanel
               phase={agentCall.phase}
+              connectionStage={agentCall.connectionStage}
               microphoneEnabled={agentCall.microphoneEnabled}
               remoteAudioReady={agentCall.remoteAudioReady}
               networkQuality={agentCall.networkQuality}

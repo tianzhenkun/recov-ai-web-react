@@ -18,6 +18,7 @@ import {
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import type {
+  AgentCallConnectionStage,
   AgentCallPhase,
   AgentNetworkQuality,
 } from '../hooks/useAgentCall';
@@ -29,6 +30,7 @@ type AudioDevice = { label: string; value: string };
 
 export type CurrentCallPanelProps = {
   phase: AgentCallPhase;
+  connectionStage: AgentCallConnectionStage;
   microphoneEnabled: boolean;
   remoteAudioReady: boolean;
   networkQuality: AgentNetworkQuality;
@@ -57,8 +59,19 @@ const qualityLabel: Record<AgentNetworkQuality, string> = {
   unknown: '检测中',
 };
 
+const connectionStageLabel: Record<AgentCallConnectionStage, string> = {
+  idle: '等待接入',
+  livekit_connecting: '正在连接通话房间',
+  livekit_connected: '通话房间已连接',
+  microphone_publishing: '正在发布麦克风',
+  microphone_published: '麦克风已发布',
+  media_ready_reporting: '正在确认坐席就绪',
+  connected: '媒体接入完成',
+};
+
 const CurrentCallPanel = ({
   phase,
+  connectionStage,
   microphoneEnabled,
   remoteAudioReady,
   networkQuality,
@@ -107,6 +120,9 @@ const CurrentCallPanel = ({
         <div>
           <Text strong>{phaseLabel[phase]}</Text>
           <Flex gap="small" wrap className="agent-current-call-tags">
+            <Tag color={connectionStage === 'connected' ? 'success' : 'blue'}>
+              {connectionStageLabel[connectionStage]}
+            </Tag>
             <Tag
               color={remoteAudioReady ? 'success' : 'processing'}
               icon={<SoundOutlined />}

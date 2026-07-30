@@ -53,6 +53,7 @@ describe('agent console service contract', () => {
     });
     await call('confirmHandoffMediaReady', 'handoff-1', {
       consoleSessionId: 'session-1',
+      participantIdentity: 'human-agent-handoff-1',
       idempotencyKey: 'media-1',
     });
     await call('getHandoffReconnectToken', 'handoff-1', {
@@ -104,6 +105,14 @@ describe('agent console service contract', () => {
       method: 'post',
       headers: { 'Idempotency-Key': 'claim-1' },
       data: { console_session_id: 'session-1' },
+    });
+    expect(mockedRequest.mock.calls[7][1]).toMatchObject({
+      method: 'post',
+      headers: { 'Idempotency-Key': 'media-1' },
+      data: {
+        console_session_id: 'session-1',
+        participant_identity: 'human-agent-handoff-1',
+      },
     });
     expect(mockedRequest.mock.calls[10][1]).toMatchObject({
       method: 'put',

@@ -47,6 +47,7 @@ const credential = {
   handoff: { ...handoff, status: 'accepted' as const },
   livekit_url: 'wss://livekit.example.com',
   participant_token: 'agent-token',
+  participant_identity: 'human-agent-9007199254740993',
 };
 
 const room = {
