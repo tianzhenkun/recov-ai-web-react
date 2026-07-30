@@ -77,6 +77,9 @@ const PresenceHarness = ({
       <div data-testid="status">{agent.status}</div>
       <div data-testid="block-reason">{agent.blockReason}</div>
       <div data-testid="error">{agent.errorMessage}</div>
+      <div data-testid="service-recovering">
+        {agent.serviceRecovering ? 'yes' : 'no'}
+      </div>
       <div data-testid="session-id">{agent.consoleSessionId}</div>
       <button type="button" onClick={() => void agent.goOnline()}>
         上线
@@ -86,6 +89,9 @@ const PresenceHarness = ({
       </button>
       <button type="button" onClick={() => void agent.goOffline()}>
         下线
+      </button>
+      <button type="button" onClick={() => void agent.retryBootstrap()}>
+        重新连接
       </button>
       {children}
     </div>
@@ -308,5 +314,64 @@ describe('useAgentPresence', () => {
     await waitFor(() => {
       expect(services.bootstrap).toHaveBeenCalledTimes(3);
     });
+  });
+
+  it('retries a gateway bootstrap five times with a friendly recovery state', async () => {
+    jest.useFakeTimers();
+    const services = createServices();
+    services.bootstrap.mockRejectedValue({ response: { status: 504 } });
+
+    render(
+      <PresenceHarness options={{ services, devicePreflight: jest.fn() }} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('service-recovering').textContent).toBe('yes');
+    });
+    expect(screen.getByTestId('error').textContent).toBe(
+      '坐席服务暂不可用，正在重新连接',
+    );
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(12_000);
+    });
+
+    await waitFor(() => {
+      expect(services.bootstrap).toHaveBeenCalledTimes(5);
+      expect(screen.getByTestId('service-recovering').textContent).toBe('no');
+    });
+    expect(screen.getByTestId('error').textContent).toBe(
+      '坐席服务暂不可用，请点击重新连接',
+    );
+  });
+
+  it('recovers the profile after a manual bootstrap retry', async () => {
+    jest.useFakeTimers();
+    const services = createServices();
+    services.bootstrap
+      .mockRejectedValueOnce({ response: { status: 504 } })
+      .mockRejectedValueOnce({ response: { status: 504 } })
+      .mockRejectedValueOnce({ response: { status: 504 } })
+      .mockRejectedValueOnce({ response: { status: 504 } })
+      .mockRejectedValueOnce({ response: { status: 504 } });
+
+    render(
+      <PresenceHarness options={{ services, devicePreflight: jest.fn() }} />,
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(12_000);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('error').textContent).toBe(
+        '坐席服务暂不可用，请点击重新连接',
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '重新连接' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status').textContent).toBe('offline');
+      expect(screen.getByTestId('error').textContent).toBe('');
+    });
+    expect(services.bootstrap).toHaveBeenCalledTimes(6);
   });
 });

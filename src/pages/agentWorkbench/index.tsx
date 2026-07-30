@@ -25,6 +25,7 @@ import { useAgentCall } from './hooks/useAgentCall';
 import { useAgentEvents } from './hooks/useAgentEvents';
 import type { DeviceCheckState } from './hooks/useAgentPresence';
 import { useAgentPresence } from './hooks/useAgentPresence';
+import { isRetryableReadError, readWithGatewayRetry } from './utils/readRetry';
 import './index.css';
 
 const { Text, Title } = Typography;
@@ -79,6 +80,7 @@ const AgentWorkbenchPage = () => {
   const [claimedCredential, setClaimedCredential] =
     useState<MediaCredentialDto>();
   const [wrapUpReason, setWrapUpReason] = useState('');
+  const [readErrorMessage, setReadErrorMessage] = useState('');
   const handleWrapUp = useCallback(
     (_handoff: HandoffDto, reason?: string) => setWrapUpReason(reason || ''),
     [],
@@ -92,10 +94,16 @@ const AgentWorkbenchPage = () => {
     if (agent.status !== 'available' || claimedCredential) return;
     setHandoffsLoading(true);
     try {
-      const response = await getPendingHandoffs({
-        consoleSessionId: agent.consoleSessionId,
-        limit: 100,
-      });
+      const response = await readWithGatewayRetry(
+        () =>
+          getPendingHandoffs({
+            consoleSessionId: agent.consoleSessionId,
+            limit: 100,
+          }),
+        {
+          onRetry: () => setReadErrorMessage('坐席服务暂不可用，正在重新连接'),
+        },
+      );
       const envelope = response as unknown as {
         data?: PageResult<HandoffDto>;
         rows?: HandoffDto[];
@@ -104,8 +112,13 @@ const AgentWorkbenchPage = () => {
       setHandoffs(
         page?.rows || (Array.isArray(envelope.rows) ? envelope.rows : []) || [],
       );
-    } catch {
-      setHandoffs([]);
+      setReadErrorMessage('');
+    } catch (error) {
+      setReadErrorMessage(
+        isRetryableReadError(error)
+          ? '坐席服务暂不可用，请点击重新连接'
+          : '待接通话加载失败，请点击重新连接',
+      );
     } finally {
       setHandoffsLoading(false);
     }
@@ -144,6 +157,13 @@ const AgentWorkbenchPage = () => {
     agent.blockReason === 'disabled'
       ? '当前坐席档案已停用，请联系管理员启用并确认可接业务场景。'
       : '当前账号尚未开通坐席功能，请联系管理员创建坐席档案并配置业务场景。';
+  const serviceMessage = agent.errorMessage || readErrorMessage;
+  const serviceRecovering =
+    agent.serviceRecovering ||
+    serviceMessage === '坐席服务暂不可用，正在重新连接';
+  const canRetryService =
+    serviceMessage === '坐席服务暂不可用，请点击重新连接' ||
+    serviceMessage === '待接通话加载失败，请点击重新连接';
 
   return (
     <PageContainer className="agent-workbench-page" pageHeaderRender={false}>
@@ -200,13 +220,27 @@ const AgentWorkbenchPage = () => {
           description={blockDescription}
         />
       ) : null}
-      {agent.errorMessage ? (
+      {serviceMessage ? (
         <Alert
           className="agent-workbench-alert"
-          type="error"
+          type={serviceRecovering ? 'warning' : 'error'}
           showIcon
-          title="坐席状态需要处理"
-          description={agent.errorMessage}
+          title={serviceRecovering ? serviceMessage : '坐席状态需要处理'}
+          description={serviceRecovering ? undefined : serviceMessage}
+          action={
+            canRetryService ? (
+              <Button
+                size="small"
+                onClick={() => {
+                  setReadErrorMessage('');
+                  void agent.retryBootstrap();
+                  void loadHandoffs();
+                }}
+              >
+                重新连接
+              </Button>
+            ) : undefined
+          }
         />
       ) : null}
 

@@ -10,6 +10,7 @@ import {
   setAgentOffline,
   setAgentOnline,
 } from '@/services/ruoyi/agent-console';
+import { isRetryableReadError, readWithGatewayRetry } from '../utils/readRetry';
 
 export type DeviceCheckState = 'idle' | 'checking' | 'passed' | 'failed';
 
@@ -220,13 +221,23 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
     checks: emptyChecks,
   });
   const [errorMessage, setErrorMessage] = useState('');
+  const [serviceRecovering, setServiceRecovering] = useState(false);
 
   const status = presence?.status ?? (phase === 'ready' ? 'offline' : '');
 
   const bootstrap = useCallback(async () => {
     setErrorMessage('');
+    setServiceRecovering(false);
     try {
-      const result = unwrapData(await services.bootstrap());
+      const result = unwrapData(
+        await readWithGatewayRetry(services.bootstrap, {
+          onRetry: () => {
+            setServiceRecovering(true);
+            setErrorMessage('坐席服务暂不可用，正在重新连接');
+          },
+        }),
+      );
+      setServiceRecovering(false);
       if (!result?.profile) {
         setBlockReason('unregistered');
         setProfile(undefined);
@@ -260,9 +271,15 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       }
       setPhase('ready');
     } catch (error) {
+      const gatewayUnavailable = isRetryableReadError(error);
       const reason = resolveBlockReason(error);
       setBlockReason(reason);
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(
+        gatewayUnavailable
+          ? '坐席服务暂不可用，请点击重新连接'
+          : getErrorMessage(error),
+      );
+      setServiceRecovering(false);
       setPhase(reason ? 'blocked' : 'error');
     }
   }, [consoleSessionId, services]);
@@ -358,7 +375,9 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       errorMessage,
       consoleSessionId,
       deviceResult,
+      serviceRecovering,
       bootstrap,
+      retryBootstrap: bootstrap,
       goOnline,
       pause: () => changePresence(services.pause),
       goOffline: () => changePresence(services.offline),
@@ -374,6 +393,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       phase,
       presence,
       profile,
+      serviceRecovering,
       services,
       status,
     ],
