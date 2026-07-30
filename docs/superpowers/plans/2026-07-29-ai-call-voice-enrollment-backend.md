@@ -214,6 +214,7 @@ import pytest
 
 from app.services.ai_call.providers.qwen_voice_enrollment import (
     QwenVoiceEnrollmentProvider,
+    VoiceProviderResultUnknownError,
     VoiceProviderRetryableError,
 )
 
@@ -238,8 +239,6 @@ async def test_provider_create_uses_server_owned_model_and_bearer_key() -> None:
     result = await provider.create(
         preferred_name="vc123",
         audio_data_url="data:audio/mpeg;base64,AA==",
-        language="zh",
-        text="您好",
     )
 
     assert result.voice == "qwen-omni-vc-demo"
@@ -280,35 +279,54 @@ class VoiceCreateResult:
     request_id: str | None
 
 
+@dataclass(frozen=True)
+class VoiceListItem:
+    voice: str
+    target_model: str | None
+    gmt_create: str | None
+
+
 class QwenVoiceEnrollmentProvider:
     async def create(
         self,
         *,
         preferred_name: str,
         audio_data_url: str,
-        language: str,
-        text: str | None,
     ) -> VoiceCreateResult:
         payload = {
             "action": "create",
             "target_model": self.target_model,
             "preferred_name": preferred_name,
             "audio": {"data": audio_data_url},
-            "language": language,
         }
-        if text:
-            payload["text"] = text
         body, request_id = await self._request(payload)
         voice = str(body.get("output", {}).get("voice") or "").strip()
         if not voice:
             raise VoiceProviderProtocolError("Qwen 创建响应缺少 voice")
         return VoiceCreateResult(voice=voice, request_id=request_id)
 
-    async def list(self) -> list[str]:
-        body, _ = await self._request({"action": "list"})
-        voices = body.get("output", {}).get("voices") or []
+    async def list(
+        self,
+        *,
+        page_index: int = 0,
+        page_size: int = 1000,
+    ) -> list[VoiceListItem]:
+        body, _ = await self._request(
+            {
+                "action": "list",
+                "page_index": page_index,
+                "page_size": page_size,
+            }
+        )
+        voices = body.get("output", {}).get("voice_list") or []
         return [
-            str(item["voice"])
+            VoiceListItem(
+                voice=str(item["voice"]),
+                target_model=(
+                    str(item["target_model"]) if item.get("target_model") else None
+                ),
+                gmt_create=str(item["gmt_create"]) if item.get("gmt_create") else None,
+            )
             for item in voices
             if isinstance(item, dict) and item.get("voice")
         ]
@@ -318,16 +336,21 @@ class QwenVoiceEnrollmentProvider:
         return request_id
 ```
 
-共用 `_request(action, input_values)`，只记录脱敏错误。4xx 抛
-`VoiceProviderRejectedError`；429、5xx、连接和读写超时抛
-`VoiceProviderRetryableError`；响应缺少 `voice` 抛 `VoiceProviderProtocolError`。
+共用 `_request(action, input_values)`，请求体顶层固定包含
+`model=qwen-voice-enrollment` 和 `input`，只记录脱敏错误。4xx 抛
+`VoiceProviderRejectedError`；429、5xx、连接失败抛
+`VoiceProviderRetryableError`；创建请求发生读写超时时抛
+`VoiceProviderResultUnknownError`，由 Worker 进入 `RECONCILING`，禁止盲目重试；
+响应缺少 `voice` 抛 `VoiceProviderProtocolError`。
 
 - [ ] **步骤 4：补齐 create/list/delete 和敏感信息测试**
 
 测试必须断言：
 
 - `action=create/list/delete` 的 JSON 正确。
-- `text=None` 时不发送空字符串。
+- create 不发送当前官方契约未声明的 `language`、`text` 字段。
+- list 发送 `page_index`、`page_size`，解析 `output.voice_list`。
+- create 读写超时分类为 `VoiceProviderResultUnknownError`。
 - 错误对象和日志字符串不包含 API Key 与 Data URL。
 - `request_id` 同时兼容 `request_id` 和 `requestId`。
 

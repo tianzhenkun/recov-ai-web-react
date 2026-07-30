@@ -518,15 +518,15 @@ Repository。
     "preferred_name": "vc123456789",
     "audio": {
       "data": "data:audio/mp4;base64,..."
-    },
-    "text": "可选",
-    "language": "zh"
+    }
   }
 }
 ```
 
 `preferred_name` 由后端根据音色资产 ID 生成，只包含数字、字母或下划线，最长
-16 个字符。用户不填写该字段。
+16 个字符。用户不填写该字段。`language` 和录音文本仍由本地任务保存，用于
+校验、审计和问题排查，但当前 Qwen `qwen-voice-enrollment` 创建契约不接收这两个
+字段，因此 Provider Adapter 不发送它们。
 
 ### 8.2 对账
 
@@ -534,7 +534,8 @@ Repository。
 
 1. 保存已有 `provider_request_id`。
 2. 状态进入 `RECONCILING`。
-3. 调用 `action=list` 查询由该任务生成的 `preferred_name` 对应音色。
+3. 调用带 `page_index`、`page_size` 的 `action=list`，从
+   `output.voice_list` 查询由该任务生成的 `preferred_name` 对应音色。
 4. 找到后补写本地资产并进入成功。
 5. 未确认结果前禁止盲目再次执行 `action=create`。
 
