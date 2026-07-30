@@ -57,7 +57,7 @@ describe('WaitingPool', () => {
     expect(screen.getByText('张** · 138****0000')).toBeTruthy();
     expect(screen.getByText('已等待 35 秒')).toBeTruthy();
     expect(screen.getByText('客户希望确认 GEO 服务范围')).toBeTruthy();
-    expect(screen.getByText('确认服务范围')).toBeTruthy();
+    expect(screen.queryByText('确认服务范围')).toBeNull();
     expect(screen.queryByText('第四项不应展示')).toBeNull();
     expect(
       screen
@@ -70,7 +70,14 @@ describe('WaitingPool', () => {
   it('falls back to the customer request and recent dialogue while summary is pending', () => {
     render(
       <WaitingPool
-        handoffs={[{ ...handoff, handoff_summary: null, pending_items: [] }]}
+        handoffs={[
+          {
+            ...handoff,
+            request_reason: undefined,
+            handoff_summary: null,
+            pending_items: [],
+          },
+        ]}
         agentStatus="available"
         consoleSessionId="session-1"
         now={now}
@@ -78,7 +85,7 @@ describe('WaitingPool', () => {
     );
 
     expect(screen.getByText('请帮我转人工')).toBeTruthy();
-    expect(screen.getByText('我想找人工确认')).toBeTruthy();
+    expect(screen.queryByText('我想找人工确认')).toBeNull();
   });
 
   it('sends only one idempotent claim for repeated clicks', async () => {
@@ -99,7 +106,7 @@ describe('WaitingPool', () => {
       />,
     );
 
-    const button = screen.getByRole('button', { name: /接听/ });
+    const button = screen.getByRole('button', { name: /接管通话/ });
     fireEvent.click(button);
     fireEvent.click(button);
 
@@ -134,10 +141,51 @@ describe('WaitingPool', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /接听/ }));
+    fireEvent.click(screen.getByRole('button', { name: /接管通话/ }));
 
     expect(await screen.findByText('已被其他坐席接听')).toBeTruthy();
     expect(screen.queryByText('张** · 138****0000')).toBeNull();
     expect(onRemove).toHaveBeenCalledWith('handoff-1');
+  });
+
+  it('allows an available agent to claim only the head of the queue', () => {
+    const secondHandoff: HandoffDto = {
+      ...handoff,
+      handoff_id: 'handoff-2',
+      call_id: 'call-2',
+      masked_customer_name: '李**',
+      masked_contact: '139****0000',
+      requested_at: '2026-07-22T10:00:10.000Z',
+    };
+
+    render(
+      <WaitingPool
+        handoffs={[secondHandoff, handoff]}
+        agentStatus="available"
+        consoleSessionId="session-1"
+        now={now}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: '接管通话 张** · 138****0000' }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /接管通话/ })).toHaveLength(1);
+    expect(screen.getByText('排队中')).toBeTruthy();
+  });
+
+  it('keeps the queue visible but read-only while the agent is in a call', () => {
+    render(
+      <WaitingPool
+        handoffs={[handoff]}
+        agentStatus="in_call"
+        consoleSessionId="session-1"
+        now={now}
+      />,
+    );
+
+    expect(screen.getByText('张** · 138****0000')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /接管通话/ })).toBeNull();
+    expect(screen.getByText('通话中，暂不可接管')).toBeTruthy();
   });
 });

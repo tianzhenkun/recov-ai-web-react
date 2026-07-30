@@ -40,6 +40,7 @@ type FollowUpServices = {
     input: {
       contactChannel: ContactChannel;
       attemptResult: AttemptResult;
+      errorMessage?: string;
       remark?: string;
       contactedAt: string;
       customerCallbackAt?: string;
@@ -58,6 +59,7 @@ type FollowUpServices = {
 
 type FollowUpPanelProps = {
   agentStatus?: string;
+  callbackEnabled?: boolean;
   services?: FollowUpServices;
   onCallAccepted?: (callId: string, task: FollowUpTaskDto) => void;
 };
@@ -93,8 +95,16 @@ const requiredRemarkReasons: ClosedReason[] = [
   'other',
 ];
 
+const followUpStatusLabels: Record<FollowUpTaskDto['status'], string> = {
+  pending: '待认领',
+  processing: '处理中',
+  completed: '已完成',
+  closed: '已关闭',
+};
+
 const FollowUpPanel = ({
   agentStatus = 'available',
+  callbackEnabled = false,
   services = defaultServices,
   onCallAccepted,
 }: FollowUpPanelProps) => {
@@ -112,20 +122,26 @@ const FollowUpPanel = ({
   const [attemptResult, setAttemptResult] =
     useState<AttemptResult>('no_answer');
   const [attemptRemark, setAttemptRemark] = useState('');
+  const [attemptError, setAttemptError] = useState('');
   const [callbackAt, setCallbackAt] = useState('');
   const inFlightRef = useRef(new Set<string>());
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
+      const rows = unwrapRows(
+        await services.list({
+          ownership: scope,
+          status: ['pending', 'processing'],
+          pageSize: 50,
+        }),
+      );
       setTasks(
-        unwrapRows(
-          await services.list({
-            ownership: scope,
-            status: ['pending', 'processing'],
-            pageSize: 50,
-          }),
-        ),
+        rows.filter((task) => {
+          return scope === 'unassigned'
+            ? task.status === 'pending' && !task.owner_agent_identity
+            : Boolean(task.owner_agent_identity);
+        }),
       );
     } finally {
       setLoading(false);
@@ -200,7 +216,7 @@ const FollowUpPanel = ({
                     </div>
                   </div>
                   <Tag color={terminal(task) ? 'default' : 'processing'}>
-                    {task.status}
+                    {followUpStatusLabels[task.status]}
                   </Tag>
                 </Flex>
                 <div className="agent-follow-up-time">
@@ -218,15 +234,25 @@ const FollowUpPanel = ({
                       </Button>
                     ) : (
                       <>
+                        {callbackEnabled ? (
+                          <Button
+                            type="primary"
+                            icon={<PhoneOutlined />}
+                            disabled={agentStatus !== 'available'}
+                            onClick={() => void callCustomer(task)}
+                          >
+                            呼叫客户
+                          </Button>
+                        ) : null}
                         <Button
-                          type="primary"
-                          icon={<PhoneOutlined />}
-                          disabled={agentStatus !== 'available'}
-                          onClick={() => void callCustomer(task)}
-                        >
-                          呼叫客户
-                        </Button>
-                        <Button
+                          disabled={
+                            task.latest_attempt?.attempt_result !== 'connected'
+                          }
+                          title={
+                            task.latest_attempt?.attempt_result === 'connected'
+                              ? undefined
+                              : '请先登记已联系结果'
+                          }
                           onClick={() =>
                             void services
                               .complete(task.id, crypto.randomUUID())
@@ -328,9 +354,17 @@ const FollowUpPanel = ({
         onCancel={() => setAttemptTask(undefined)}
         onOk={async () => {
           if (!attemptTask) return;
+          if (attemptResult === 'technical_failure' && !attemptRemark.trim()) {
+            setAttemptError('请填写技术失败摘要');
+            return;
+          }
           await services.attempt(attemptTask.id, {
             contactChannel,
             attemptResult,
+            errorMessage:
+              attemptResult === 'technical_failure'
+                ? attemptRemark.trim()
+                : undefined,
             remark: attemptRemark.trim() || undefined,
             contactedAt: new Date().toISOString(),
             customerCallbackAt: callbackAt
@@ -345,11 +379,15 @@ const FollowUpPanel = ({
           );
           setAttemptTask(undefined);
           setAttemptRemark('');
+          setAttemptError('');
           setCallbackAt('');
           await loadTasks();
         }}
       >
         <div className="agent-follow-up-close-form">
+          {attemptError ? (
+            <Alert type="error" showIcon title={attemptError} />
+          ) : null}
           <Select
             aria-label="联系渠道"
             value={contactChannel}
@@ -372,11 +410,16 @@ const FollowUpPanel = ({
               { value: 'invalid_contact', label: '联系方式无效' },
               { value: 'technical_failure', label: '技术失败' },
             ]}
-            onChange={(value) => setAttemptResult(value)}
+            onChange={(value) => {
+              setAttemptResult(value);
+              setAttemptError('');
+              if (value !== 'connected') setCallbackAt('');
+            }}
           />
           <Input
             aria-label="客户预约回访时间"
             type="datetime-local"
+            disabled={attemptResult !== 'connected'}
             value={callbackAt}
             onChange={(event) => setCallbackAt(event.target.value)}
           />

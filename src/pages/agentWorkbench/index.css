@@ -51,16 +51,56 @@
 
 .agent-workbench-grid {
   display: grid;
-  grid-template-columns: minmax(250px, 0.85fr) minmax(360px, 1.3fr) minmax(
-      280px,
+  grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.35fr) minmax(
+      300px,
       1fr
     );
+  align-items: start;
   gap: 16px;
   min-height: 520px;
 }
 
-.agent-workbench-follow-up {
-  grid-column: 1 / -1;
+.agent-workbench-grid > .ant-card {
+  min-height: 520px;
+}
+
+.agent-workbench-current-card {
+  min-width: 0;
+}
+
+.agent-workbench-queue-count {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: #475467;
+  background: #eef1f5;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-workbench-idle,
+.agent-workbench-next-handoff {
+  display: grid;
+  min-height: 360px;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 32px;
+  text-align: center;
+}
+
+.agent-workbench-next-handoff h4 {
+  margin: 2px 0 4px;
+}
+
+.agent-workbench-next-hint {
+  margin-top: 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f5f7fa;
 }
 
 @media (max-width: 1200px) {

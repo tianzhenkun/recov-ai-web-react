@@ -43,7 +43,8 @@ export type FollowUpStatus =
   | 'closed';
 export type FollowUpSourceType =
   | 'after_call_work'
-  | 'handoff_unanswered';
+  | 'handoff_unanswered'
+  | 'ai_post_call';
 export type DispositionCode =
   | 'resolved'
   | 'follow_up_required'
@@ -138,6 +139,8 @@ export type HandoffDto = {
   request_message?: string;
   masked_customer_name?: string;
   masked_contact?: string;
+  business_type?: string | null;
+  business_id?: string | null;
   handoff_summary?: string | null;
   pending_items?: PendingItemDto[];
   recent_dialogue?: DialogueTurnDto[];
@@ -149,6 +152,7 @@ export type HandoffDto = {
   claim_expires_at?: string | null;
   reconnect_expires_at?: string | null;
   human_agent_identity?: string | null;
+  end_reason?: string | null;
   failure_stage?: string | null;
   failure_message?: string | null;
 };
@@ -197,7 +201,7 @@ export type FollowUpTaskDto = {
   id: BigintString;
   source_type: FollowUpSourceType;
   source_call_id: string;
-  source_handoff_id: BigintString;
+  source_handoff_id: BigintString | null;
   scene_code: SceneCode;
   business_type?: string | null;
   business_id?: string | null;
@@ -210,6 +214,7 @@ export type FollowUpTaskDto = {
   closed_reason?: ClosedReason | null;
   closed_remark?: string | null;
   attempts?: FollowUpAttemptDto[];
+  latest_attempt?: FollowUpAttemptDto | null;
   created_at: string;
   updated_at?: string;
 };
@@ -226,8 +231,17 @@ export type PageQuery = {
   [key: string]: unknown;
 };
 
+export type PendingHandoffsQuery = {
+  consoleSessionId: string;
+  limit?: number;
+};
+
 export type PresenceInput = {
   consoleSessionId: string;
+};
+
+export type OnlinePresenceInput = PresenceInput & {
+  devicePreflightPassed: boolean;
 };
 
 export type IdempotentSessionInput = PresenceInput & {
@@ -300,10 +314,16 @@ export const getAgentConsoleBootstrap = () =>
     { method: 'get' },
   );
 
-export const setAgentOnline = (input: PresenceInput) =>
+export const setAgentOnline = (input: OnlinePresenceInput) =>
   agentConsoleRequest<AgentPresenceDto>(
     `${AGENT_CONSOLE_API_PREFIX}/presence/online`,
-    { method: 'post', data: presenceData(input) },
+    {
+      method: 'post',
+      data: {
+        ...presenceData(input),
+        device_preflight_passed: input.devicePreflightPassed,
+      },
+    },
   );
 
 export const pauseAgent = (input: PresenceInput) =>
@@ -324,10 +344,19 @@ export const heartbeatAgent = (input: PresenceInput) =>
     { method: 'post', data: presenceData(input) },
   );
 
-export const getPendingHandoffs = (params: PageQuery = {}) =>
+export const getPendingHandoffs = ({
+  consoleSessionId,
+  limit = 50,
+}: PendingHandoffsQuery) =>
   agentConsoleRequest<PageResult<HandoffDto>>(
     `${AGENT_CONSOLE_API_PREFIX}/handoffs/pending`,
-    { method: 'get', params },
+    {
+      method: 'get',
+      params: {
+        console_session_id: consoleSessionId,
+        limit,
+      },
+    },
   );
 
 export const claimHandoff = (
@@ -539,13 +568,13 @@ export const releaseStaleAgent = (
 export const listAdminHandoffs = (params: PageQuery = {}) =>
   agentConsoleRequest<PageResult<HandoffDto>>(
     `${AGENT_CONSOLE_ADMIN_API_PREFIX}/handoffs`,
-    { method: 'get', params },
+    { method: 'get', params, timeout: 10_000 },
   );
 
 export const getAdminHandoff = (handoffId: BigintString) =>
   agentConsoleRequest<HandoffDto>(
     `${AGENT_CONSOLE_ADMIN_API_PREFIX}/handoffs/${encodeId(handoffId)}`,
-    { method: 'get' },
+    { method: 'get', timeout: 10_000 },
   );
 
 export const reconcileAdminHandoff = (
@@ -560,11 +589,11 @@ export const reconcileAdminHandoff = (
 export const listAdminFollowUps = (params: PageQuery = {}) =>
   agentConsoleRequest<PageResult<FollowUpTaskDto>>(
     `${AGENT_CONSOLE_ADMIN_API_PREFIX}/follow-ups`,
-    { method: 'get', params },
+    { method: 'get', params, timeout: 10_000 },
   );
 
 export const getAdminFollowUp = (followUpId: BigintString) =>
   agentConsoleRequest<FollowUpTaskDto>(
     `${AGENT_CONSOLE_ADMIN_API_PREFIX}/follow-ups/${encodeId(followUpId)}`,
-    { method: 'get' },
+    { method: 'get', timeout: 10_000 },
   );

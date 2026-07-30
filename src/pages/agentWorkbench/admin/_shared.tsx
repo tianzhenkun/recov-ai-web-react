@@ -1,7 +1,12 @@
 import { ProCard } from '@ant-design/pro-components';
 import { Typography } from 'antd';
 import * as React from 'react';
-import type { PageResult } from '@/services/ruoyi/agent-console';
+import type {
+  AfterCallWorkDto,
+  FollowUpTaskDto,
+  HandoffDto,
+  PageResult,
+} from '@/services/ruoyi/agent-console';
 import './admin.css';
 
 const { Text } = Typography;
@@ -37,6 +42,123 @@ export const statusLabels: Record<string, string> = {
   closed: '已关闭',
 };
 
+export const statusColors: Record<string, string> = {
+  offline: 'default',
+  available: 'success',
+  claiming: 'processing',
+  in_call: 'blue',
+  reconnecting: 'warning',
+  wrap_up_quick: 'purple',
+  paused: 'orange',
+  requested: 'blue',
+  accepted: 'cyan',
+  connected: 'processing',
+  completed: 'success',
+  expired: 'orange',
+  canceled: 'default',
+  failed: 'error',
+  pending: 'gold',
+  processing: 'blue',
+  closed: 'default',
+};
+
+const handoffReasonLabels: Record<string, string> = {
+  customer_request: '客户要求转人工',
+  customer_requested_human: '客户要求转人工',
+  customer_requested_handoff: '客户要求转人工',
+  business_escalation: '业务升级转人工',
+  ai_escalation: 'AI 判断需要人工处理',
+  manual_request: '人工发起转接',
+};
+
+export const getHandoffReasonLabel = (value?: string | null) =>
+  (value && handoffReasonLabels[value]) || '其他原因';
+
+export const getHandoffCustomerIdentity = (row: {
+  masked_customer_name?: string | null;
+  masked_contact?: string | null;
+  business_id?: string | null;
+  call_id: string;
+}) => {
+  if (row.masked_customer_name) {
+    return {
+      primary: row.masked_customer_name,
+      secondary: row.masked_contact || `通话 ${row.call_id}`,
+    };
+  }
+  if (row.masked_contact) {
+    return {
+      primary: row.masked_contact,
+      secondary: row.business_id
+        ? `业务编号 ${row.business_id}`
+        : `通话 ${row.call_id}`,
+    };
+  }
+  if (row.business_id) {
+    return {
+      primary: `业务编号 ${row.business_id}`,
+      secondary: `通话 ${row.call_id}`,
+    };
+  }
+  return {
+    primary: `通话 ${row.call_id}`,
+    secondary: '客户姓名未提供',
+  };
+};
+
+export type HandoffAdminDetail = {
+  handoff: HandoffDto;
+  record?: Record<string, unknown> | null;
+  afterCallWork?: AfterCallWorkDto | Record<string, unknown> | null;
+  followUp?: FollowUpTaskDto | Record<string, unknown> | null;
+};
+
+export const normalizeHandoffDetail = (
+  response: unknown,
+): HandoffAdminDetail => {
+  const data =
+    response &&
+    typeof response === 'object' &&
+    Reflect.get(response, 'data') !== undefined
+      ? Reflect.get(response, 'data')
+      : response;
+  if (data && typeof data === 'object' && Reflect.get(data, 'handoff')) {
+    return {
+      handoff: Reflect.get(data, 'handoff') as HandoffDto,
+      record: Reflect.get(data, 'record') as
+        | Record<string, unknown>
+        | null
+        | undefined,
+      afterCallWork: Reflect.get(data, 'after_call_work') as
+        | AfterCallWorkDto
+        | Record<string, unknown>
+        | null
+        | undefined,
+      followUp: Reflect.get(data, 'follow_up') as
+        | FollowUpTaskDto
+        | Record<string, unknown>
+        | null
+        | undefined,
+    };
+  }
+  return { handoff: data as HandoffDto };
+};
+
+export const normalizeHandoffMetrics = (
+  metrics: Record<string, number> = {},
+) => {
+  const rate =
+    metrics.connected_rate_within_60_seconds ?? metrics.connect_rate ?? 0;
+  return {
+    requests: metrics.request_count ?? metrics.requests ?? 0,
+    connectRate: Math.round((rate <= 1 ? rate * 100 : rate) * 100) / 100,
+    averageWaitSeconds:
+      metrics.average_wait_seconds ?? metrics.avg_wait_seconds ?? 0,
+    timeoutCount: metrics.timeout_count ?? metrics.expired ?? 0,
+    mediaFailureCount: metrics.media_failure_count ?? metrics.media_failed ?? 0,
+  };
+};
+
 export const formatDateTime = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '-';
 
@@ -49,7 +171,8 @@ export const unwrapPage = <T,>(response: unknown): PageResult<T> => {
   const metrics = Reflect.get(page, 'metrics');
   return {
     rows: Array.isArray(rows) ? rows : [],
-    total: typeof total === 'number' ? total : 0,
+    total:
+      typeof total === 'number' ? total : Array.isArray(rows) ? rows.length : 0,
     metrics: metrics && typeof metrics === 'object' ? metrics : undefined,
   };
 };

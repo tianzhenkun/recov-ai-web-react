@@ -36,11 +36,17 @@ describe('agent console service contract', () => {
 
   it('maps the workbench lifecycle to the frozen endpoints', async () => {
     await call('getAgentConsoleBootstrap');
-    await call('setAgentOnline', { consoleSessionId: 'session-1' });
+    await call('setAgentOnline', {
+      consoleSessionId: 'session-1',
+      devicePreflightPassed: true,
+    });
     await call('pauseAgent', { consoleSessionId: 'session-1' });
     await call('setAgentOffline', { consoleSessionId: 'session-1' });
     await call('heartbeatAgent', { consoleSessionId: 'session-1' });
-    await call('getPendingHandoffs', { sceneCode: 'intro_geo' });
+    await call('getPendingHandoffs', {
+      consoleSessionId: 'session-1',
+      limit: 100,
+    });
     await call('claimHandoff', 'handoff-1', {
       consoleSessionId: 'session-1',
       idempotencyKey: 'claim-1',
@@ -80,6 +86,20 @@ describe('agent console service contract', () => {
     expect(mockedRequest.mock.calls.every(([, options]) =>
       options.baseApi === '/ai-call-agent-api',
     )).toBe(true);
+    expect(mockedRequest.mock.calls[1][1]).toMatchObject({
+      method: 'post',
+      data: {
+        console_session_id: 'session-1',
+        device_preflight_passed: true,
+      },
+    });
+    expect(mockedRequest.mock.calls[5][1]).toMatchObject({
+      method: 'get',
+      params: {
+        console_session_id: 'session-1',
+        limit: 100,
+      },
+    });
     expect(mockedRequest.mock.calls[6][1]).toMatchObject({
       method: 'post',
       headers: { 'Idempotency-Key': 'claim-1' },
@@ -174,6 +194,14 @@ describe('agent console service contract', () => {
     expect(mockedRequest.mock.calls[3][1]).toMatchObject({
       method: 'put',
       data: { scene_codes: ['intro_geo'] },
+    });
+    expect(mockedRequest.mock.calls[6][1]).toMatchObject({
+      method: 'get',
+      timeout: 10_000,
+    });
+    expect(mockedRequest.mock.calls[9][1]).toMatchObject({
+      method: 'get',
+      timeout: 10_000,
     });
   });
 });

@@ -19,23 +19,33 @@ describe('handoff administration page', () => {
       '客户关键字',
       'call_id',
       '请求时间',
-      '脱敏客户',
+      '客户标识',
       '转人工原因',
       '等待时长',
       '最终结果',
       '基本信息',
       '状态时间线',
       'AI 交接摘要与待处理事项',
-      '三方对话',
+      '转接前对话摘录',
+      '本次转人工未保存转接前对话',
       '录音状态',
       '快速话后结果',
       '关联跟进任务',
-      '模型与话术配置',
+      '通话配置快照（排查用）',
+      '本次通话未保存配置快照',
       '重新补偿',
+      '查看详情',
+      'getHandoffReasonLabel',
+      'statusColors',
+      'getHandoffCustomerIdentity',
+      'normalizeHandoffMetrics',
     ])
       expect(source).toContain(text);
     expect(source).toContain('failure_stage');
     expect(source).toContain('reconcileAdminHandoff');
+    expect(source).toContain('styles={detailDescriptionStyles}');
+    expect(source).not.toContain('>三方对话<');
+    expect(source).not.toContain("label: '模型与话术配置'");
     expect(source).not.toContain('修改正常结果');
   });
 });

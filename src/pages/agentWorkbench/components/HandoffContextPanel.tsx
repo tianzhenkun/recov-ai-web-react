@@ -17,7 +17,7 @@ const HandoffContextPanel = ({ handoff }: { handoff?: HandoffDto }) => {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="接听后显示交接上下文"
+        description="转人工请求到达后显示业务上下文"
       />
     );
   }

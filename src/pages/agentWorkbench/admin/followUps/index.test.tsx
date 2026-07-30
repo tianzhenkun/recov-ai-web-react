@@ -11,6 +11,7 @@ describe('follow-up administration page', () => {
       '客户预约待回访',
       '预约已逾期',
       '人工未接回访',
+      'AI 话后跟进',
       '已完成',
       '已关闭',
       '来源类型',
@@ -31,6 +32,15 @@ describe('follow-up administration page', () => {
       '关联回拨通话',
       '完成或关闭信息',
       '操作审计',
+      '跟进处理',
+      '全量管理',
+      'FollowUpPanel',
+      'callbackEnabled={false}',
+      'statusColors',
+      "key: 'scene_code_filter'",
+      "key: 'owner_agent_identity_filter'",
+      'useSearchParams',
+      'followUpId',
     ])
       expect(source).toContain(text);
     expect(source).not.toContain('任务转交');

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import AgentWorkbenchPage from './index';
 
@@ -16,7 +16,7 @@ jest.mock('./hooks/useAgentEvents', () => ({
 }));
 
 jest.mock('./hooks/useAgentCall', () => ({
-  useAgentCall: () => mockUseAgentCall(),
+  useAgentCall: (...args: unknown[]) => mockUseAgentCall(...args),
 }));
 
 jest.mock('./components/FollowUpPanel', () => () => (
@@ -109,6 +109,18 @@ describe('AgentWorkbenchPage presence shell', () => {
     expect(screen.queryByRole('button', { name: '上线接听' })).toBeNull();
   });
 
+  it('does not query the public waiting pool while the agent is offline', async () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      consoleSessionId: 'session-1',
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    expect(await screen.findByText('暂无待接通话')).toBeTruthy();
+    expect(mockGetPendingHandoffs).not.toHaveBeenCalled();
+  });
+
   it('loads the public waiting pool from the agent console service', async () => {
     mockUseAgentPresence.mockReturnValue({
       ...basePresence,
@@ -136,7 +148,83 @@ describe('AgentWorkbenchPage presence shell', () => {
 
     render(<AgentWorkbenchPage />);
 
-    expect(await screen.findByText('张** · 138****0000')).toBeTruthy();
+    expect(await screen.findAllByText('张** · 138****0000')).toHaveLength(2);
+    expect(mockGetPendingHandoffs).toHaveBeenCalledTimes(1);
+    expect(mockGetPendingHandoffs).toHaveBeenCalledWith({
+      consoleSessionId: 'session-1',
+      limit: 100,
+    });
+  });
+
+  it('keeps the call wrap-up callback stable across renders', () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      status: 'available',
+      consoleSessionId: 'session-1',
+    });
+
+    const { rerender } = render(<AgentWorkbenchPage />);
+    const firstOptions = mockUseAgentCall.mock.calls[0][0];
+
+    rerender(<AgentWorkbenchPage />);
+    const latestOptions = mockUseAgentCall.mock.calls.at(-1)?.[0];
+
+    expect(latestOptions.onWrapUp).toBe(firstOptions.onWrapUp);
+  });
+
+  it('keeps asynchronous follow-up work outside the real-time console', () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      status: 'available',
+      consoleSessionId: 'session-1',
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByText('待接通话')).toBeTruthy();
+    expect(screen.getByText('正在等待系统分配转人工请求')).toBeTruthy();
+    expect(screen.getByText('转人工请求到达后显示业务上下文')).toBeTruthy();
+    expect(screen.queryByText('人工跟进')).toBeNull();
+    expect(screen.queryByText('人工跟进测试替身')).toBeNull();
+  });
+
+  it('keeps the last queue snapshot visible when the agent enters a call', async () => {
+    const availablePresence = {
+      ...basePresence,
+      status: 'available',
+      consoleSessionId: 'session-1',
+    };
+    mockUseAgentPresence.mockReturnValue(availablePresence);
+    mockGetPendingHandoffs.mockResolvedValueOnce({
+      code: 200,
+      data: {
+        rows: [
+          {
+            handoff_id: 'handoff-queue-snapshot',
+            call_id: 'call-queue-snapshot',
+            scene_code: 'intro_geo',
+            status: 'requested',
+            masked_customer_name: '李**',
+            masked_contact: '139****0000',
+            request_message: '客户等待人工服务',
+            requested_at: new Date().toISOString(),
+          },
+        ],
+        total: 1,
+      },
+    });
+
+    const view = render(<AgentWorkbenchPage />);
+    expect(await screen.findAllByText('李** · 139****0000')).toHaveLength(2);
+
+    mockUseAgentPresence.mockReturnValue({
+      ...availablePresence,
+      status: 'in_call',
+    });
+    view.rerender(<AgentWorkbenchPage />);
+    await act(async () => Promise.resolve());
+
+    expect(screen.getAllByText('李** · 139****0000')).toHaveLength(2);
     expect(mockGetPendingHandoffs).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,17 +5,18 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import {
+  Button,
   Collapse,
   Descriptions,
   Drawer,
   Modal,
+  Space,
   Tag,
   Timeline,
   Typography,
 } from 'antd';
 import * as React from 'react';
 import { useMemo, useRef, useState } from 'react';
-import TableActions from '@/components/TableActions';
 import {
   getAdminHandoff,
   type HandoffDto,
@@ -25,23 +26,22 @@ import {
 import {
   AdminMetricRow,
   formatDateTime,
+  getHandoffCustomerIdentity,
+  getHandoffReasonLabel,
+  type HandoffAdminDetail,
+  normalizeHandoffDetail,
+  normalizeHandoffMetrics,
   sceneLabels,
   sceneValueEnum,
+  statusColors,
   statusLabels,
   unwrapPage,
 } from '../_shared';
 
 const { Paragraph, Text, Title } = Typography;
 
-const unwrapDetail = (response: unknown): HandoffDto => {
-  if (
-    response &&
-    typeof response === 'object' &&
-    Reflect.get(response, 'data')
-  ) {
-    return Reflect.get(response, 'data') as HandoffDto;
-  }
-  return response as HandoffDto;
+const detailDescriptionStyles = {
+  label: { color: '#1f1f1f' },
 };
 
 const waitSeconds = (row: HandoffDto) => {
@@ -57,7 +57,7 @@ const waitSeconds = (row: HandoffDto) => {
 const HandoffAdminPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);
   const [metrics, setMetrics] = useState<Record<string, number>>({});
-  const [detail, setDetail] = useState<HandoffDto>();
+  const [detail, setDetail] = useState<HandoffAdminDetail>();
 
   const columns = useMemo<ProColumns<HandoffDto>[]>(
     () => [
@@ -69,6 +69,7 @@ const HandoffAdminPage = () => {
       },
       {
         title: '业务场景',
+        key: 'scene_code_filter',
         dataIndex: 'scene_code',
         valueType: 'select',
         valueEnum: sceneValueEnum,
@@ -89,10 +90,15 @@ const HandoffAdminPage = () => {
             'failed',
           ].map((value) => [value, { text: statusLabels[value] }]),
         ),
-        render: (_, row) => <Tag>{statusLabels[row.status] || row.status}</Tag>,
+        render: (_, row) => (
+          <Tag color={statusColors[row.status]}>
+            {statusLabels[row.status] || '未知状态'}
+          </Tag>
+        ),
       },
       {
         title: '接听坐席',
+        key: 'human_agent_identity_filter',
         dataIndex: 'human_agent_identity',
         hideInTable: true,
       },
@@ -112,17 +118,20 @@ const HandoffAdminPage = () => {
         renderText: (value) => formatDateTime(value),
       },
       {
-        title: '脱敏客户',
+        title: '客户标识',
         dataIndex: 'masked_customer_name',
         hideInSearch: true,
-        render: (_, row) => (
-          <div>
-            <Text strong>{row.masked_customer_name || '客户'}</Text>
+        render: (_, row) => {
+          const customer = getHandoffCustomerIdentity(row);
+          return (
             <div>
-              <Text type="secondary">{row.masked_contact || '-'}</Text>
+              <Text strong>{customer.primary}</Text>
+              <div>
+                <Text type="secondary">{customer.secondary}</Text>
+              </div>
             </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         title: '业务场景',
@@ -135,6 +144,7 @@ const HandoffAdminPage = () => {
         dataIndex: 'request_reason',
         hideInSearch: true,
         ellipsis: true,
+        renderText: (value) => getHandoffReasonLabel(value),
       },
       {
         title: '等待时长',
@@ -152,67 +162,83 @@ const HandoffAdminPage = () => {
         title: '最终结果',
         dataIndex: 'status',
         hideInSearch: true,
-        renderText: (value) => statusLabels[value] || value,
+        render: (_, row) => (
+          <Tag color={statusColors[row.status]}>
+            {statusLabels[row.status] || '未知状态'}
+          </Tag>
+        ),
       },
       {
         title: '操作',
         valueType: 'option',
         fixed: 'right',
-        width: 120,
+        width: 168,
         render: (_, row) => (
-          <TableActions
-            maxVisible={2}
-            actions={[
-              {
-                key: 'detail',
-                label: '查看详情',
-                onClick: async () =>
-                  setDetail(
-                    unwrapDetail(await getAdminHandoff(row.handoff_id)),
-                  ),
-              },
-              ...(row.failure_stage || row.status === 'failed'
-                ? [
-                    {
-                      key: 'reconcile',
-                      label: '重新补偿',
-                      danger: true,
-                      onClick: () =>
-                        Modal.confirm({
-                          title: '确认重新执行状态补偿',
-                          content: `仅对异常记录 ${row.handoff_id} 执行幂等补偿，不会改写正常通话结果。`,
-                          okText: '确认补偿',
-                          cancelText: '取消',
-                          onOk: async () => {
-                            await reconcileAdminHandoff(
-                              row.handoff_id,
-                              crypto.randomUUID(),
-                            );
-                            actionRef.current?.reload();
-                          },
-                        }),
+          <Space size={0}>
+            <Button
+              type="link"
+              size="small"
+              onClick={async () =>
+                setDetail(
+                  normalizeHandoffDetail(await getAdminHandoff(row.handoff_id)),
+                )
+              }
+            >
+              查看详情
+            </Button>
+            {row.failure_stage || row.status === 'failed' ? (
+              <Button
+                danger
+                type="link"
+                size="small"
+                onClick={() =>
+                  Modal.confirm({
+                    title: '确认重新执行状态补偿',
+                    content: `仅对异常记录 ${row.handoff_id} 执行幂等补偿，不会改写正常通话结果。`,
+                    okText: '确认补偿',
+                    cancelText: '取消',
+                    onOk: async () => {
+                      await reconcileAdminHandoff(
+                        row.handoff_id,
+                        crypto.randomUUID(),
+                      );
+                      actionRef.current?.reload();
                     },
-                  ]
-                : []),
-            ]}
-          />
+                  })
+                }
+              >
+                重新补偿
+              </Button>
+            ) : null}
+          </Space>
         ),
       },
     ],
     [],
   );
 
-  const detailData = detail as
-    | (HandoffDto & Record<string, unknown>)
-    | undefined;
-  const timelineItems = detail
+  const detailHandoff = detail?.handoff;
+  const detailRecord = detail?.record;
+  const detailCustomer = detailHandoff
+    ? getHandoffCustomerIdentity({
+        ...detailHandoff,
+        masked_contact:
+          (detailRecord?.masked_contact as string | undefined) ||
+          detailHandoff.masked_contact,
+        business_id:
+          (detailRecord?.business_id as string | undefined) ||
+          detailHandoff.business_id,
+      })
+    : undefined;
+  const timelineItems = detailHandoff
     ? [
-        { label: '请求转人工', value: detail.requested_at },
-        { label: '坐席认领', value: detail.accepted_at },
-        { label: '人工媒体接通', value: detail.connected_at },
-        { label: '通话结束', value: detail.ended_at },
+        { label: '请求转人工', value: detailHandoff.requested_at },
+        { label: '坐席认领', value: detailHandoff.accepted_at },
+        { label: '人工媒体接通', value: detailHandoff.connected_at },
+        { label: '通话结束', value: detailHandoff.ended_at },
       ].filter((item) => item.value)
     : [];
+  const normalizedMetrics = normalizeHandoffMetrics(metrics);
 
   return (
     <PageContainer className="agent-admin-page" title="转人工记录">
@@ -221,31 +247,31 @@ const HandoffAdminPage = () => {
           {
             key: 'requests',
             label: '请求数',
-            value: metrics.requests ?? 0,
+            value: normalizedMetrics.requests,
             tone: 'blue',
           },
           {
             key: 'connect_rate',
             label: '60 秒内接通率',
-            value: `${metrics.connect_rate ?? 0}%`,
+            value: `${normalizedMetrics.connectRate}%`,
             tone: 'green',
           },
           {
             key: 'avg_wait',
             label: '平均等待时间',
-            value: `${metrics.avg_wait_seconds ?? 0} 秒`,
+            value: `${normalizedMetrics.averageWaitSeconds} 秒`,
             tone: 'orange',
           },
           {
             key: 'expired',
             label: '等待超时数',
-            value: metrics.expired ?? 0,
+            value: normalizedMetrics.timeoutCount,
             tone: 'red',
           },
           {
             key: 'media_failed',
             label: '媒体接入失败数',
-            value: metrics.media_failed ?? 0,
+            value: normalizedMetrics.mediaFailureCount,
             tone: 'purple',
           },
         ]}
@@ -275,38 +301,58 @@ const HandoffAdminPage = () => {
         size={720}
         onClose={() => setDetail(undefined)}
       >
-        {detail ? (
+        {detailHandoff ? (
           <div className="agent-admin-detail">
             <section className="agent-admin-detail-section">
               <Title level={5}>基本信息</Title>
               <Descriptions
                 column={2}
+                styles={detailDescriptionStyles}
                 items={[
                   {
                     key: 'handoff',
                     label: 'handoff_id',
-                    children: detail.handoff_id,
+                    children: detailHandoff.handoff_id,
                   },
-                  { key: 'call', label: 'call_id', children: detail.call_id },
+                  {
+                    key: 'call',
+                    label: 'call_id',
+                    children: detailHandoff.call_id,
+                  },
                   {
                     key: 'customer',
-                    label: '脱敏客户',
-                    children: `${detail.masked_customer_name || '客户'} ${detail.masked_contact || ''}`,
+                    label: '客户标识',
+                    children: detailCustomer
+                      ? `${detailCustomer.primary} · ${detailCustomer.secondary}`
+                      : '-',
                   },
                   {
                     key: 'scene',
                     label: '业务场景',
-                    children: sceneLabels[detail.scene_code],
+                    children:
+                      sceneLabels[detailHandoff.scene_code] ||
+                      detailHandoff.scene_code,
                   },
                   {
                     key: 'reason',
                     label: '转人工原因',
-                    children: detail.request_reason || '-',
+                    children: getHandoffReasonLabel(
+                      detailHandoff.request_reason,
+                    ),
                   },
                   {
                     key: 'agent',
                     label: '接听坐席',
-                    children: detail.human_agent_identity || '-',
+                    children: detailHandoff.human_agent_identity || '未接听',
+                  },
+                  {
+                    key: 'status',
+                    label: '最终结果',
+                    children: (
+                      <Tag color={statusColors[detailHandoff.status]}>
+                        {statusLabels[detailHandoff.status] || '未知状态'}
+                      </Tag>
+                    ),
                   },
                 ]}
               />
@@ -322,49 +368,67 @@ const HandoffAdminPage = () => {
             <section className="agent-admin-detail-section">
               <Title level={5}>AI 交接摘要与待处理事项</Title>
               <Paragraph>
-                {detail.handoff_summary ||
-                  detail.request_message ||
+                {detailHandoff.handoff_summary ||
+                  detailHandoff.request_message ||
                   '摘要未生成'}
               </Paragraph>
               <ul>
-                {(detail.pending_items || []).map((item) => (
+                {(detailHandoff.pending_items || []).map((item) => (
                   <li key={item.text}>{item.text}</li>
                 ))}
               </ul>
             </section>
             <section className="agent-admin-detail-section">
-              <Title level={5}>三方对话</Title>
-              <div>
-                {(detail.recent_dialogue || []).map((item, index) => (
-                  <Paragraph key={item.id || `${item.speaker_type}-${index}`}>
-                    {item.speaker_type}：{item.text}
-                  </Paragraph>
-                ))}
-              </div>
+              <Title level={5}>转接前对话摘录</Title>
+              {detailHandoff.recent_dialogue?.length ? (
+                <div>
+                  {detailHandoff.recent_dialogue.map((item, index) => (
+                    <Paragraph key={item.id || `${item.speaker_type}-${index}`}>
+                      {item.speaker_type}：{item.text}
+                    </Paragraph>
+                  ))}
+                </div>
+              ) : (
+                <Text type="secondary">本次转人工未保存转接前对话</Text>
+              )}
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>录音状态</Title>
-              <Text>{String(detailData?.recording_status || '处理中')}</Text>
+              <Text>
+                {String(detailRecord?.recording_status || '当前记录未提供')}
+              </Text>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>快速话后结果</Title>
               <Text>
-                {String(detailData?.after_call_work_summary || '尚未提交')}
+                {String(
+                  detail.afterCallWork?.summary ||
+                    detail.afterCallWork?.disposition_code ||
+                    '尚未提交',
+                )}
               </Text>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>关联跟进任务</Title>
-              <Text>{String(detailData?.follow_up_id || '无')}</Text>
+              <Text>
+                {String(
+                  (detail.followUp && Reflect.get(detail.followUp, 'id')) ||
+                    (detail.followUp &&
+                      Reflect.get(detail.followUp, 'follow_up_id')) ||
+                    '无',
+                )}
+              </Text>
             </section>
             <Collapse
               items={[
                 {
                   key: 'model-prompt',
-                  label: '模型与话术配置',
+                  label: '通话配置快照（排查用）',
                   children: (
                     <Text type="secondary">
                       {String(
-                        detailData?.model_prompt_snapshot || '无可展示配置快照',
+                        detailRecord?.model_prompt_snapshot ||
+                          '本次通话未保存配置快照',
                       )}
                     </Text>
                   ),

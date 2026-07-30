@@ -8,7 +8,7 @@ import {
 } from '@/services/ruoyi/agent-console';
 import './WaitingPool.css';
 
-const { Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 export type WaitingPoolProps = {
   handoffs: HandoffDto[];
@@ -97,6 +97,9 @@ const WaitingPool = ({
         ),
     [handoffs, removedIds],
   );
+  const longestWaitingSeconds = visibleHandoffs.length
+    ? getHandoffWaitingSeconds(visibleHandoffs[0], now)
+    : 0;
 
   const handleClaim = async (handoff: HandoffDto) => {
     const handoffId = handoff.handoff_id;
@@ -137,86 +140,117 @@ const WaitingPool = ({
       <Spin spinning={loading}>
         {visibleHandoffs.length ? (
           <div className="agent-waiting-pool-list">
-            {visibleHandoffs.map((handoff) => {
+            <Flex
+              className="agent-waiting-pool-overview"
+              justify="space-between"
+              align="center"
+            >
+              <Text type="secondary">按等待时间顺序处理</Text>
+              <Text type="secondary">最长等待 {longestWaitingSeconds} 秒</Text>
+            </Flex>
+            {visibleHandoffs.map((handoff, index) => {
               const waitingSeconds = getHandoffWaitingSeconds(handoff, now);
               const slaLevel = getHandoffSlaLevel(waitingSeconds);
+              const isQueueHead = index === 0;
+              const canClaim = isQueueHead && agentStatus === 'available';
               const customer = [
                 handoff.masked_customer_name,
                 handoff.masked_contact,
               ]
                 .filter(Boolean)
                 .join(' · ');
-              const fallbackDialogue = handoff.recent_dialogue?.slice(-2) ?? [];
+              const queueState = isQueueHead
+                ? agentStatus === 'in_call' || agentStatus === 'reconnecting'
+                  ? '通话中，暂不可接管'
+                  : agentStatus === 'wrap_up_quick'
+                    ? '话后处理中，暂不可接管'
+                    : agentStatus === 'available'
+                      ? '优先接管'
+                      : '当前状态不可接管'
+                : '排队中';
               return (
-                <div
+                <article
                   className="agent-waiting-pool-item"
+                  data-queue-position={isQueueHead ? 'head' : 'waiting'}
                   key={handoff.handoff_id}
                 >
                   <div className="agent-waiting-pool-content">
-                    <Flex justify="space-between" gap="small" align="center">
-                      <Flex gap="small" align="center" wrap>
-                        <Tag color="blue">
-                          {sceneLabels[handoff.scene_code] ||
-                            handoff.scene_code}
-                        </Tag>
+                    <Flex
+                      className="agent-waiting-pool-item-header"
+                      justify="space-between"
+                      gap="small"
+                      align="flex-start"
+                    >
+                      <div className="agent-waiting-pool-identity">
+                        <Flex gap="small" align="center" wrap>
+                          <Tag color={isQueueHead ? 'blue' : 'default'}>
+                            {sceneLabels[handoff.scene_code] ||
+                              handoff.scene_code}
+                          </Tag>
+                          {isQueueHead ? (
+                            <Tag color="processing">队首</Tag>
+                          ) : null}
+                        </Flex>
                         <Text strong>{customer || '客户信息待加载'}</Text>
-                      </Flex>
-                      <span
-                        className="agent-waiting-pool-timer"
-                        data-sla-level={slaLevel}
-                      >
-                        已等待 {waitingSeconds} 秒
-                      </span>
+                      </div>
+                      <div className="agent-waiting-pool-wait">
+                        <span
+                          className="agent-waiting-pool-timer"
+                          data-sla-level={slaLevel}
+                        >
+                          已等待 {waitingSeconds} 秒
+                        </span>
+                      </div>
                     </Flex>
-                    {handoff.request_reason ? (
-                      <Text
-                        className="agent-waiting-pool-reason"
-                        type="secondary"
-                      >
-                        {handoff.request_reason}
+                    <Text
+                      className="agent-waiting-pool-reason"
+                      type="secondary"
+                    >
+                      {handoff.request_reason ||
+                        handoff.handoff_summary ||
+                        handoff.request_message ||
+                        '等待人工接管'}
+                    </Text>
+                    {handoff.handoff_summary &&
+                    handoff.handoff_summary !== handoff.request_reason ? (
+                      <Text className="agent-waiting-pool-summary">
+                        {handoff.handoff_summary}
                       </Text>
                     ) : null}
-                    <Paragraph className="agent-waiting-pool-summary">
-                      {handoff.handoff_summary || handoff.request_message}
-                    </Paragraph>
-                    {!handoff.handoff_summary && fallbackDialogue.length ? (
-                      <div className="agent-waiting-pool-dialogue">
-                        {fallbackDialogue.map((turn, index) => (
-                          <Text
-                            key={turn.id || `${turn.speaker_type}-${index}`}
-                          >
-                            {turn.text}
-                          </Text>
-                        ))}
-                      </div>
-                    ) : null}
-                    {handoff.pending_items?.length ? (
-                      <ul className="agent-waiting-pool-items">
-                        {handoff.pending_items.slice(0, 3).map((item) => (
-                          <li key={item.text}>{item.text}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <Button
-                      block
-                      type="primary"
-                      aria-label={`接听 ${customer || handoff.handoff_id}`}
-                      icon={<PhoneOutlined />}
-                      loading={claimingId === handoff.handoff_id}
-                      disabled={agentStatus !== 'available'}
-                      onClick={() => void handleClaim(handoff)}
+                    <Flex
+                      className="agent-waiting-pool-action"
+                      justify="space-between"
+                      align="center"
+                      gap="small"
                     >
-                      接听
-                    </Button>
+                      <Text
+                        className="agent-waiting-pool-state"
+                        type={canClaim ? undefined : 'secondary'}
+                      >
+                        {queueState}
+                      </Text>
+                      {canClaim ? (
+                        <Button
+                          type="primary"
+                          size="small"
+                          aria-label={`接管通话 ${customer || handoff.handoff_id}`}
+                          icon={<PhoneOutlined />}
+                          loading={claimingId === handoff.handoff_id}
+                          onClick={() => void handleClaim(handoff)}
+                        >
+                          接管通话
+                        </Button>
+                      ) : null}
+                    </Flex>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无待接来电"
+            description="暂无待接通话"
           />
         )}
       </Spin>

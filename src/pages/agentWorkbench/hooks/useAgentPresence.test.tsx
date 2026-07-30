@@ -189,6 +189,7 @@ describe('useAgentPresence', () => {
 
     expect(services.online).toHaveBeenCalledWith({
       consoleSessionId: 'session-1',
+      devicePreflightPassed: true,
     });
   });
 
@@ -207,6 +208,44 @@ describe('useAgentPresence', () => {
     expect(screen.getByTestId('session-id').textContent).toBe('session-1');
     await screen.findByText('offline');
     expect(globalThis.crypto.randomUUID).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps this tab offline when another console session owns the agent', async () => {
+    jest.useFakeTimers();
+    const services = createServices();
+    services.bootstrap.mockResolvedValueOnce({
+      code: 200,
+      data: {
+        profile,
+        presence: {
+          ...presence('available'),
+          console_session_id: 'session-2',
+        },
+      },
+    });
+
+    render(
+      <PresenceHarness
+        options={{
+          services,
+          devicePreflight: jest.fn(),
+          heartbeatIntervalMs: 1_000,
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status').textContent).toBe('offline');
+    });
+    expect(screen.getByTestId('error').textContent).toBe(
+      '当前坐席已在其他页面上线；如确认原页面已关闭，请重新点击上线接听。',
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+    expect(services.heartbeat).not.toHaveBeenCalled();
   });
 
   it('heartbeats only while the page is visible and adopts expiry state', async () => {

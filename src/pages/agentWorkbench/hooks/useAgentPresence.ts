@@ -32,6 +32,7 @@ export type AgentPresenceServices = {
   bootstrap: () => ServiceResponse<AgentConsoleBootstrapDto>;
   online: (input: {
     consoleSessionId: string;
+    devicePreflightPassed: boolean;
   }) => ServiceResponse<AgentPresenceDto>;
   pause: (input: {
     consoleSessionId: string;
@@ -241,12 +242,22 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
         return;
       }
       setBlockReason('');
-      setPresence(
-        result.presence ?? {
-          agent_identity: result.profile.agent_identity,
-          status: 'offline',
-        },
-      );
+      const nextPresence = result.presence ?? {
+        agent_identity: result.profile.agent_identity,
+        status: 'offline',
+      };
+      const ownedByAnotherSession =
+        nextPresence.status !== 'offline' &&
+        Boolean(nextPresence.console_session_id) &&
+        nextPresence.console_session_id !== consoleSessionId;
+      if (ownedByAnotherSession) {
+        setPresence({ ...nextPresence, status: 'offline' });
+        setErrorMessage(
+          '当前坐席已在其他页面上线；如确认原页面已关闭，请重新点击上线接听。',
+        );
+      } else {
+        setPresence(nextPresence);
+      }
       setPhase('ready');
     } catch (error) {
       const reason = resolveBlockReason(error);
@@ -254,7 +265,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       setErrorMessage(getErrorMessage(error));
       setPhase(reason ? 'blocked' : 'error');
     }
-  }, [services]);
+  }, [consoleSessionId, services]);
 
   useEffect(() => {
     void bootstrap();
@@ -305,7 +316,14 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
     }
     setPhase('updating');
     try {
-      setPresence(unwrapData(await services.online({ consoleSessionId })));
+      setPresence(
+        unwrapData(
+          await services.online({
+            consoleSessionId,
+            devicePreflightPassed: true,
+          }),
+        ),
+      );
       setPhase('ready');
     } catch (error) {
       setErrorMessage(getErrorMessage(error));

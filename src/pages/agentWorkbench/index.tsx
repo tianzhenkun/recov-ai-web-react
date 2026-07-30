@@ -9,7 +9,7 @@ import {
   WifiOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { Alert, Badge, Button, Card, Flex, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Empty, Flex, Tag, Typography } from 'antd';
 import React, { type ReactNode, useCallback, useEffect, useState } from 'react';
 import {
   getPendingHandoffs,
@@ -18,7 +18,6 @@ import {
   type PageResult,
 } from '@/services/ruoyi/agent-console';
 import CurrentCallPanel from './components/CurrentCallPanel';
-import FollowUpPanel from './components/FollowUpPanel';
 import HandoffContextPanel from './components/HandoffContextPanel';
 import QuickWrapUp from './components/QuickWrapUp';
 import WaitingPool from './components/WaitingPool';
@@ -80,15 +79,23 @@ const AgentWorkbenchPage = () => {
   const [claimedCredential, setClaimedCredential] =
     useState<MediaCredentialDto>();
   const [wrapUpReason, setWrapUpReason] = useState('');
+  const handleWrapUp = useCallback(
+    (_handoff: HandoffDto, reason?: string) => setWrapUpReason(reason || ''),
+    [],
+  );
 
   const loadHandoffs = useCallback(async () => {
-    if (!agent.profile) {
+    if (!agent.profile || !agent.consoleSessionId) {
       setHandoffs([]);
       return;
     }
+    if (agent.status !== 'available' || claimedCredential) return;
     setHandoffsLoading(true);
     try {
-      const response = await getPendingHandoffs({ pageSize: 100 });
+      const response = await getPendingHandoffs({
+        consoleSessionId: agent.consoleSessionId,
+        limit: 100,
+      });
       const envelope = response as unknown as {
         data?: PageResult<HandoffDto>;
         rows?: HandoffDto[];
@@ -102,7 +109,7 @@ const AgentWorkbenchPage = () => {
     } finally {
       setHandoffsLoading(false);
     }
-  }, [agent.profile]);
+  }, [agent.consoleSessionId, agent.profile, agent.status, claimedCredential]);
 
   const agentEvents = useAgentEvents({
     agentStatus: agent.status,
@@ -112,8 +119,11 @@ const AgentWorkbenchPage = () => {
     credential: claimedCredential,
     consoleSessionId: agent.consoleSessionId,
     refresh: loadHandoffs,
-    onWrapUp: (_handoff, reason) => setWrapUpReason(reason || ''),
+    onWrapUp: handleWrapUp,
   });
+  const currentHandoff = claimedCredential?.handoff;
+  const nextHandoff = handoffs[0];
+  const contextHandoff = currentHandoff ?? nextHandoff;
 
   useEffect(() => {
     if (agent.phase === 'ready' && agent.profile) void loadHandoffs();
@@ -123,6 +133,11 @@ const AgentWorkbenchPage = () => {
   const status = agent.status || 'offline';
   const meta = statusMeta[status as keyof typeof statusMeta];
   const isAvailable = status === 'available';
+  const idleDescription = isAvailable
+    ? '正在等待系统分配转人工请求'
+    : status === 'paused'
+      ? '恢复接听后等待转人工请求'
+      : '上线后开始接听转人工请求';
   const canGoOnline = ['offline', 'paused'].includes(status);
   const canGoOffline = ['available', 'paused'].includes(status);
   const blockDescription =
@@ -135,7 +150,7 @@ const AgentWorkbenchPage = () => {
       <div className="agent-workbench-heading">
         <div>
           <Title level={3}>坐席工作台</Title>
-          <Text type="secondary">浏览器人工接听与本人跟进</Text>
+          <Text type="secondary">实时接听与 AI 转人工交接</Text>
         </div>
         <Flex gap="small" align="center" wrap>
           <Tag color={meta?.color} icon={<CheckCircleOutlined />}>
@@ -200,11 +215,9 @@ const AgentWorkbenchPage = () => {
           <Flex justify="space-between" align="center" gap="middle" wrap>
             <div>
               <Text strong>接听环境</Text>
-              <Flex className="agent-workbench-scenes" gap="small" wrap>
-                {agent.profile.scene_codes.map((scene) => (
-                  <Tag key={scene}>{sceneLabels[scene] || scene}</Tag>
-                ))}
-              </Flex>
+              <div className="agent-workbench-scenes">
+                <Text type="secondary">接听范围：全部业务</Text>
+              </div>
             </div>
             <div className="agent-workbench-device-grid">
               <DeviceCheck
@@ -241,8 +254,10 @@ const AgentWorkbenchPage = () => {
         <Card
           title={
             <Flex align="center" gap="small">
-              <span>待接来电</span>
-              <Badge count={agentEvents.unreadCount} />
+              <span>待接通话</span>
+              <span className="agent-workbench-queue-count">
+                {handoffs.length}
+              </span>
             </Flex>
           }
           extra={
@@ -278,7 +293,11 @@ const AgentWorkbenchPage = () => {
             }
           />
         </Card>
-        <Card title="当前通话" variant="borderless">
+        <Card
+          className="agent-workbench-current-card"
+          title="当前工作区"
+          variant="borderless"
+        >
           {wrapUpReason ? (
             <Alert
               className="agent-workbench-alert"
@@ -288,10 +307,44 @@ const AgentWorkbenchPage = () => {
               description={wrapUpReason}
             />
           ) : null}
-          {claimedCredential &&
-          ['ended', 'wrap_up_quick'].includes(agentCall.phase) ? (
+          {!currentHandoff && agentCall.phase === 'idle' ? (
+            nextHandoff ? (
+              <div className="agent-workbench-next-handoff">
+                <Tag color="blue">
+                  {sceneLabels[nextHandoff.scene_code] ||
+                    nextHandoff.scene_code}
+                </Tag>
+                <Title level={4}>队首请求正在等待接管</Title>
+                <Text strong>
+                  {[
+                    nextHandoff.masked_customer_name,
+                    nextHandoff.masked_contact,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || '客户信息待加载'}
+                </Text>
+                <Text type="secondary">
+                  {nextHandoff.request_reason ||
+                    nextHandoff.handoff_summary ||
+                    nextHandoff.request_message ||
+                    '客户正在等待人工服务'}
+                </Text>
+                <Text className="agent-workbench-next-hint" type="secondary">
+                  请从左侧队首请求接管通话
+                </Text>
+              </div>
+            ) : (
+              <div className="agent-workbench-idle">
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={idleDescription}
+                />
+              </div>
+            )
+          ) : currentHandoff &&
+            ['ended', 'wrap_up_quick'].includes(agentCall.phase) ? (
             <QuickWrapUp
-              handoff={claimedCredential.handoff}
+              handoff={currentHandoff}
               abnormalReason={wrapUpReason}
               onSubmitted={async () => {
                 setClaimedCredential(undefined);
@@ -314,14 +367,7 @@ const AgentWorkbenchPage = () => {
           )}
         </Card>
         <Card title="客户与交接信息" variant="borderless">
-          <HandoffContextPanel handoff={claimedCredential?.handoff} />
-        </Card>
-        <Card
-          className="agent-workbench-follow-up"
-          title="人工跟进"
-          variant="borderless"
-        >
-          <FollowUpPanel agentStatus={agent.status} />
+          <HandoffContextPanel handoff={contextHandoff} />
         </Card>
       </div>
     </PageContainer>

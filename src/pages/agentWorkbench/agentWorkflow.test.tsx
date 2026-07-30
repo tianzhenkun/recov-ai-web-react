@@ -181,7 +181,7 @@ describe('agent workbench end-to-end state flow', () => {
       expect(screen.getByTestId('presence').textContent).toBe('available'),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /接听/ }));
+    fireEvent.click(screen.getByRole('button', { name: /接管通话/ }));
     await waitFor(() =>
       expect(screen.getByTestId('call-phase').textContent).toBe('connected'),
     );

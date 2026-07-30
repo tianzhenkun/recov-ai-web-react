@@ -64,13 +64,148 @@ describe('FollowUpPanel', () => {
         total: 1,
       },
     });
-    render(<FollowUpPanel services={services} />);
+    render(<FollowUpPanel services={services} callbackEnabled />);
     fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
     expect(await screen.findByText('138****0000')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /呼叫客户/ }));
     expect(
       await screen.findByText('回拨任务已受理，等待最终通话状态'),
     ).toBeTruthy();
+  });
+
+  it('keeps system callback hidden until the real callback capability is enabled', async () => {
+    const services = createServices();
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [{ ...unanswered, owner_agent_identity: 'agent-1' }],
+        total: 1,
+      },
+    });
+
+    render(<FollowUpPanel services={services} />);
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    expect(await screen.findByText('138****0000')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /呼叫客户/ })).toBeNull();
+  });
+
+  it('separates unassigned work from tasks owned by the current agent', async () => {
+    const services = createServices();
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [
+          unanswered,
+          {
+            ...unanswered,
+            id: '2',
+            masked_contact: '139****0000',
+            owner_agent_identity: 'agent-1',
+            status: 'processing',
+          },
+        ],
+        total: 2,
+      },
+    });
+
+    render(<FollowUpPanel services={services} />);
+    expect(await screen.findByText('138****0000')).toBeTruthy();
+    expect(screen.queryByText('139****0000')).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    expect(await screen.findByText('139****0000')).toBeTruthy();
+    expect(screen.queryByText('138****0000')).toBeNull();
+  });
+
+  it('allows completion only after an effective connected contact result exists', async () => {
+    const services = createServices();
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [{ ...unanswered, owner_agent_identity: 'agent-1' }],
+        total: 1,
+      },
+    });
+
+    const view = render(<FollowUpPanel services={services} />);
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    expect(await screen.findByText('138****0000')).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: '完成任务',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [
+          {
+            ...unanswered,
+            owner_agent_identity: 'agent-1',
+            latest_attempt: {
+              id: 'attempt-1',
+              follow_up_id: unanswered.id,
+              agent_identity: 'agent-1',
+              contact_channel: 'wechat',
+              attempt_result: 'connected',
+              contacted_at: '2026-07-30T12:00:00Z',
+            },
+          },
+        ],
+        total: 1,
+      },
+    });
+    fireEvent.click(screen.getByRole('tab', { name: '待认领回访' }));
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: '完成任务',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    view.unmount();
+  });
+
+  it('requires and maps an error summary for a technical failure', async () => {
+    const services = createServices();
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [{ ...unanswered, owner_agent_identity: 'agent-1' }],
+        total: 1,
+      },
+    });
+
+    render(<FollowUpPanel services={services} />);
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    await screen.findByText('138****0000');
+    fireEvent.click(screen.getByRole('button', { name: '登记联系结果' }));
+    fireEvent.mouseDown(screen.getByLabelText('联系结果'));
+    fireEvent.click(await screen.findByText('技术失败'));
+    fireEvent.click(screen.getByRole('button', { name: '保存联系记录' }));
+    expect(await screen.findByText('请填写技术失败摘要')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('联系备注'), {
+      target: { value: '本地网络中断' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存联系记录' }));
+
+    await waitFor(() =>
+      expect(services.attempt).toHaveBeenCalledWith(
+        unanswered.id,
+        expect.objectContaining({
+          attemptResult: 'technical_failure',
+          errorMessage: '本地网络中断',
+        }),
+      ),
+    );
   });
 
   it('keeps ordinary no-answer tasks pending without a made-up deadline', async () => {
@@ -139,6 +274,8 @@ describe('FollowUpPanel', () => {
     render(<FollowUpPanel services={services} />);
     fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
     await screen.findByText('138****0000');
+    expect(screen.getByText('已完成')).toBeTruthy();
+    expect(screen.queryByText('completed')).toBeNull();
     expect(screen.queryByRole('button', { name: /呼叫客户/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '关闭任务' })).toBeNull();
   });
