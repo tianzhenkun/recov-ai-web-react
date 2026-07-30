@@ -46,6 +46,7 @@ const aiCallTasksPath = '/ai-call/tasks';
 const aiCallRecordsPath = '/ai-call/records';
 const aiCallVoicesPath = '/ai-call/voices';
 const aiCallVoiceManagePermission = 'ai_call:voice:manage';
+const aiCallLinesPath = '/ai-call/lines';
 const aiCallRulesPath = '/ai-call/rules';
 const aiCallManagementPaths = new Set([
   '/ai-call/agents',
@@ -110,6 +111,13 @@ const aiCallInjectedChildren: RuoyiMenuDataItem[] = [
     name: '音色管理',
     locale: false,
     icon: <SoundOutlined />,
+  },
+  {
+    key: aiCallLinesPath,
+    path: aiCallLinesPath,
+    name: '线路配置',
+    locale: false,
+    icon: <PhoneOutlined />,
   },
   {
     key: aiCallRulesPath,

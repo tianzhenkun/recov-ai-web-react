@@ -544,6 +544,13 @@ export default [
     requiredPermission: 'ai_call:agent:console',
   },
   {
+    path: '/ai-call/agent-workbench',
+    component: './agentWorkbench',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:agent:console',
+  },
+  {
     path: '/ai-call/agents',
     component: './agentWorkbench/admin/agents',
     hideInMenu: true,
@@ -563,6 +570,20 @@ export default [
     hideInMenu: true,
     access: 'hasRoutePermission',
     requiredPermission: 'ai_call:agent:manage',
+  },
+  {
+    path: '/ai-call-lab/customer',
+    component: './aiCallLab/customer',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:lab:use',
+  },
+  {
+    path: '/ai-call-lab/prompt-config',
+    component: './aiCallLab/promptConfig',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:prompt:manage',
   },
   {
     path: '/ai-call/tasks',
@@ -595,6 +616,13 @@ export default [
   {
     path: '/ai-call/records',
     component: './aiCallRecords',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:agent:manage',
+  },
+  {
+    path: '/ai-call/lines',
+    component: './aiCallLines',
     hideInMenu: true,
     access: 'hasRoutePermission',
     requiredPermission: 'ai_call:agent:manage',
