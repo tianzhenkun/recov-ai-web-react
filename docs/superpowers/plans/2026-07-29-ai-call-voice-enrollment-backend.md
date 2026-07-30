@@ -474,7 +474,13 @@ assert seen_methods == ["GET", "DELETE"]
 
 ```python
 class VoiceSampleStorage(Protocol):
-    async def put(self, *, data: bytes, filename: str, content_type: str) -> str:
+    async def put(
+        self,
+        *,
+        object_key: str,
+        data: bytes,
+        content_type: str,
+    ) -> None:
         raise NotImplementedError
 
     async def get(self, object_key: str) -> bytes:
@@ -484,8 +490,9 @@ class VoiceSampleStorage(Protocol):
         raise NotImplementedError
 ```
 
-`MinioVoiceSampleStorage` 只返回 object key，不返回公开 URL；对象前缀固定
-`ai-call/voice-samples`。在 `MinioUtil` 增加 SigV4 `GET` 和 `DELETE`。
+object key 由受理服务预先生成，固定在 `ai-call/voice-samples` 前缀下；
+`MinioVoiceSampleStorage` 按指定 key 幂等上传，不返回公开 URL。在 `MinioUtil`
+增加按指定 key 的 SigV4 `PUT` 以及 `GET`、`DELETE`。
 
 - [ ] **步骤 6：验证并 Commit**
 
@@ -718,18 +725,24 @@ async def create(
 3. 计算 `request_hash`。
 4. 查询 `(tenant_id, idempotency_key)`。
 5. 相同摘要返回原记录；不同摘要抛 409。
-6. 上传私有临时对象。
-7. 同一事务新增资产 `CREATING` 和任务 `PENDING`。
-8. `preferred_name = f"vc{profile_id}"[-16:]`。
+6. 预生成 profile/enrollment ID 和确定的私有 object key。
+7. 在数据库事务外按指定 key 幂等上传；上传结果未知时也能按已知 key 清理或补偿。
+8. 开启短事务；`reenroll` 在此处原子占用 `CREATE_FAILED`。
+9. 同一事务新增资产 `CREATING` 和任务 `PENDING`。
+10. `preferred_name = f"vc{profile_id}"[-16:]`。
 
-数据库事务失败时删除刚上传对象；对象删除失败时，在独立事务写入
+`flush` 明确失败时删除刚上传对象。`commit` 抛错属于结果未知，必须使用独立 session
+按 `(tenant_id, idempotency_key)` 对账；确认任务已提交则返回原受理结果，确认不存在
+才删除对象，对账本身失败则登记清理补偿且清理 Worker 必须先检查引用。对象删除失败
+时，在独立事务写入
 `ai_call_voice_sample_cleanup`，保存唯一 object key 供 Worker 重试。清理记录本身
 持久化失败时仅记录不含 object key、文件名、幂等 Key 和底层异常的安全日志。
 
 - [ ] **步骤 4：实现失败资产重新上传**
 
-`reenroll` 只接受当前租户 `CREATE_FAILED` 资产，并在事务中使用行锁或条件更新原子
-占用该状态；并发使用不同 Key 时只有一个请求可以生成 enrollment。成功后更新
+`reenroll` 只接受当前租户 `CREATE_FAILED` 资产，并在上传后的短事务中使用条件更新
+原子占用该状态；并发使用不同 Key 时只有一个请求可以生成 enrollment。同 Key 的
+CAS 失败请求必须回滚并查询赢家，摘要一致时返回原受理结果。成功后更新
 `latest_enrollment_id`，清空 `error_message`，状态回到 `CREATING`。
 
 - [ ] **步骤 5：验证并 Commit**
@@ -821,7 +834,9 @@ RETRY_DELAYS = (5, 30, 120)
 - 成功或失败都清理对象并清空 `sample_object_key`。
 - 清理失败写 `cleanup_error_message`，下一次清理扫描继续尝试。
 - 同一 Worker 同时扫描 `ai_call_voice_sample_cleanup`；删除成功进入 `SUCCEEDED`，
-  失败按相同退避进入 `RETRY_WAIT`，不得把 object key 或底层存储异常写入日志。
+  失败按相同退避进入 `RETRY_WAIT`。删除前查询 enrollment 是否仍引用 object key；
+  存在引用时不删除对象，只把孤儿清理记录置为 `SUCCEEDED`。不得把 object key 或
+  底层存储异常写入日志。
 
 - [ ] **步骤 5：验证并 Commit**
 

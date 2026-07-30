@@ -583,13 +583,18 @@ provider 删除成功后，资产进入 `DELETED`。失败进入 `DELETE_FAILED`
 
 ## 9. 临时声音样本
 
-1. 后端校验文件后上传到 AI Call 管理的私有对象存储前缀。
+1. 后端校验文件后，先生成只含租户摘要、任务 ID 和安全扩展名的确定 object key，
+   再按该 key 幂等上传到 AI Call 管理的私有对象存储前缀。
 2. 任务表只保存私有 `sample_object_key`，不生成长期公开 URL。
 3. 调用 Qwen 时优先把不超过限制的文件编码为 Data URL，避免公开 OSS URL。
 4. Worker 在 `finally` 中删除临时对象。
 5. `SUCCEEDED`、`FAILED` 两种终态都必须删除。
 6. 删除成功后清空 `sample_object_key`，保留 `sample_sha256` 用于审计和幂等。
 7. 清理失败不得伪装为成功；记录清理错误并由清理任务继续回收。
+8. 上传响应超时也按已知 object key 执行删除或登记补偿，不允许由存储实现内部生成
+   服务层不可获知的随机 key。
+9. 孤儿清理 Worker 删除前必须确认没有 enrollment 仍引用该 object key；存在引用时
+   只结束清理记录，不删除仍被任务使用的样本。
 
 ## 10. 幂等与前端防重复提交
 
