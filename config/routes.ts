@@ -586,6 +586,13 @@ export default [
     requiredPermission: 'ai_call:agent:manage',
   },
   {
+    path: '/ai-call/voices',
+    component: './aiCallVoices',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:voice:manage',
+  },
+  {
     path: '/ai-call/records',
     component: './aiCallRecords',
     hideInMenu: true,

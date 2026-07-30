@@ -56,6 +56,20 @@ describe('routes', () => {
     });
   });
 
+  it('maps the independent voice management page with its own permission', () => {
+    const route = flattenRoutes(routes).find(
+      (item) => item.path === '/ai-call/voices',
+    );
+
+    expect(route).toMatchObject({
+      path: '/ai-call/voices',
+      component: './aiCallVoices',
+      hideInMenu: true,
+      access: 'hasRoutePermission',
+      requiredPermission: 'ai_call:voice:manage',
+    });
+  });
+
   it.each([
     ['/ai-call/tasks', './aiCallTasks'],
     ['/ai-call/tasks/create', './aiCallTasks/create'],

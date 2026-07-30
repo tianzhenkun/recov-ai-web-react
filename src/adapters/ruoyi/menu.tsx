@@ -4,6 +4,7 @@ import {
   FieldTimeOutlined,
   HistoryOutlined,
   PhoneOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
@@ -42,6 +43,7 @@ const salesIcpModelingPath = '/sales/icp-modeling';
 const salesIcpModelingTitle = 'ICP 建模';
 const aiCallTasksPath = '/ai-call/tasks';
 const aiCallRecordsPath = '/ai-call/records';
+const aiCallVoicesPath = '/ai-call/voices';
 const aiCallRulesPath = '/ai-call/rules';
 const aiCallManagementPaths = new Set([
   '/ai-call/agents',
@@ -99,6 +101,13 @@ const aiCallInjectedChildren: RuoyiMenuDataItem[] = [
     name: '通话记录',
     locale: false,
     icon: <HistoryOutlined />,
+  },
+  {
+    key: aiCallVoicesPath,
+    path: aiCallVoicesPath,
+    name: '音色管理',
+    locale: false,
+    icon: <SoundOutlined />,
   },
   {
     key: aiCallRulesPath,

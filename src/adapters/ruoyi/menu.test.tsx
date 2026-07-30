@@ -173,7 +173,7 @@ describe('RuoYi menu transform', () => {
     const once = attachAiCallManagementMenu(source);
     const twice = attachAiCallManagementMenu(once);
 
-    expect(once[0].children?.slice(0, 3)).toEqual([
+    expect(once[0].children?.slice(0, 4)).toEqual([
       expect.objectContaining({
         path: '/ai-call/tasks',
         name: '外呼任务',
@@ -181,6 +181,10 @@ describe('RuoYi menu transform', () => {
       expect.objectContaining({
         path: '/ai-call/records',
         name: '通话记录',
+      }),
+      expect.objectContaining({
+        path: '/ai-call/voices',
+        name: '音色管理',
       }),
       expect.objectContaining({
         path: '/ai-call/rules',
