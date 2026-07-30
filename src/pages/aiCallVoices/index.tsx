@@ -14,6 +14,7 @@ import {
 } from '@/pages/recov/components/RecovListLayout';
 import {
   createVoiceEnrollment,
+  createVoicePreviewSession,
   listVoiceProfiles,
 } from '@/services/ruoyi/ai-call-voices';
 import type {
@@ -24,6 +25,10 @@ import type {
 } from '@/services/ruoyi/ai-call-voices.types';
 import { ACTIVE_VOICE_STATUSES, getVoiceStatusMeta } from './domain';
 import VoiceEnrollmentModal from './VoiceEnrollmentModal';
+import {
+  connectVoicePreview,
+  type VoicePreviewConnection,
+} from './VoicePreview';
 
 type VoiceFilters = {
   voiceType?: string;
@@ -55,6 +60,16 @@ type PendingEnrollment = {
   key: string;
 };
 
+type ActivePreview = {
+  profileId: string;
+  connection: VoicePreviewConnection;
+};
+
+type PreviewState = {
+  profileId: string;
+  status: 'CONNECTING' | 'PLAYING';
+};
+
 const AiCallVoicesPage = () => {
   const actionRef = useRef<ActionType>(null);
   const appliedFiltersRef = useRef<VoiceFilters>({});
@@ -62,12 +77,19 @@ const AiCallVoicesPage = () => {
     undefined,
   );
   const pendingEnrollmentRef = useRef<PendingEnrollment | undefined>(undefined);
+  const activePreviewRef = useRef<ActivePreview | undefined>(undefined);
+  const pendingPreviewProfileIdRef = useRef<string | undefined>(undefined);
+  const previewQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const mountedRef = useRef(true);
   const [filterForm] = Form.useForm<VoiceFilters>();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [hasActiveRows, setHasActiveRows] = useState(false);
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
   const [pollRevision, setPollRevision] = useState(0);
+  const [previewState, setPreviewState] = useState<PreviewState | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -88,6 +110,84 @@ const AiCallVoicesPage = () => {
       window.clearTimeout(timer);
     };
   }, [hasActiveRows, pageVisible, pollRevision]);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      void previewQueueRef.current
+        .then(async () => {
+          const activePreview = activePreviewRef.current;
+          activePreviewRef.current = undefined;
+          await activePreview?.connection.disconnect();
+        })
+        .catch(() => undefined);
+    },
+    [],
+  );
+
+  const handlePreview = (profile: AiCallVoiceProfile) => {
+    if (
+      profile.status !== 'ENABLED' ||
+      !profile.canPreview ||
+      !profile.voice ||
+      pendingPreviewProfileIdRef.current === profile.id
+    ) {
+      return;
+    }
+
+    const providerVoice = profile.voice;
+    pendingPreviewProfileIdRef.current = profile.id;
+    setPreviewState({
+      profileId: profile.id,
+      status: 'CONNECTING',
+    });
+
+    const operation = previewQueueRef.current.then(async () => {
+      const activePreview = activePreviewRef.current;
+      if (activePreview?.profileId === profile.id) {
+        activePreviewRef.current = undefined;
+        await activePreview.connection.disconnect();
+        if (mountedRef.current) {
+          setPreviewState(undefined);
+        }
+        return;
+      }
+
+      if (activePreview) {
+        activePreviewRef.current = undefined;
+        await activePreview.connection.disconnect();
+      }
+
+      try {
+        const session = await createVoicePreviewSession(providerVoice);
+        const connection = await connectVoicePreview(session);
+        if (!mountedRef.current) {
+          await connection.disconnect();
+          return;
+        }
+        activePreviewRef.current = {
+          profileId: profile.id,
+          connection,
+        };
+        setPreviewState({
+          profileId: profile.id,
+          status: 'PLAYING',
+        });
+      } catch (error) {
+        if (mountedRef.current) {
+          setPreviewState(undefined);
+          messageApi.error(
+            error instanceof Error ? error.message : '试听失败，请稍后重试',
+          );
+        }
+      } finally {
+        if (pendingPreviewProfileIdRef.current === profile.id) {
+          pendingPreviewProfileIdRef.current = undefined;
+        }
+      }
+    });
+    previewQueueRef.current = operation.catch(() => undefined);
+  };
 
   const columns = useMemo<ProColumns<AiCallVoiceProfile>[]>(
     () => [
@@ -135,8 +235,36 @@ const AiCallVoicesPage = () => {
         dataIndex: 'updatedAt',
         width: 180,
       },
+      {
+        title: '操作',
+        key: 'actions',
+        fixed: 'right',
+        width: 100,
+        render: (_value, profile) => {
+          if (
+            profile.status !== 'ENABLED' ||
+            !profile.canPreview ||
+            !profile.voice
+          ) {
+            return null;
+          }
+          const isCurrentPreview = previewState?.profileId === profile.id;
+          return (
+            <Button
+              disabled={
+                isCurrentPreview && previewState.status === 'CONNECTING'
+              }
+              loading={isCurrentPreview && previewState.status === 'CONNECTING'}
+              type="link"
+              onClick={() => handlePreview(profile)}
+            >
+              {isCurrentPreview ? '停止试听' : '试听'}
+            </Button>
+          );
+        },
+      },
     ],
-    [],
+    [previewState],
   );
 
   const applyFilters = (values: VoiceFilters) => {
