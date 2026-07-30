@@ -5,8 +5,19 @@ import {
 } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { ProTable } from '@ant-design/pro-components';
-import { Button, Form, message, Select, Space, Tag, Tooltip } from 'antd';
+import {
+  Alert,
+  Button,
+  Form,
+  Modal,
+  message,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+} from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { RuoyiError } from '@/adapters/ruoyi/response';
 import {
   RecovListPage,
   RecovListStack,
@@ -15,10 +26,13 @@ import {
 import {
   createVoiceEnrollment,
   createVoicePreviewSession,
+  deleteTenantVoice,
+  getVoiceDeletionCheck,
   listVoiceProfiles,
 } from '@/services/ruoyi/ai-call-voices';
 import type {
   AiCallVoiceProfile,
+  VoiceDeletionCheck,
   VoiceEnrollmentRequest,
   VoiceProfileQuery,
   VoiceStatus,
@@ -50,6 +64,12 @@ const statusOptions: Array<{ label: string; value: VoiceStatus }> = [
   { label: '已删除', value: 'DELETED' },
 ];
 
+const DELETABLE_VOICE_STATUSES = new Set<VoiceStatus>([
+  'ENABLED',
+  'CREATE_FAILED',
+  'DELETE_FAILED',
+]);
+
 export const createIdempotencyKey = (prefix: string) =>
   globalThis.crypto?.randomUUID?.() ||
   `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -70,6 +90,26 @@ type PreviewState = {
   status: 'CONNECTING' | 'PLAYING';
 };
 
+type DeletionDialog = {
+  profile: AiCallVoiceProfile;
+  check: VoiceDeletionCheck;
+};
+
+type PendingDeletion = {
+  profileId: string;
+  key: string;
+};
+
+const isKnownDeletionFailure = (error: unknown) => {
+  if (error instanceof RuoyiError) return true;
+  if (!error || typeof error !== 'object' || !('response' in error)) {
+    return false;
+  }
+  const response = error.response;
+  if (!response || typeof response !== 'object') return false;
+  return 'status' in response && typeof response.status === 'number';
+};
+
 const AiCallVoicesPage = () => {
   const actionRef = useRef<ActionType>(null);
   const appliedFiltersRef = useRef<VoiceFilters>({});
@@ -77,6 +117,12 @@ const AiCallVoicesPage = () => {
     undefined,
   );
   const pendingEnrollmentRef = useRef<PendingEnrollment | undefined>(undefined);
+  const pendingDeletionRef = useRef<PendingDeletion | undefined>(undefined);
+  const deletionFlowProfileIdRef = useRef<string | undefined>(undefined);
+  const deletionSubmitLockedRef = useRef(false);
+  const locallyDeletingProfilesRef = useRef<Map<string, VoiceStatus>>(
+    new Map(),
+  );
   const activePreviewRef = useRef<ActivePreview | undefined>(undefined);
   const pendingPreviewProfileIdRef = useRef<string | undefined>(undefined);
   const previewQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -87,6 +133,16 @@ const AiCallVoicesPage = () => {
   const [hasActiveRows, setHasActiveRows] = useState(false);
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
   const [pollRevision, setPollRevision] = useState(0);
+  const [deletionDialog, setDeletionDialog] = useState<
+    DeletionDialog | undefined
+  >(undefined);
+  const [deletionCheckLoadingId, setDeletionCheckLoadingId] = useState<
+    string | undefined
+  >(undefined);
+  const [deletionSubmitting, setDeletionSubmitting] = useState(false);
+  const [locallyDeletingProfileIds, setLocallyDeletingProfileIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const [previewState, setPreviewState] = useState<PreviewState | undefined>(
     undefined,
   );
@@ -189,6 +245,83 @@ const AiCallVoicesPage = () => {
     previewQueueRef.current = operation.catch(() => undefined);
   };
 
+  const closeDeletionDialog = () => {
+    if (deletionSubmitLockedRef.current) return;
+    if (pendingDeletionRef.current?.profileId === deletionDialog?.profile.id) {
+      pendingDeletionRef.current = undefined;
+    }
+    deletionFlowProfileIdRef.current = undefined;
+    setDeletionDialog(undefined);
+  };
+
+  const requestDeletionCheck = async (profile: AiCallVoiceProfile) => {
+    if (
+      deletionFlowProfileIdRef.current ||
+      profile.scope !== 'TENANT' ||
+      !profile.canDelete ||
+      !DELETABLE_VOICE_STATUSES.has(profile.status) ||
+      locallyDeletingProfilesRef.current.has(profile.id)
+    ) {
+      return;
+    }
+
+    deletionFlowProfileIdRef.current = profile.id;
+    setDeletionCheckLoadingId(profile.id);
+    try {
+      const check = await getVoiceDeletionCheck(profile.id);
+      setDeletionDialog({ profile, check });
+    } catch (error) {
+      deletionFlowProfileIdRef.current = undefined;
+      messageApi.error(
+        error instanceof Error ? error.message : '删除检查失败，请稍后重试',
+      );
+    } finally {
+      setDeletionCheckLoadingId(undefined);
+    }
+  };
+
+  const confirmDeletion = async () => {
+    if (!deletionDialog?.check.deletable || deletionSubmitLockedRef.current) {
+      return;
+    }
+
+    const { profile } = deletionDialog;
+    deletionSubmitLockedRef.current = true;
+    setDeletionSubmitting(true);
+    let pendingDeletion = pendingDeletionRef.current;
+    if (!pendingDeletion || pendingDeletion.profileId !== profile.id) {
+      pendingDeletion = {
+        profileId: profile.id,
+        key: createIdempotencyKey('voice-deletion'),
+      };
+      pendingDeletionRef.current = pendingDeletion;
+    }
+
+    try {
+      await deleteTenantVoice(profile.id, pendingDeletion.key);
+      pendingDeletionRef.current = undefined;
+      const nextLocallyDeleting = new Map(locallyDeletingProfilesRef.current);
+      nextLocallyDeleting.set(profile.id, profile.status);
+      locallyDeletingProfilesRef.current = nextLocallyDeleting;
+      setLocallyDeletingProfileIds(new Set(nextLocallyDeleting.keys()));
+      setHasActiveRows(true);
+      setPollRevision((revision) => revision + 1);
+      setDeletionDialog(undefined);
+      deletionFlowProfileIdRef.current = undefined;
+      messageApi.success('音色删除任务已受理');
+    } catch (error) {
+      if (isKnownDeletionFailure(error)) {
+        pendingDeletionRef.current = undefined;
+      }
+      messageApi.error(
+        error instanceof Error ? error.message : '删除失败，请稍后重试',
+      );
+    } finally {
+      deletionSubmitLockedRef.current = false;
+      setDeletionSubmitting(false);
+    }
+  };
+
   const columns = useMemo<ProColumns<AiCallVoiceProfile>[]>(
     () => [
       {
@@ -222,7 +355,10 @@ const AiCallVoicesPage = () => {
         dataIndex: 'status',
         width: 120,
         render: (_value, profile) => {
-          const meta = getVoiceStatusMeta(profile.status);
+          const status = locallyDeletingProfileIds.has(profile.id)
+            ? 'DELETING'
+            : profile.status;
+          const meta = getVoiceStatusMeta(status);
           return (
             <Tooltip title={profile.errorMessage || undefined}>
               <Tag color={meta.color}>{meta.label}</Tag>
@@ -241,30 +377,51 @@ const AiCallVoicesPage = () => {
         fixed: 'right',
         width: 100,
         render: (_value, profile) => {
-          if (
-            profile.status !== 'ENABLED' ||
-            !profile.canPreview ||
-            !profile.voice
-          ) {
-            return null;
-          }
+          const isLocallyDeleting = locallyDeletingProfileIds.has(profile.id);
+          const canPreview =
+            !isLocallyDeleting &&
+            profile.status === 'ENABLED' &&
+            profile.canPreview &&
+            Boolean(profile.voice);
+          const canDelete =
+            !isLocallyDeleting &&
+            profile.scope === 'TENANT' &&
+            profile.canDelete &&
+            DELETABLE_VOICE_STATUSES.has(profile.status);
           const isCurrentPreview = previewState?.profileId === profile.id;
+          if (!canPreview && !canDelete) return null;
           return (
-            <Button
-              disabled={
-                isCurrentPreview && previewState.status === 'CONNECTING'
-              }
-              loading={isCurrentPreview && previewState.status === 'CONNECTING'}
-              type="link"
-              onClick={() => handlePreview(profile)}
-            >
-              {isCurrentPreview ? '停止试听' : '试听'}
-            </Button>
+            <Space size={4}>
+              {canPreview ? (
+                <Button
+                  disabled={
+                    isCurrentPreview && previewState.status === 'CONNECTING'
+                  }
+                  loading={
+                    isCurrentPreview && previewState.status === 'CONNECTING'
+                  }
+                  type="link"
+                  onClick={() => handlePreview(profile)}
+                >
+                  {isCurrentPreview ? '停止试听' : '试听'}
+                </Button>
+              ) : null}
+              {canDelete ? (
+                <Button
+                  danger
+                  loading={deletionCheckLoadingId === profile.id}
+                  type="link"
+                  onClick={() => requestDeletionCheck(profile)}
+                >
+                  删除
+                </Button>
+              ) : null}
+            </Space>
           );
         },
       },
     ],
-    [previewState],
+    [deletionCheckLoadingId, locallyDeletingProfileIds, previewState],
   );
 
   const applyFilters = (values: VoiceFilters) => {
@@ -440,6 +597,26 @@ const AiCallVoicesPage = () => {
               const result = await listVoiceProfiles(query).finally(() => {
                 setPollRevision((revision) => revision + 1);
               });
+              const nextLocallyDeleting = new Map(
+                locallyDeletingProfilesRef.current,
+              );
+              for (const [profileId, previousStatus] of nextLocallyDeleting) {
+                const serverProfile = result.rows.find(
+                  (profile) => profile.id === profileId,
+                );
+                if (!serverProfile || serverProfile.status !== previousStatus) {
+                  nextLocallyDeleting.delete(profileId);
+                }
+              }
+              if (
+                nextLocallyDeleting.size !==
+                locallyDeletingProfilesRef.current.size
+              ) {
+                locallyDeletingProfilesRef.current = nextLocallyDeleting;
+                setLocallyDeletingProfileIds(
+                  new Set(nextLocallyDeleting.keys()),
+                );
+              }
               const optimisticProfile = optimisticProfileRef.current;
               const serverHasOptimistic = Boolean(
                 optimisticProfile &&
@@ -467,7 +644,8 @@ const AiCallVoicesPage = () => {
               setHasActiveRows(
                 rows.some((profile) =>
                   ACTIVE_VOICE_STATUSES.has(profile.status),
-                ),
+                ) ||
+                  rows.some((profile) => nextLocallyDeleting.has(profile.id)),
               );
               return {
                 data: rows,
@@ -489,6 +667,57 @@ const AiCallVoicesPage = () => {
         onSubmit={submitEnrollment}
         open={createModalOpen}
       />
+
+      <Modal
+        cancelButtonProps={{ disabled: deletionSubmitting }}
+        cancelText="取消"
+        closable={!deletionSubmitting}
+        confirmLoading={deletionSubmitting}
+        destroyOnHidden
+        footer={deletionDialog?.check.deletable ? undefined : null}
+        mask={{ closable: !deletionSubmitting }}
+        okButtonProps={{ danger: true }}
+        okText="确认删除"
+        open={Boolean(deletionDialog)}
+        title={deletionDialog?.check.deletable ? '删除音色' : '无法删除音色'}
+        onCancel={closeDeletionDialog}
+        onOk={confirmDeletion}
+      >
+        {deletionDialog?.check.deletable ? (
+          <Alert
+            description={
+              <Space orientation="vertical" size={4}>
+                <span>
+                  已有 {deletionDialog.check.historicalTaskCount}{' '}
+                  个历史任务使用过该音色。
+                </span>
+                <span>删除后不可用于新任务，此操作不可恢复。</span>
+              </Space>
+            }
+            showIcon
+            title={`确认删除音色“${deletionDialog.profile.displayName}”吗？`}
+            type="error"
+          />
+        ) : deletionDialog ? (
+          <Alert
+            description={
+              <Space orientation="vertical" size={4}>
+                <span>
+                  当前有 {deletionDialog.check.blockingTaskCount}{' '}
+                  个任务仍在引用该音色。
+                </span>
+                <span>
+                  阻塞任务 ID：
+                  {deletionDialog.check.blockingTaskIds.join('、') || '—'}
+                </span>
+              </Space>
+            }
+            showIcon
+            title="该音色暂时无法删除"
+            type="warning"
+          />
+        ) : null}
+      </Modal>
     </RecovListPage>
   );
 };

@@ -8,9 +8,12 @@ import {
   within,
 } from '@testing-library/react';
 import * as React from 'react';
+import { RuoyiError } from '@/adapters/ruoyi/response';
 import {
   createVoiceEnrollment,
   createVoicePreviewSession,
+  deleteTenantVoice,
+  getVoiceDeletionCheck,
   listVoiceProfiles,
 } from '@/services/ruoyi/ai-call-voices';
 import AiCallVoicesPage from './index';
@@ -19,6 +22,8 @@ import { connectVoicePreview } from './VoicePreview';
 jest.mock('@/services/ruoyi/ai-call-voices', () => ({
   createVoiceEnrollment: jest.fn(),
   createVoicePreviewSession: jest.fn(),
+  deleteTenantVoice: jest.fn(),
+  getVoiceDeletionCheck: jest.fn(),
   listVoiceProfiles: jest.fn(),
 }));
 
@@ -163,6 +168,8 @@ const mockList = listVoiceProfiles as jest.Mock;
 const mockCreate = createVoiceEnrollment as jest.Mock;
 const mockCreatePreview = createVoicePreviewSession as jest.Mock;
 const mockConnectPreview = connectVoicePreview as jest.Mock;
+const mockDeletionCheck = getVoiceDeletionCheck as jest.Mock;
+const mockDelete = deleteTenantVoice as jest.Mock;
 
 const voice = (overrides: Record<string, unknown> = {}) => ({
   id: '1',
@@ -217,6 +224,8 @@ describe('AI Call voice management page', () => {
     mockCreate.mockReset();
     mockCreatePreview.mockReset();
     mockConnectPreview.mockReset();
+    mockDeletionCheck.mockReset();
+    mockDelete.mockReset();
     mockList.mockResolvedValue({ rows: [voice()], total: 1 });
     mockCreatePreview.mockResolvedValue({
       callId: 'call-preview-1',
@@ -595,5 +604,166 @@ describe('AI Call voice management page', () => {
 
     view.unmount();
     await waitFor(() => expect(secondDisconnect).toHaveBeenCalledTimes(1));
+  });
+
+  it('only offers deletion for eligible tenant voices and explains blocking references', async () => {
+    mockList.mockResolvedValue({
+      rows: [
+        voice({ id: '1', displayName: '可删除音色' }),
+        voice({
+          id: '2',
+          displayName: '内置音色',
+          scope: 'GLOBAL',
+        }),
+        voice({
+          id: '3',
+          displayName: '禁止删除音色',
+          canDelete: false,
+        }),
+        voice({
+          id: '4',
+          displayName: '删除中音色',
+          status: 'DELETING',
+        }),
+      ],
+      total: 4,
+    });
+    mockDeletionCheck.mockResolvedValue({
+      voiceProfileId: '1',
+      deletable: false,
+      blockingTaskCount: 2,
+      historicalTaskCount: 5,
+      blockingTaskIds: ['task-1001', 'task-1002'],
+    });
+    render(<AiCallVoicesPage />);
+    expect(await screen.findByText('可删除音色')).toBeTruthy();
+    const rows = screen.getAllByTestId('voice-row');
+    const deleteButton = within(rows[0]).getByRole('button', {
+      name: '删除',
+    });
+
+    expect(within(rows[1]).queryByRole('button', { name: '删除' })).toBeNull();
+    expect(within(rows[2]).queryByRole('button', { name: '删除' })).toBeNull();
+    expect(within(rows[3]).queryByRole('button', { name: '删除' })).toBeNull();
+    fireEvent.click(deleteButton);
+    fireEvent.click(deleteButton);
+
+    expect(await screen.findByText('该音色暂时无法删除')).toBeTruthy();
+    expect(screen.getByText(/task-1001/)).toBeTruthy();
+    expect(screen.getByText(/task-1002/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认删除' })).toBeNull();
+    expect(mockDeletionCheck).toHaveBeenCalledTimes(1);
+    expect(mockDeletionCheck).toHaveBeenCalledWith('1');
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('requires danger confirmation, submits once and immediately enters deleting polling', async () => {
+    jest.useFakeTimers();
+    let resolveDelete:
+      | ((value: {
+          voiceProfileId: string;
+          deletionId: string;
+          status: 'DELETING';
+        }) => void)
+      | undefined;
+    mockDeletionCheck.mockResolvedValue({
+      voiceProfileId: '1',
+      deletable: true,
+      blockingTaskCount: 0,
+      historicalTaskCount: 3,
+      blockingTaskIds: [],
+    });
+    mockDelete.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    render(<AiCallVoicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }));
+
+    expect(await screen.findByText(/确认删除音色“客服小林”/)).toBeTruthy();
+    expect(screen.getByText(/已有 3 个历史任务使用过该音色/)).toBeTruthy();
+    expect(screen.getByText(/删除后不可用于新任务/)).toBeTruthy();
+    expect(screen.getByText(/此操作不可恢复/)).toBeTruthy();
+    const confirmButton = screen.getByRole('button', { name: '确认删除' });
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith('1', expect.any(String));
+    await act(async () => {
+      resolveDelete?.({
+        voiceProfileId: '1',
+        deletionId: 'delete-1',
+        status: 'DELETING',
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText('删除中')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认删除' })).toBeNull();
+    const callsAfterAcceptance = mockList.mock.calls.length;
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+    expect(mockList.mock.calls.length).toBeGreaterThan(callsAfterAcceptance);
+  });
+
+  it('reuses an unknown delete key but rotates it after a known business failure', async () => {
+    mockDeletionCheck.mockResolvedValue({
+      voiceProfileId: '1',
+      deletable: true,
+      blockingTaskCount: 0,
+      historicalTaskCount: 0,
+      blockingTaskIds: [],
+    });
+    mockDelete
+      .mockRejectedValueOnce(new Error('Network Error'))
+      .mockRejectedValueOnce(
+        new RuoyiError('音色正在被新任务引用', {
+          code: 409,
+          msg: '音色正在被新任务引用',
+        }),
+      )
+      .mockResolvedValueOnce({
+        voiceProfileId: '1',
+        deletionId: 'delete-2',
+        status: 'DELETING',
+      });
+    render(<AiCallVoicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }));
+    const confirmButton = await screen.findByRole('button', {
+      name: '确认删除',
+    });
+
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: '确认删除',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(2));
+    expect(mockDelete.mock.calls[1][1]).toBe(mockDelete.mock.calls[0][1]);
+
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: '确认删除',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(3));
+    expect(mockDelete.mock.calls[2][1]).not.toBe(mockDelete.mock.calls[1][1]);
   });
 });
