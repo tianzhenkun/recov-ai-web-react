@@ -78,6 +78,29 @@ const createIdempotencyKey = () =>
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : '操作失败，请稍后重试';
 
+const getTaskExecutionLabel = (task: AiCallTask) => {
+  const dialerTypes = Array.from(new Set(task.attemptDialerTypes || []));
+  if (dialerTypes.length === 0) return '尚未执行';
+  if (dialerTypes.length > 1) return '混合执行';
+  if (dialerTypes[0] === 'mock') return 'Mock 流程演练';
+  if (dialerTypes[0] === 'sip') return 'SIP 外呼';
+  if (dialerTypes[0]?.startsWith('linphone')) return 'Linphone 本地验证';
+  return dialerTypes[0].toUpperCase();
+};
+
+const getTaskResultText = (task: AiCallTask) => {
+  const dialerTypes = new Set(task.attemptDialerTypes || []);
+  if (dialerTypes.size === 0) return '—';
+  if (dialerTypes.size > 1) {
+    return `成功 ${task.connectedTargets}（含 Mock）`;
+  }
+  if (dialerTypes.has('mock')) return `模拟成功 ${task.connectedTargets}`;
+  if ([...dialerTypes].some((item) => item.startsWith('linphone'))) {
+    return `本地接通 ${task.connectedTargets}`;
+  }
+  return `SIP 接通 ${task.connectedTargets}`;
+};
+
 const AiCallTasksPage = () => {
   const actionRef = useRef<ActionType>(null);
   const [scheduleForm] = Form.useForm<ScheduleFormValues>();
@@ -216,10 +239,18 @@ const AiCallTasksPage = () => {
       ),
     },
     {
-      title: '接通数',
-      dataIndex: 'connectedTargets',
-      width: 90,
+      title: '执行方式',
+      key: 'executionType',
+      width: 140,
       search: false,
+      renderText: (_value, task) => getTaskExecutionLabel(task),
+    },
+    {
+      title: '执行结果',
+      key: 'executionResult',
+      width: 150,
+      search: false,
+      renderText: (_value, task) => getTaskResultText(task),
     },
     {
       title: '任务状态',

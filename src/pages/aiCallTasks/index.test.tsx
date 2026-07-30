@@ -174,6 +174,36 @@ describe('AI Call task list page', () => {
     expect(screen.getByText('线路不可用')).toBeTruthy();
   });
 
+  it('distinguishes Mock workflow results from real SIP connections', async () => {
+    mockedListTasks.mockResolvedValue({
+      rows: [
+        buildTask({
+          taskId: 'mock-completed',
+          taskName: 'Mock 流程任务',
+          status: 'COMPLETED',
+          connectedTargets: 12,
+          attemptDialerTypes: ['mock'],
+        }),
+        buildTask({
+          taskId: 'sip-completed',
+          taskName: 'SIP 外呼任务',
+          status: 'COMPLETED',
+          connectedTargets: 15,
+          attemptDialerTypes: ['sip'],
+        }),
+      ],
+      total: 2,
+    });
+
+    render(<AiCallTasksPage />);
+    await screen.findByText('Mock 流程任务');
+
+    expect(getTaskRow('Mock 流程任务').getByText('Mock 流程演练')).toBeTruthy();
+    expect(getTaskRow('Mock 流程任务').getByText('模拟成功 12')).toBeTruthy();
+    expect(getTaskRow('SIP 外呼任务').getByText('SIP 外呼')).toBeTruthy();
+    expect(getTaskRow('SIP 外呼任务').getByText('SIP 接通 15')).toBeTruthy();
+  });
+
   it('renders actions strictly from the current task status', async () => {
     render(<AiCallTasksPage />);
     await screen.findByText('运行任务');

@@ -1,5 +1,4 @@
 import { PhoneOutlined } from '@ant-design/icons';
-import { history } from '@umijs/max';
 import {
   Alert,
   Button,
@@ -34,6 +33,10 @@ const { Text } = Typography;
 type LinphoneTaskTestProps = {
   task: AiCallTask;
   onTaskChanged: () => Promise<void> | void;
+  children?: (content: {
+    trigger: React.ReactNode;
+    activeStatus: React.ReactNode;
+  }) => React.ReactNode;
 };
 
 const maskPhone = (value: string) =>
@@ -75,12 +78,11 @@ const createEndCommandKey = (callId: string) => {
   return `linphone-end-${callId}-${suffix}`;
 };
 
-const buildRecordsUrl = (taskId: string, targetId: string) => {
-  const search = new URLSearchParams({ taskId, targetId });
-  return `/ai-call/records?${search.toString()}`;
-};
-
-const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
+const LinphoneTaskTest = ({
+  task,
+  onTaskChanged,
+  children,
+}: LinphoneTaskTestProps) => {
   const [capability, setCapability] = useState<AiCallTaskTestCapability | null>(
     null,
   );
@@ -234,84 +236,66 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
     });
   };
 
-  if (!capability?.enabled) return null;
-
-  return (
-    <Space orientation="vertical" size={12}>
-      <div>
-        <Tooltip
-          title={
-            hasActiveTest
-              ? '当前任务已有测试通话'
-              : capability.eligible
-                ? undefined
-                : capability.reasons.join('；')
-          }
+  const trigger = capability?.enabled ? (
+    <Tooltip
+      title={
+        hasActiveTest
+          ? '当前任务已有测试通话'
+          : capability.eligible
+            ? undefined
+            : capability.reasons.join('；')
+      }
+    >
+      <span>
+        <Button
+          disabled={!capability.eligible || hasActiveTest || starting}
+          icon={<PhoneOutlined aria-hidden />}
+          onClick={openModal}
         >
-          <span>
-            <Button
-              disabled={!capability.eligible || hasActiveTest || starting}
-              icon={<PhoneOutlined aria-hidden />}
-              onClick={openModal}
-            >
-              测试拨打
-            </Button>
-          </span>
-        </Tooltip>
-      </div>
+          测试拨打
+        </Button>
+      </span>
+    </Tooltip>
+  ) : null;
 
-      {testStatus ? (
-        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-          <Descriptions
-            bordered
-            column={{ xs: 1, sm: 2 }}
-            items={[
-              {
-                key: 'phase',
-                label: '当前阶段',
-                children: phaseText[testStatus.phase],
-              },
-              {
-                key: 'callId',
-                label: 'Call ID',
-                children: (
-                  <Text copyable={{ text: testStatus.callId }}>
-                    {testStatus.callId}
-                  </Text>
-                ),
-              },
-              {
-                key: 'elapsed',
-                label: '通话时长',
-                children: formatDuration(testStatus.elapsedSeconds),
-              },
-              {
-                key: 'handoff',
-                label: '转人工状态',
-                children: testStatus.handoffStatus || '未触发',
-              },
-            ]}
-          />
-          {testStatus.errorMessage ? (
-            <Alert showIcon title={testStatus.errorMessage} type="error" />
-          ) : null}
-          {endError ? <Alert showIcon title={endError} type="error" /> : null}
-          <Space>
-            <Button
-              onClick={() =>
-                history.push(
-                  buildRecordsUrl(testStatus.taskId, testStatus.targetId),
-                )
-              }
-            >
-              查看通话记录
-            </Button>
-            {testStatus.canEndActiveCall ? (
-              <Button danger onClick={confirmEndActiveCall}>
+  const activeStatus =
+    testStatus && !isTerminalStatus(testStatus) ? (
+      <Space orientation="vertical" size={8} style={{ width: '100%' }}>
+        <Alert
+          action={
+            testStatus.canEndActiveCall ? (
+              <Button danger size="small" onClick={confirmEndActiveCall}>
                 结束当前通话
               </Button>
-            ) : null}
-          </Space>
+            ) : null
+          }
+          showIcon
+          title={
+            <Space size={8} wrap>
+              <Text strong>测试拨打中</Text>
+              <Text>{phaseText[testStatus.phase]}</Text>
+              <Text type="secondary">
+                {formatDuration(testStatus.elapsedSeconds)}
+              </Text>
+            </Space>
+          }
+          type="info"
+        />
+        {testStatus.errorMessage ? (
+          <Alert showIcon title={testStatus.errorMessage} type="error" />
+        ) : null}
+        {endError ? <Alert showIcon title={endError} type="error" /> : null}
+      </Space>
+    ) : null;
+
+  return (
+    <>
+      {children ? (
+        children({ trigger, activeStatus })
+      ) : capability?.enabled ? (
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+          {trigger}
+          {activeStatus}
         </Space>
       ) : null}
 
@@ -384,7 +368,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
               <Space orientation="vertical">
                 <Radio value="ai_only">AI 完整通话</Radio>
                 <Radio
-                  disabled={capability.availableAgentCount === 0}
+                  disabled={capability?.availableAgentCount === 0}
                   value="handoff"
                 >
                   AI 转人工通话
@@ -392,7 +376,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
               </Space>
             </Radio.Group>
 
-            {capability.availableAgentCount === 0 ? (
+            {capability?.availableAgentCount === 0 ? (
               <Text type="warning">暂无可用坐席，请先到坐席工作台上线</Text>
             ) : null}
 
@@ -408,7 +392,7 @@ const LinphoneTaskTest = ({ task, onTaskChanged }: LinphoneTaskTestProps) => {
           </Space>
         </Spin>
       </Modal>
-    </Space>
+    </>
   );
 };
 

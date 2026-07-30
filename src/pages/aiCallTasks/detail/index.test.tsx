@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import * as React from 'react';
 import { getAiCallTask, listAiCallTaskTargets } from '../service';
@@ -27,12 +28,27 @@ jest.mock('../components/LinphoneTaskTest', () => ({
   default: (props: {
     task: { taskId: string };
     onTaskChanged: () => Promise<void> | void;
+    children?: (content: {
+      trigger: unknown;
+      activeStatus: unknown;
+    }) => unknown;
   }) => {
     mockLinphoneTaskTest(props);
-    return (
+    const trigger = (
       <button type="button" onClick={() => void props.onTaskChanged()}>
         测试拨打入口
       </button>
+    );
+    const activeStatus = (
+      <div data-testid="linphone-active-status">测试拨打中</div>
+    );
+    return props.children ? (
+      props.children({ trigger, activeStatus })
+    ) : (
+      <>
+        {trigger}
+        {activeStatus}
+      </>
     );
   },
 }));
@@ -65,6 +81,13 @@ describe('AI Call task detail page', () => {
       ruleId: 'rule-1',
       ruleName: '工作日规则',
       ruleSummary: '09:00–18:00，最多重试 1 次',
+      lineId: 'line-1',
+      lineName: '任务创建后改名的线路',
+      lineSnapshot: {
+        lineId: 'line-1',
+        lineCode: 'sip-primary',
+        lineName: '任务创建时线路',
+      },
       createdByName: '管理员',
       createdAt: '2026-07-27 08:50:00',
       updatedAt: '2026-07-27 10:00:00',
@@ -99,6 +122,21 @@ describe('AI Call task detail page', () => {
     expect(screen.getByText('客户回访 / intro_follow_up')).toBeTruthy();
     expect(screen.getByText('芊悦 / Cherry')).toBeTruthy();
     expect(screen.getByText('工作日规则')).toBeTruthy();
+    expect(screen.getByText('执行线路')).toBeTruthy();
+    expect(
+      screen.getByText('任务创建时线路 / sip-primary / line-1'),
+    ).toBeTruthy();
+    expect(screen.queryByText('任务创建后改名的线路')).toBeNull();
+    const toolbar = screen.getByTestId('task-detail-toolbar');
+    expect(toolbar.classList.contains('flex-wrap')).toBe(true);
+    expect(
+      within(toolbar).queryByRole('button', { name: '测试拨打入口' }),
+    ).toBeNull();
+    expect(within(toolbar).queryByTestId('linphone-active-status')).toBeNull();
+    expect(screen.queryByTestId('linphone-active-status')).toBeNull();
+    const taskConfig = screen.getByTestId('task-config-card');
+    expect(taskConfig.style.flex).toBe('0 0 auto');
+    expect(taskConfig.classList.contains('recov-toolbar-card')).toBe(true);
     expect(screen.getAllByText('手机号').length).toBeGreaterThan(0);
     expect(screen.getAllByText('客户名称').length).toBeGreaterThan(0);
     expect(screen.getAllByText('处理状态').length).toBeGreaterThan(0);
@@ -128,27 +166,44 @@ describe('AI Call task detail page', () => {
     );
   });
 
-  it('mounts the Linphone test entry and refreshes task and targets', async () => {
+  it('does not mount the Linphone test entry in the formal task detail', async () => {
     render(<AiCallTaskDetailPage />);
     await screen.findByText('批量客户回访');
 
-    expect(mockLinphoneTaskTest).toHaveBeenCalledWith(
-      expect.objectContaining({
-        task: expect.objectContaining({ taskId: 'task-1' }),
-        onTaskChanged: expect.any(Function),
-      }),
-    );
+    expect(mockLinphoneTaskTest).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '测试拨打入口' })).toBeNull();
+    expect(screen.queryByTestId('linphone-active-status')).toBeNull();
+  });
 
-    mockedGetTask.mockClear();
-    mockedListTargets.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: '测试拨打入口' }));
+  it('uses attempt provenance to distinguish mock success from a real connection', async () => {
+    const task = await mockedGetTask();
+    mockedGetTask.mockResolvedValue({
+      ...task,
+      attemptDialerTypes: ['mock'],
+      connectedTargets: 1,
+    });
+    mockedListTargets.mockResolvedValue({
+      rows: [
+        {
+          targetId: 'target-1',
+          taskId: 'task-1',
+          customerName: '张先生',
+          phoneNumber: '19900001001',
+          status: 'COMPLETED',
+          attemptCount: 1,
+          latestResult: 'connected',
+          latestDialerType: 'mock',
+          updatedAt: '2026-07-27 09:30:00',
+        },
+      ],
+      total: 1,
+    });
 
-    await waitFor(() => expect(mockedGetTask).toHaveBeenCalledWith('task-1'));
-    await waitFor(() =>
-      expect(mockedListTargets).toHaveBeenCalledWith(
-        'task-1',
-        expect.objectContaining({ pageNum: 1, pageSize: 20 }),
-      ),
-    );
+    render(<AiCallTaskDetailPage />);
+
+    expect(await screen.findByText('模拟成功数')).toBeTruthy();
+    expect(screen.getAllByText('模拟执行').length).toBeGreaterThan(0);
+    expect(await screen.findByText('模拟执行完成')).toBeTruthy();
+    expect(screen.queryByText('已接通')).toBeNull();
   });
 });

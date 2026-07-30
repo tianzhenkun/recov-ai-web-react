@@ -13,6 +13,7 @@ import {
   Progress,
   Result,
   Space,
+  Tag,
   Typography,
 } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
@@ -22,7 +23,6 @@ import {
   RecovStatsStrip,
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
-import LinphoneTaskTest from '../components/LinphoneTaskTest';
 import TaskStatusTag from '../components/TaskStatusTag';
 import {
   type AiCallTask,
@@ -43,6 +43,39 @@ const targetStatusValueEnum: Record<TargetStatus, { text: string }> = {
   RETRY_WAIT: { text: '等待重试' },
   COMPLETED: { text: '已完成' },
   CANCELLED: { text: '已取消' },
+};
+
+const callResultLabels: Record<string, string> = {
+  connected: '已接通',
+  no_answer: '无人接听',
+  busy: '占线',
+  call_failed: '呼叫失败',
+  invalid_number: '号码无效',
+};
+
+const getTaskExecutionLabel = (task: AiCallTask) => {
+  const dialerTypes = Array.from(new Set(task.attemptDialerTypes || []));
+  if (dialerTypes.length === 0) return '尚未执行';
+  if (dialerTypes.length > 1) return '混合执行';
+  if (dialerTypes[0] === 'mock') return '模拟执行';
+  if (dialerTypes[0] === 'sip') return 'SIP 外呼';
+  return dialerTypes[0];
+};
+
+const getConnectedStatTitle = (task: AiCallTask) => {
+  const dialerTypes = new Set(task.attemptDialerTypes || []);
+  if (dialerTypes.size === 1 && dialerTypes.has('mock')) return '模拟成功数';
+  if (dialerTypes.has('mock')) return '成功数（含模拟）';
+  return '接通数';
+};
+
+const getLatestResultLabel = (target: AiCallTaskTarget) => {
+  if (!target.latestResult) return '—';
+  const result = callResultLabels[target.latestResult] || target.latestResult;
+  if (target.latestDialerType !== 'mock') return result;
+  return target.latestResult === 'connected'
+    ? '模拟执行完成'
+    : `模拟：${result}`;
 };
 
 const getErrorMessage = (error: unknown) =>
@@ -180,7 +213,7 @@ const AiCallTaskDetailPage = () => {
       dataIndex: 'latestResult',
       width: 160,
       search: false,
-      renderText: (value) => value || '—',
+      renderText: (_value, target) => getLatestResultLabel(target),
     },
     {
       title: '更新时间',
@@ -211,19 +244,26 @@ const AiCallTaskDetailPage = () => {
   return (
     <RecovListPage breadcrumbRender={false} title="外呼任务详情">
       <RecovListStack>
-        <div className="flex items-center justify-between gap-4">
-          <Space>
-            <h2 className="m-0 text-xl font-semibold">{task.taskName}</h2>
+        <div
+          className="flex flex-wrap items-center justify-between gap-3"
+          data-testid="task-detail-toolbar"
+        >
+          <Space wrap>
+            <h2 className="m-0 break-words text-xl font-semibold">
+              {task.taskName}
+            </h2>
             <TaskStatusTag status={task.status} />
+            {task.attemptDialerTypes?.length ? (
+              <Tag
+                color={
+                  task.attemptDialerTypes.includes('mock') ? 'blue' : 'green'
+                }
+              >
+                {getTaskExecutionLabel(task)}
+              </Tag>
+            ) : null}
           </Space>
-          <Space>
-            <LinphoneTaskTest
-              key={task.taskId}
-              task={task}
-              onTaskChanged={async () => {
-                await Promise.all([loadTask(), actionRef.current?.reload()]);
-              }}
-            />
+          <Space wrap>
             <Button onClick={() => history.push(buildRecordsUrl(task.taskId))}>
               查看全部通话记录
             </Button>
@@ -248,7 +288,7 @@ const AiCallTaskDetailPage = () => {
           />
           <StatCard
             icon={<PhoneOutlined />}
-            title="接通数"
+            title={getConnectedStatTitle(task)}
             tone="cyan"
             value={task.connectedTargets}
           />
@@ -266,9 +306,14 @@ const AiCallTaskDetailPage = () => {
           />
         </RecovStatsStrip>
 
-        <RecovTableCard title="任务配置">
+        <RecovTableCard
+          className="recov-toolbar-card"
+          data-testid="task-config-card"
+          title="任务配置"
+          style={{ flex: '0 0 auto' }}
+        >
           <Descriptions
-            column={{ xs: 1, sm: 2, lg: 4 }}
+            column={{ xs: 1, md: 2 }}
             items={[
               {
                 key: 'prompt',
@@ -292,7 +337,28 @@ const AiCallTaskDetailPage = () => {
                 label: '规则摘要',
                 children: task.ruleSummary,
               },
+              {
+                key: 'line',
+                label: '执行线路',
+                children: task.lineSnapshot
+                  ? [
+                      task.lineSnapshot.lineName,
+                      task.lineSnapshot.lineCode,
+                      task.lineSnapshot.lineId,
+                    ].join(' / ')
+                  : [task.lineName, task.lineId].filter(Boolean).join(' / ') ||
+                    '—',
+              },
+              {
+                key: 'dialerType',
+                label: '执行类型',
+                children: getTaskExecutionLabel(task),
+              },
             ]}
+            styles={{
+              content: { minWidth: 0, overflowWrap: 'anywhere' },
+              label: { whiteSpace: 'nowrap' },
+            }}
           />
           <Progress
             className="mt-4"

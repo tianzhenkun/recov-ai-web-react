@@ -17,9 +17,11 @@ import type {
 } from './domain';
 
 export const AI_CALL_AGENT_BASE_API = '/ai-call-agent-api';
+const AI_CALL_LAB_BASE_API = '/ai-call-lab-api';
 
 const OUTBOUND_PREFIX = '/ai-call';
 const TASKS_PATH = `${OUTBOUND_PREFIX}/outbound-tasks`;
+const TASK_TESTS_PATH = `${OUTBOUND_PREFIX}/lab/outbound-task-tests`;
 const VALIDATIONS_PATH = `${OUTBOUND_PREFIX}/outbound-validations`;
 
 export type PageResult<T> = {
@@ -231,8 +233,11 @@ export const getAiCallTaskTestCapability = async (
 ): Promise<AiCallTaskTestCapability> =>
   unwrapData(
     await ruoyiRequest<AiCallTaskTestCapability>(
-      `${TASKS_PATH}/${taskId}/test-capability`,
-      { ...requestOptions, method: 'get' },
+      `${TASK_TESTS_PATH}/${taskId}/capability`,
+      {
+        baseApi: AI_CALL_LAB_BASE_API,
+        method: 'get',
+      },
     ),
   );
 
@@ -243,9 +248,9 @@ export const runAiCallTaskTest = async (
 ): Promise<AiCallTaskTestAccepted> =>
   unwrapData(
     await ruoyiRequest<AiCallTaskTestAccepted>(
-      `${TASKS_PATH}/${taskId}/test-run`,
+      `${TASK_TESTS_PATH}/${taskId}/runs`,
       {
-        ...requestOptions,
+        baseApi: AI_CALL_LAB_BASE_API,
         method: 'post',
         headers: { 'Idempotency-Key': idempotencyKey },
         data: { scenario },
@@ -258,8 +263,11 @@ export const getAiCallTaskTestStatus = async (
 ): Promise<AiCallTaskTestStatus> =>
   unwrapData(
     await ruoyiRequest<AiCallTaskTestStatus>(
-      `${TASKS_PATH}/${taskId}/test-status`,
-      { ...requestOptions, method: 'get' },
+      `${TASK_TESTS_PATH}/${taskId}/status`,
+      {
+        baseApi: AI_CALL_LAB_BASE_API,
+        method: 'get',
+      },
     ),
   );
 
@@ -269,9 +277,9 @@ export const endAiCallTaskActiveCall = async (
 ): Promise<AcceptedCommand> =>
   unwrapData(
     await ruoyiRequest<AcceptedCommand>(
-      `${TASKS_PATH}/${taskId}/active-call/end`,
+      `${TASK_TESTS_PATH}/${taskId}/active-call/end`,
       {
-        ...requestOptions,
+        baseApi: AI_CALL_LAB_BASE_API,
         method: 'post',
         headers: { 'Idempotency-Key': idempotencyKey },
       },

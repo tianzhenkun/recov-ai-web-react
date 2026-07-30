@@ -681,13 +681,13 @@ export default {
     undefined,
     '取消操作已受理',
   ),
-  'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability':
+  'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/capability':
     getTestCapability,
-  'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run':
+  'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/runs':
     startTestRun,
-  'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status':
+  'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/status':
     getTestStatus,
-  'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/active-call/end':
+  'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/active-call/end':
     endActiveTestCall,
   'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/targets': listTargets,
   'POST /ai-call-agent-api/ai-call/outbound-targets/import-template': (

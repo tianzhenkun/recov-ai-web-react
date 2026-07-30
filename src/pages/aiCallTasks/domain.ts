@@ -71,6 +71,12 @@ export type TaskActionKey =
   | 'cancel'
   | 'view';
 
+export type AiCallTaskLineSnapshot = {
+  lineId: string;
+  lineCode: string;
+  lineName: string;
+};
+
 export type AiCallTask = {
   taskId: string;
   taskName: string;
@@ -80,6 +86,7 @@ export type AiCallTask = {
   completedTargets: number;
   connectedTargets: number;
   failedTargets: number;
+  attemptDialerTypes?: string[];
   executionMode: ExecutionMode;
   scheduledAt?: string | null;
   startedAt?: string | null;
@@ -92,6 +99,9 @@ export type AiCallTask = {
   ruleId: string;
   ruleName: string;
   ruleSummary: string;
+  lineId?: string | null;
+  lineName?: string | null;
+  lineSnapshot?: AiCallTaskLineSnapshot | null;
   createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -106,6 +116,7 @@ export type AiCallTaskTarget = {
   status: TargetStatus;
   attemptCount: number;
   latestResult?: string | null;
+  latestDialerType?: string | null;
   updatedAt: string;
 };
 

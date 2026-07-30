@@ -352,7 +352,7 @@ describe('AI Call task mock', () => {
   it('simulates an idempotent AI-only Linphone test lifecycle', () => {
     const taskId = createScheduledSingleTask();
     const capability = invoke(
-      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability',
+      'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/capability',
       { taskId },
     );
 
@@ -369,13 +369,13 @@ describe('AI Call task mock', () => {
     );
 
     const accepted = invoke(
-      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/runs',
       { taskId },
       { scenario: 'ai_only' },
       { 'idempotency-key': 'mock-ai-only-1' },
     );
     const repeated = invoke(
-      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/runs',
       { taskId },
       { scenario: 'ai_only' },
       { 'idempotency-key': 'mock-ai-only-1' },
@@ -396,7 +396,7 @@ describe('AI Call task mock', () => {
 
     const phases = Array.from({ length: 3 }, () => {
       const status = invoke(
-        'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status',
+        'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/status',
         { taskId },
       );
       return (status.body as { data: { phase: string } }).data.phase;
@@ -408,14 +408,14 @@ describe('AI Call task mock', () => {
     const activeTaskId = createScheduledSingleTask();
     const blockedTaskId = createScheduledSingleTask();
     invoke(
-      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/runs',
       { taskId: activeTaskId },
       { scenario: 'handoff' },
       { 'idempotency-key': 'mock-handoff-1' },
     );
 
     const activeCapability = invoke(
-      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability',
+      'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/capability',
       { taskId: activeTaskId },
     );
     expect(activeCapability.body).toEqual(
@@ -429,7 +429,7 @@ describe('AI Call task mock', () => {
     );
 
     const blockedCapability = invoke(
-      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-capability',
+      'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/capability',
       { taskId: blockedTaskId },
     );
     expect(blockedCapability.body).toEqual(
@@ -445,7 +445,7 @@ describe('AI Call task mock', () => {
 
     const phases = Array.from({ length: 5 }, () => {
       const status = invoke(
-        'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status',
+        'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/status',
         { taskId: activeTaskId },
       );
       return (status.body as { data: { phase: string } }).data.phase;
@@ -462,20 +462,20 @@ describe('AI Call task mock', () => {
   it('ends the active mock call immediately', () => {
     const taskId = createScheduledSingleTask();
     invoke(
-      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-run',
+      'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/runs',
       { taskId },
       { scenario: 'handoff' },
       { 'idempotency-key': 'mock-end-1' },
     );
 
     const ended = invoke(
-      'POST /ai-call-agent-api/ai-call/outbound-tasks/:taskId/active-call/end',
+      'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/active-call/end',
       { taskId },
       {},
       { 'idempotency-key': 'mock-end-command-1' },
     );
     const status = invoke(
-      'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/test-status',
+      'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/status',
       { taskId },
     );
 

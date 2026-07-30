@@ -294,26 +294,26 @@ describe('AI Call task service', () => {
 
     expect(mockedRuoyiRequest.mock.calls).toEqual([
       [
-        '/ai-call/outbound-tasks/task-1/test-capability',
-        { baseApi: '/ai-call-agent-api', method: 'get' },
+        '/ai-call/lab/outbound-task-tests/task-1/capability',
+        { baseApi: '/ai-call-lab-api', method: 'get' },
       ],
       [
-        '/ai-call/outbound-tasks/task-1/test-run',
+        '/ai-call/lab/outbound-task-tests/task-1/runs',
         {
-          baseApi: '/ai-call-agent-api',
+          baseApi: '/ai-call-lab-api',
           method: 'post',
           headers: { 'Idempotency-Key': 'run-key' },
           data: { scenario: 'handoff' },
         },
       ],
       [
-        '/ai-call/outbound-tasks/task-1/test-status',
-        { baseApi: '/ai-call-agent-api', method: 'get' },
+        '/ai-call/lab/outbound-task-tests/task-1/status',
+        { baseApi: '/ai-call-lab-api', method: 'get' },
       ],
       [
-        '/ai-call/outbound-tasks/task-1/active-call/end',
+        '/ai-call/lab/outbound-task-tests/task-1/active-call/end',
         {
-          baseApi: '/ai-call-agent-api',
+          baseApi: '/ai-call-lab-api',
           method: 'post',
           headers: { 'Idempotency-Key': 'end-key' },
         },

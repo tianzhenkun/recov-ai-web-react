@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { Modal } from 'antd';
 import * as React from 'react';
@@ -16,12 +17,6 @@ import {
   runAiCallTaskTest,
 } from '../service';
 import LinphoneTaskTest from './LinphoneTaskTest';
-
-const mockPush = jest.fn();
-
-jest.mock('@umijs/max', () => ({
-  history: { push: (...args: unknown[]) => mockPush(...args) },
-}));
 
 jest.mock('../service', () => ({
   endAiCallTaskActiveCall: jest.fn(),
@@ -110,7 +105,6 @@ const activeStatus = {
 
 describe('Linphone task test entry', () => {
   beforeEach(() => {
-    mockPush.mockReset();
     mockedEndActiveCall.mockReset();
     mockedGetCapability.mockReset();
     mockedGetStatus.mockReset();
@@ -285,39 +279,78 @@ describe('Linphone task test entry', () => {
     ['ai_call', 'AI 通话中'],
     ['waiting_handoff', '等待坐席接单'],
     ['human_call', '人工通话中'],
-    ['completed', '通话已完成'],
-    ['failed', '测试失败'],
   ] as const)('renders %s as %s', async (phase, text) => {
     mockedGetCapability.mockResolvedValue(activeCapability);
     mockedGetStatus.mockResolvedValue({
       ...activeStatus,
       phase,
-      errorMessage: phase === 'failed' ? 'Linphone 未注册' : null,
     });
 
     render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
 
     expect(await screen.findByText(text)).toBeTruthy();
-    if (phase === 'failed') {
-      expect(screen.getByText('Linphone 未注册')).toBeTruthy();
+  });
+
+  it.each([
+    ['completed', '通话已完成', null],
+    ['failed', '测试失败', 'Linphone 未注册'],
+  ] as const)('does not keep the terminal %s status panel', async (phase, phaseLabel, errorMessage) => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue({
+      ...activeStatus,
+      phase,
+      errorMessage,
+    });
+
+    render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
+
+    await waitFor(() => expect(mockedGetStatus).toHaveBeenCalledWith('task-1'));
+    expect(screen.queryByText(phaseLabel)).toBeNull();
+    expect(screen.queryByText('call-1')).toBeNull();
+    if (errorMessage) {
+      expect(screen.queryByText(errorMessage)).toBeNull();
     }
   });
 
-  it('shows call details and opens the filtered record page', async () => {
+  it('shows only compact active status instead of duplicated record details', async () => {
     mockedGetCapability.mockResolvedValue(activeCapability);
     mockedGetStatus.mockResolvedValue(activeStatus);
 
     render(<LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()} />);
 
     expect(await screen.findByText('AI 通话中')).toBeTruthy();
-    expect(screen.getByText('call-1')).toBeTruthy();
     expect(screen.getByText('01:05')).toBeTruthy();
-    expect(screen.getByText('未触发')).toBeTruthy();
+    expect(screen.queryByText('call-1')).toBeNull();
+    expect(screen.queryByText('未触发')).toBeNull();
+    expect(screen.queryByRole('button', { name: '查看通话记录' })).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: '查看通话记录' }));
-    expect(mockPush).toHaveBeenCalledWith(
-      '/ai-call/records?taskId=task-1&targetId=target-1',
+  it('lets the task page place the trigger and active status separately', async () => {
+    mockedGetCapability.mockResolvedValue(activeCapability);
+    mockedGetStatus.mockResolvedValue(activeStatus);
+
+    render(
+      <LinphoneTaskTest task={runningTask} onTaskChanged={jest.fn()}>
+        {({ trigger, activeStatus: renderedStatus }) => (
+          <>
+            <div data-testid="test-trigger-slot">{trigger}</div>
+            <div data-testid="test-status-slot">{renderedStatus}</div>
+          </>
+        )}
+      </LinphoneTaskTest>,
     );
+
+    expect(
+      await within(screen.getByTestId('test-trigger-slot')).findByRole(
+        'button',
+        { name: '测试拨打' },
+      ),
+    ).toBeTruthy();
+    expect(
+      await within(screen.getByTestId('test-status-slot')).findByText(
+        'AI 通话中',
+      ),
+    ).toBeTruthy();
   });
 
   it('shows the end action only when the current status allows it', async () => {
@@ -376,7 +409,8 @@ describe('Linphone task test entry', () => {
 
     expect(await screen.findByText('当前通话已经结束')).toBeTruthy();
     expect(screen.getByText('AI 通话中')).toBeTruthy();
-    expect(screen.getByText('call-1')).toBeTruthy();
+    expect(screen.getByText('01:05')).toBeTruthy();
+    expect(screen.queryByText('call-1')).toBeNull();
   });
 
   it('restores polling from activeCallId and pauses while hidden', async () => {
