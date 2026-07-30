@@ -1,10 +1,14 @@
-import { request } from '@umijs/max';
+import { ruoyiRequest } from '@/adapters/ruoyi/request';
 
-const AI_CALL_RECORDS_PREFIX = '/ai-call-agent-api/ai-call/records';
+const AI_CALL_AGENT_BASE_API = '/ai-call-agent-api';
+const AI_CALL_RECORDS_PREFIX = '/ai-call/records';
+const requestOptions = {
+  baseApi: AI_CALL_AGENT_BASE_API,
+} as const;
 
 type AiCallResponse<T> = {
   data?: T;
-  rows?: T extends Array<infer Row> ? Row[] : unknown[];
+  rows?: T[];
   total?: number;
 };
 
@@ -20,6 +24,11 @@ export type AiCallRecord = {
   callResult?: string | null;
   aiOutcome?: string | null;
   summary?: string | null;
+  analysisStatus?: '0' | '1' | '2' | '3' | '4' | null;
+  customerIntent?: 'positive' | 'neutral' | 'negative' | null;
+  followUpSuggested?: boolean;
+  followUpId?: string | null;
+  followUpStatus?: 'pending' | 'processing' | 'completed' | 'closed' | null;
   recordingPlayUrl?: string | null;
   businessType?: string | null;
   businessId?: string | null;
@@ -136,6 +145,14 @@ export type AiCallRecordQuery = {
   phoneNumber?: string;
   customerName?: string;
   callResult?: string;
+  customerIntent?: 'positive' | 'neutral' | 'negative' | 'pending' | 'failed';
+  followUpStatus?:
+    | 'suggested'
+    | 'pending'
+    | 'processing'
+    | 'completed'
+    | 'closed'
+    | 'none';
   businessType?: string;
   businessId?: string;
   status?: string;
@@ -158,15 +175,15 @@ const unwrapData = <T>(response: AiCallResponse<T> | T): T => {
 };
 
 const unwrapPage = <T>(
-  response: AiCallResponse<AiCallRecordPage<T>> | AiCallRecordPage<T>,
+  response: AiCallResponse<T> | AiCallRecordPage<T>,
 ): AiCallRecordPage<T> => {
-  const payload = unwrapData(response);
+  const payload = (response as { data?: AiCallRecordPage<T> }).data;
   if (payload && Array.isArray(payload.rows)) {
     return { rows: payload.rows, total: Number(payload.total) || 0 };
   }
-  const direct = response as AiCallResponse<T[]>;
+  const direct = response as AiCallResponse<T>;
   return {
-    rows: Array.isArray(direct.rows) ? (direct.rows as T[]) : [],
+    rows: Array.isArray(direct.rows) ? direct.rows : [],
     total: Number(direct.total) || 0,
   };
 };
@@ -175,9 +192,8 @@ const recordPath = (callId: string, suffix = '') =>
   `${AI_CALL_RECORDS_PREFIX}/${encodeURIComponent(callId)}${suffix}`;
 
 export const listAiCallRecords = async (params: AiCallRecordQuery) => {
-  const response = await request<
-    AiCallResponse<AiCallRecordPage<AiCallRecord>>
-  >(AI_CALL_RECORDS_PREFIX, {
+  const response = await ruoyiRequest<AiCallRecord>(AI_CALL_RECORDS_PREFIX, {
+    ...requestOptions,
     method: 'get',
     params,
   });
@@ -185,52 +201,63 @@ export const listAiCallRecords = async (params: AiCallRecordQuery) => {
 };
 
 export const getAiCallRecordDetail = async (callId: string) => {
-  const response = await request<AiCallResponse<AiCallRecordDetail>>(
-    recordPath(callId),
-    { method: 'get' },
-  );
+  const response = await ruoyiRequest<AiCallRecordDetail>(recordPath(callId), {
+    ...requestOptions,
+    method: 'get',
+  });
   return unwrapData(response);
 };
 
 export const getAiCallRecordRecording = async (callId: string) => {
-  const response = await request<AiCallResponse<AiCallRecording | null>>(
+  const response = await ruoyiRequest<AiCallRecording | null>(
     recordPath(callId, '/recording'),
-    { method: 'get' },
+    { ...requestOptions, method: 'get' },
   );
   return unwrapData(response);
 };
 
 export const getAiCallRecordDialogue = async (callId: string) => {
-  const response = await request<
-    AiCallResponse<AiCallRecordPage<AiCallDialogueSegment>>
-  >(recordPath(callId, '/dialogue-segments'), {
-    method: 'get',
-    params: { limit: 1000 },
-  });
+  const response = await ruoyiRequest<AiCallDialogueSegment>(
+    recordPath(callId, '/dialogue-segments'),
+    {
+      ...requestOptions,
+      method: 'get',
+      params: { limit: 1000 },
+    },
+  );
   return unwrapPage(response);
 };
 
 export const getAiCallRecordSemanticAnalysis = async (callId: string) => {
-  const response = await request<AiCallResponse<AiCallSemanticAnalysis | null>>(
+  const response = await ruoyiRequest<AiCallSemanticAnalysis | null>(
     recordPath(callId, '/semantic-analysis'),
-    { method: 'get' },
+    {
+      ...requestOptions,
+      method: 'get',
+    },
   );
   return unwrapData(response);
 };
 
 export const getAiCallRecordHandoffs = async (callId: string) => {
-  const response = await request<
-    AiCallResponse<AiCallRecordPage<AiCallHandoff>>
-  >(recordPath(callId, '/handoffs'), { method: 'get' });
+  const response = await ruoyiRequest<AiCallHandoff>(
+    recordPath(callId, '/handoffs'),
+    {
+      ...requestOptions,
+      method: 'get',
+    },
+  );
   return unwrapPage(response);
 };
 
 export const getAiCallRecordEvents = async (callId: string) => {
-  const response = await request<
-    AiCallResponse<AiCallRecordPage<AiCallRecordEvent>>
-  >(recordPath(callId, '/events'), {
-    method: 'get',
-    params: { limit: 200 },
-  });
+  const response = await ruoyiRequest<AiCallRecordEvent>(
+    recordPath(callId, '/events'),
+    {
+      ...requestOptions,
+      method: 'get',
+      params: { limit: 200 },
+    },
+  );
   return unwrapPage(response);
 };

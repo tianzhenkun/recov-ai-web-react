@@ -4,17 +4,17 @@ import {
   type ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import { useSearchParams } from '@umijs/max';
+import { history, useSearchParams } from '@umijs/max';
 import {
   Alert,
   Button,
-  Collapse,
   Descriptions,
   Drawer,
   Empty,
   Flex,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import dayjs from 'dayjs';
@@ -26,24 +26,29 @@ import {
   type AiCallHandoff,
   type AiCallRecord,
   type AiCallRecordDetail,
-  type AiCallRecordEvent,
   type AiCallRecording,
   type AiCallSemanticAnalysis,
   getAiCallRecordDetail,
   getAiCallRecordDialogue,
-  getAiCallRecordEvents,
   getAiCallRecordHandoffs,
   getAiCallRecordRecording,
   getAiCallRecordSemanticAnalysis,
   listAiCallRecords,
 } from './service';
+import {
+  getCustomerIntentPresentation,
+  getFollowUpPresentation,
+  hasUnstablePostCallData,
+  type StatusPresentation,
+} from './status';
 
-const { Paragraph, Text, Title } = Typography;
+const { Text, Title } = Typography;
 
 const entryTypeLabels: Record<string, string> = {
   web: '浏览器测试',
   sip_outbound: 'SIP 外呼',
   sip_inbound: 'SIP 呼入',
+  outbound_mock: '模拟执行',
 };
 
 const statusLabels: Record<string, string> = {
@@ -56,6 +61,16 @@ const statusLabels: Record<string, string> = {
   failed: '失败',
 };
 
+const mockStatusLabels: Record<string, string> = {
+  created: '模拟待执行',
+  starting: '模拟启动中',
+  running: '模拟执行中',
+  active: '模拟执行中',
+  ending: '模拟结束中',
+  completed: '模拟执行完成',
+  failed: '模拟执行失败',
+};
+
 const callResultLabels: Record<string, string> = {
   connected: '已接通',
   no_answer: '无人接听',
@@ -65,11 +80,15 @@ const callResultLabels: Record<string, string> = {
 };
 
 const callResultColors: Record<string, string> = {
-  connected: 'success',
-  no_answer: 'default',
-  busy: 'warning',
-  call_failed: 'error',
-  invalid_number: 'error',
+  connected: '#389e0d',
+  no_answer: '#595959',
+  busy: '#d48806',
+  call_failed: '#cf1322',
+  invalid_number: '#cf1322',
+};
+
+const detailDescriptionStyles = {
+  label: { color: '#1f1f1f' },
 };
 
 const analysisStatusLabels: Record<string, string> = {
@@ -98,6 +117,152 @@ const speakerLabels: Record<string, string> = {
   agent: '人工坐席',
 };
 
+const businessTypeLabels: Record<string, string> = {
+  outbound_task: '正式外呼任务',
+  lead: '销售线索',
+  debt_collection: '物业催收',
+};
+
+const analysisFieldLabels: Record<string, string> = {
+  summary: '通话摘要',
+  feedback_type: '客户反馈',
+  key_points: '关键要点',
+  time_hint: '客户期望联系时间',
+  tags: '分析标签',
+  customer_intent: '客户意向',
+  follow_up: '后续跟进结论',
+};
+
+const analysisFieldOrder = [
+  'summary',
+  'feedback_type',
+  'key_points',
+  'time_hint',
+  'tags',
+  'customer_intent',
+  'follow_up',
+];
+
+const feedbackTagColors: Record<string, string> = {
+  正向: 'success',
+  中性: 'processing',
+  负向: 'error',
+};
+
+const customerIntentLabels: Record<string, string> = {
+  positive: '正向',
+  neutral: '中性',
+  negative: '负向',
+};
+
+const followUpConsentLabels: Record<string, string> = {
+  explicit: '明确同意',
+  refused: '明确拒绝',
+  missing: '未表达',
+};
+
+const followUpConfidenceLabels: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+};
+
+const renderAnalysisValue = (key: string, value: unknown) => {
+  if (key === 'feedback_type') {
+    const text = String(value || '-');
+    return <Tag color={feedbackTagColors[text] || 'default'}>{text}</Tag>;
+  }
+  if (key === 'key_points' && Array.isArray(value)) {
+    return value.length ? (
+      <Flex vertical gap={4}>
+        {Array.from(new Set(value.map(String))).map((item) => (
+          <Text key={item}>{item}</Text>
+        ))}
+      </Flex>
+    ) : (
+      '-'
+    );
+  }
+  if (key === 'time_hint') {
+    if (value && typeof value === 'object') {
+      const hint = value as {
+        time_text?: unknown;
+        time_value?: unknown;
+        original_texts?: unknown;
+      };
+      const timeText = String(hint.time_text || hint.time_value || '').trim();
+      return timeText || '客户未提及';
+    }
+    return String(value || '').trim() || '客户未提及';
+  }
+  if (key === 'tags' && Array.isArray(value)) {
+    return value.length ? (
+      <Flex wrap gap={4}>
+        {Array.from(new Set(value.map(String))).map((item) => (
+          <Tag key={item}>{item}</Tag>
+        ))}
+      </Flex>
+    ) : (
+      '-'
+    );
+  }
+  if (key === 'customer_intent') {
+    const intent = String(value || '');
+    return customerIntentLabels[intent] || intent || '-';
+  }
+  if (key === 'follow_up' && value && typeof value === 'object') {
+    const followUp = value as {
+      required?: unknown;
+      consent?: unknown;
+      reason?: unknown;
+      preferred_time?: unknown;
+      confidence?: unknown;
+    };
+    const consent = String(followUp.consent || 'missing');
+    const confidence = String(followUp.confidence || '');
+    const preferredAt = String(followUp.preferred_time || '').trim();
+    return (
+      <Descriptions
+        column={1}
+        size="small"
+        styles={detailDescriptionStyles}
+        items={[
+          {
+            key: 'suggested',
+            label: '处理建议',
+            children: followUp.required ? '建议跟进' : '无需跟进',
+          },
+          {
+            key: 'consent',
+            label: '客户态度',
+            children: followUpConsentLabels[consent] || consent,
+          },
+          {
+            key: 'reason',
+            label: '判断依据',
+            children: String(followUp.reason || '').trim() || '-',
+          },
+          {
+            key: 'preferredAt',
+            label: '期望时间',
+            children: preferredAt
+              ? dayjs(preferredAt).format('YYYY-MM-DD HH:mm:ss')
+              : '-',
+          },
+          {
+            key: 'confidence',
+            label: '置信度',
+            children: followUpConfidenceLabels[confidence] || confidence || '-',
+          },
+        ]}
+      />
+    );
+  }
+  return value && typeof value === 'object'
+    ? JSON.stringify(value)
+    : String(value ?? '-');
+};
+
 const formatDateTime = (value?: string | null) =>
   value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-';
 
@@ -117,8 +282,67 @@ const describeError = (row: AiCallRecord) =>
       ? '未知失败原因'
       : '-');
 
+const describeRecordStatus = (row: AiCallRecord) =>
+  row.entryType === 'outbound_mock'
+    ? mockStatusLabels[row.status] || `模拟执行（${row.status}）`
+    : statusLabels[row.status] || row.status;
+
+const describeMockResult = (row: AiCallRecord) => {
+  const result = row.callResult || row.endReason;
+  if (result === 'connected') return '模拟执行完成';
+  return result && callResultLabels[result]
+    ? `模拟：${callResultLabels[result]}`
+    : describeRecordStatus(row);
+};
+
+const describeCallResult = (row: AiCallRecord) =>
+  row.entryType === 'outbound_mock'
+    ? describeMockResult(row)
+    : row.callResult
+      ? callResultLabels[row.callResult] || row.callResult
+      : describeRecordStatus(row);
+
+const describeEndResult = (row: AiCallRecord) =>
+  row.entryType === 'outbound_mock'
+    ? describeMockResult(row)
+    : describeError(row);
+
+const renderPostCallStatus = (
+  presentation: StatusPresentation | null,
+  onClick?: () => void,
+) => {
+  if (!presentation) {
+    return <Text type="secondary">-</Text>;
+  }
+  const tag = (
+    <Tag color={presentation.color} style={{ marginInlineEnd: 0 }}>
+      {presentation.text}
+    </Tag>
+  );
+  return (
+    <Tooltip title={presentation.tooltip}>
+      {presentation.target && onClick ? (
+        <Button
+          aria-label={`${presentation.text}，查看详情`}
+          size="small"
+          type="link"
+          style={{ height: 'auto', padding: 0 }}
+          onClick={onClick}
+        >
+          {tag}
+        </Button>
+      ) : (
+        tag
+      )}
+    </Tooltip>
+  );
+};
+
+const MAX_POST_CALL_POLLS = 12;
+const POST_CALL_POLL_INTERVAL_MS = 5000;
+
 type DetailErrors = Partial<
-  Record<'recording' | 'dialogue' | 'analysis' | 'handoffs' | 'events', string>
+  Record<'recording' | 'dialogue' | 'analysis' | 'handoffs' | 'detail', string>
 >;
 
 const AiCallRecordsPage = () => {
@@ -135,9 +359,11 @@ const AiCallRecordsPage = () => {
   const [dialogue, setDialogue] = useState<AiCallDialogueSegment[]>([]);
   const [analysis, setAnalysis] = useState<AiCallSemanticAnalysis | null>();
   const [handoffs, setHandoffs] = useState<AiCallHandoff[]>([]);
-  const [events, setEvents] = useState<AiCallRecordEvent[]>([]);
   const [detailErrors, setDetailErrors] = useState<DetailErrors>({});
   const [detailLoading, setDetailLoading] = useState(false);
+  const [hasUnstableRecords, setHasUnstableRecords] = useState(false);
+  const postCallPollCountRef = useRef(0);
+  const postCallRefreshInFlightRef = useRef(false);
 
   const loadTaskOptions = useCallback(
     async (taskName?: string) => {
@@ -178,18 +404,16 @@ const AiCallRecordsPage = () => {
     setDialogue([]);
     setAnalysis(undefined);
     setHandoffs([]);
-    setEvents([]);
     setDetailErrors({});
   };
 
-  const openDetail = async (callId: string) => {
+  const openDetail = useCallback(async (callId: string) => {
     setSelectedCallId(callId);
     setDetail(undefined);
     setRecording(undefined);
     setDialogue([]);
     setAnalysis(undefined);
     setHandoffs([]);
-    setEvents([]);
     setDetailErrors({});
     setDetailLoading(true);
     try {
@@ -201,7 +425,6 @@ const AiCallRecordsPage = () => {
         getAiCallRecordDialogue(callId),
         getAiCallRecordSemanticAnalysis(callId),
         getAiCallRecordHandoffs(callId),
-        getAiCallRecordEvents(callId),
       ]);
       const nextErrors: DetailErrors = {};
 
@@ -225,18 +448,43 @@ const AiCallRecordsPage = () => {
       } else {
         nextErrors.handoffs = '转人工记录加载失败';
       }
-      if (results[4].status === 'fulfilled') {
-        setEvents(results[4].value.rows);
-      } else {
-        nextErrors.events = '技术事件加载失败';
-      }
       setDetailErrors(nextErrors);
     } catch {
-      setDetailErrors({ events: '通话详情加载失败' });
+      setDetailErrors({ detail: '通话详情加载失败' });
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!hasUnstableRecords) {
+      postCallPollCountRef.current = 0;
+      return;
+    }
+
+    const refresh = () => {
+      if (
+        document.visibilityState !== 'visible' ||
+        postCallPollCountRef.current >= MAX_POST_CALL_POLLS ||
+        postCallRefreshInFlightRef.current ||
+        !actionRef.current?.reload
+      ) {
+        return;
+      }
+      postCallPollCountRef.current += 1;
+      postCallRefreshInFlightRef.current = true;
+      void Promise.resolve(actionRef.current.reload()).finally(() => {
+        postCallRefreshInFlightRef.current = false;
+      });
+    };
+
+    const timer = window.setInterval(refresh, POST_CALL_POLL_INTERVAL_MS);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [hasUnstableRecords]);
 
   const columns = useMemo<ProColumns<AiCallRecord>[]>(
     () => [
@@ -289,6 +537,33 @@ const AiCallRecordsPage = () => {
         hideInTable: true,
       },
       {
+        title: '客户意向',
+        dataIndex: 'customerIntent',
+        valueType: 'select',
+        valueEnum: {
+          pending: { text: '待分析 / 分析中' },
+          positive: { text: '正向' },
+          neutral: { text: '中性' },
+          negative: { text: '负向' },
+          failed: { text: '分析失败' },
+        },
+        hideInTable: true,
+      },
+      {
+        title: '后续跟进',
+        dataIndex: 'followUpStatus',
+        valueType: 'select',
+        valueEnum: {
+          suggested: { text: '建议跟进' },
+          pending: { text: '待跟进' },
+          processing: { text: '跟进中' },
+          completed: { text: '已完成' },
+          closed: { text: '已关闭' },
+          none: { text: '无需跟进' },
+        },
+        hideInTable: true,
+      },
+      {
         title: '通话时间范围',
         dataIndex: 'startedAtRange',
         valueType: 'dateTimeRange',
@@ -337,11 +612,17 @@ const AiCallRecordsPage = () => {
         width: 160,
         render: (_, row) => (
           <Flex vertical gap={4}>
-            <Tag color={callResultColors[row.callResult || ''] || 'default'}>
-              {row.callResult
-                ? callResultLabels[row.callResult] || row.callResult
-                : statusLabels[row.status] || row.status}
-            </Tag>
+            <Text
+              strong
+              style={{
+                color:
+                  row.entryType === 'outbound_mock'
+                    ? '#1677ff'
+                    : callResultColors[row.callResult || ''] || '#1f1f1f',
+              }}
+            >
+              {describeCallResult(row)}
+            </Text>
             <Text type="secondary">
               {entryTypeLabels[row.entryType] || row.entryType}
               {row.attemptNo ? ` · 第 ${row.attemptNo} 次` : ''}
@@ -350,48 +631,53 @@ const AiCallRecordsPage = () => {
         ),
       },
       {
-        title: 'AI 分析',
+        title: '通话摘要',
         key: 'analysis',
         search: false,
         width: 240,
         render: (_, row) => (
-          <Flex vertical gap={2}>
-            <Text>{row.aiOutcome || '—'}</Text>
-            {row.summary ? (
-              <Text
-                type="secondary"
-                style={{
-                  display: '-webkit-box',
-                  WebkitBoxOrient: 'vertical',
-                  WebkitLineClamp: 2,
-                  overflow: 'hidden',
-                }}
-              >
-                {row.summary}
-              </Text>
-            ) : null}
-          </Flex>
+          <Text
+            type={row.summary ? undefined : 'secondary'}
+            style={{
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+          >
+            {row.summary || '暂无摘要'}
+          </Text>
         ),
       },
       {
-        title: '录音',
-        key: 'recording',
+        title: '客户意向',
+        key: 'customerIntentDisplay',
         search: false,
-        width: 220,
+        width: 104,
         render: (_, row) =>
-          row.recordingPlayUrl ? (
-            <audio
-              aria-label={`播放 ${row.callId} 录音`}
-              controls
-              preload="none"
-              src={row.recordingPlayUrl}
-              style={{ width: 200 }}
-            >
-              <track kind="captions" />
-            </audio>
-          ) : (
-            <Text type="secondary">—</Text>
-          ),
+          renderPostCallStatus(getCustomerIntentPresentation(row), () => {
+            void openDetail(row.callId);
+          }),
+      },
+      {
+        title: '后续跟进',
+        key: 'followUpDisplay',
+        search: false,
+        width: 112,
+        render: (_, row) => {
+          const presentation = getFollowUpPresentation(row);
+          return renderPostCallStatus(presentation, () => {
+            if (presentation?.target === 'follow_up' && row.followUpId) {
+              history.push(
+                `/ai-call/follow-ups?followUpId=${encodeURIComponent(
+                  row.followUpId,
+                )}`,
+              );
+              return;
+            }
+            void openDetail(row.callId);
+          });
+        },
       },
       {
         title: '操作',
@@ -410,7 +696,7 @@ const AiCallRecordsPage = () => {
         ),
       },
     ],
-    [loadTaskOptions, presetTaskId, taskOptions],
+    [loadTaskOptions, openDetail, presetTaskId, taskOptions],
   );
 
   const record = detail?.record;
@@ -419,16 +705,14 @@ const AiCallRecordsPage = () => {
     recording?.playUrl ||
     recording?.tracks?.find((track) => track.playUrl)?.playUrl;
   const executionConfig = detail?.executionConfig;
-  const analysisItems = Object.entries(analysis?.analysisResult || {}).map(
-    ([key, value]) => ({
+  const analysisResult = analysis?.analysisResult || {};
+  const analysisItems = analysisFieldOrder
+    .filter((key) => Object.hasOwn(analysisResult, key))
+    .map((key) => ({
       key,
-      label: key,
-      children:
-        value && typeof value === 'object'
-          ? JSON.stringify(value)
-          : String(value ?? '-'),
-    }),
-  );
+      label: analysisFieldLabels[key],
+      children: renderAnalysisValue(key, analysisResult[key]),
+    }));
 
   return (
     <PageContainer title="通话记录">
@@ -459,6 +743,10 @@ const AiCallRecordsPage = () => {
               ? { startedAtEnd: dayjs(range[1]).toISOString() }
               : {}),
           });
+          const unstable = hasUnstablePostCallData(page.rows);
+          setHasUnstableRecords((current) =>
+            current === unstable ? current : unstable,
+          );
           return { data: page.rows, total: page.total, success: true };
         }}
       />
@@ -479,6 +767,7 @@ const AiCallRecordsPage = () => {
               <Title level={5}>基本信息</Title>
               <Descriptions
                 column={2}
+                styles={detailDescriptionStyles}
                 items={[
                   {
                     key: 'callId',
@@ -499,12 +788,15 @@ const AiCallRecordsPage = () => {
                   {
                     key: 'status',
                     label: '通话状态',
-                    children: statusLabels[record.status] || record.status,
+                    children: describeRecordStatus(record),
                   },
                   {
                     key: 'businessType',
                     label: '业务类型',
-                    children: record.businessType || '-',
+                    children: record.businessType
+                      ? businessTypeLabels[record.businessType] ||
+                        record.businessType
+                      : '-',
                   },
                   {
                     key: 'businessId',
@@ -519,7 +811,10 @@ const AiCallRecordsPage = () => {
                   {
                     key: 'answeredAt',
                     label: '接通时间',
-                    children: formatDateTime(record.answeredAt),
+                    children:
+                      record.entryType === 'outbound_mock'
+                        ? '不适用（模拟执行）'
+                        : formatDateTime(record.answeredAt),
                   },
                   {
                     key: 'endedAt',
@@ -534,7 +829,7 @@ const AiCallRecordsPage = () => {
                   {
                     key: 'result',
                     label: '结束结果',
-                    children: describeError(record),
+                    children: describeEndResult(record),
                     span: 2,
                   },
                 ]}
@@ -546,6 +841,7 @@ const AiCallRecordsPage = () => {
               {executionConfig ? (
                 <Descriptions
                   column={2}
+                  styles={detailDescriptionStyles}
                   items={[
                     {
                       key: 'promptName',
@@ -575,46 +871,98 @@ const AiCallRecordsPage = () => {
                   ]}
                 />
               ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无执行配置快照"
-                />
+                <Text type="secondary">未保存执行配置快照</Text>
               )}
             </section>
 
             <section>
               <Title level={5}>录音与对话</Title>
-              {detailErrors.recording ? (
-                <Alert showIcon title={detailErrors.recording} type="error" />
-              ) : recordingUrl ? (
-                <audio controls preload="metadata" src={recordingUrl}>
-                  <track kind="captions" />
-                </audio>
-              ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无录音"
-                />
-              )}
+              <div data-testid="recording-player" style={{ marginBottom: 16 }}>
+                {detailErrors.recording ? (
+                  <Alert showIcon title={detailErrors.recording} type="error" />
+                ) : recordingUrl ? (
+                  <audio controls preload="metadata" src={recordingUrl}>
+                    <track kind="captions" />
+                  </audio>
+                ) : (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="暂无录音"
+                  />
+                )}
+              </div>
               {detailErrors.dialogue ? (
                 <Alert showIcon title={detailErrors.dialogue} type="error" />
               ) : dialogue.length ? (
-                <Flex vertical gap={8}>
-                  {dialogue.map((segment, index) => (
-                    <Paragraph
-                      key={
-                        segment.id ||
-                        `${segment.segmentNo}-${segment.speakerType}-${index}`
-                      }
-                    >
-                      <Text strong>
-                        {speakerLabels[segment.speakerType] ||
-                          segment.speakerType}
-                        ：
-                      </Text>
-                      {segment.text}
-                    </Paragraph>
-                  ))}
+                <Flex
+                  data-testid="dialogue-scroll-region"
+                  vertical
+                  gap={12}
+                  className="ai-call-dialogue-region"
+                  style={{
+                    maxHeight: 420,
+                    overflowY: 'auto',
+                    padding: 12,
+                    border: '1px solid #eef0f4',
+                    borderRadius: 10,
+                    background: '#f8f9fb',
+                  }}
+                >
+                  {dialogue.map((segment, index) => {
+                    const isCustomer = segment.speakerType === 'customer';
+                    const speaker =
+                      speakerLabels[segment.speakerType] || segment.speakerType;
+                    return (
+                      <div
+                        className={`ai-call-dialogue-row ai-call-dialogue-row--${
+                          isCustomer ? 'right' : 'left'
+                        }`}
+                        style={{
+                          display: 'flex',
+                          width: '100%',
+                          justifyContent: isCustomer
+                            ? 'flex-end'
+                            : 'flex-start',
+                        }}
+                        key={
+                          segment.id ||
+                          `${segment.segmentNo}-${segment.speakerType}-${index}`
+                        }
+                      >
+                        <div
+                          className={`ai-call-dialogue-bubble ai-call-dialogue-bubble--${
+                            isCustomer ? 'customer' : segment.speakerType
+                          }`}
+                          style={{
+                            maxWidth: '82%',
+                            padding: '10px 12px',
+                            border: `1px solid ${
+                              isCustomer
+                                ? '#dfd4fa'
+                                : segment.speakerType === 'human_agent' ||
+                                    segment.speakerType === 'agent'
+                                  ? '#d4eadf'
+                                  : '#e6ebf2'
+                            }`,
+                            borderRadius: isCustomer
+                              ? '10px 10px 2px 10px'
+                              : '10px 10px 10px 2px',
+                            background: isCustomer
+                              ? '#f1edfb'
+                              : segment.speakerType === 'human_agent' ||
+                                  segment.speakerType === 'agent'
+                                ? '#edf8f2'
+                                : '#f1f5fb',
+                            lineHeight: 1.6,
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
+                          <Text strong>{speaker}：</Text>
+                          <Text>{segment.text}</Text>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </Flex>
               ) : (
                 <Empty
@@ -642,7 +990,11 @@ const AiCallRecordsPage = () => {
                       type="error"
                     />
                   ) : analysisItems.length ? (
-                    <Descriptions column={1} items={analysisItems} />
+                    <Descriptions
+                      column={1}
+                      styles={detailDescriptionStyles}
+                      items={analysisItems}
+                    />
                   ) : (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -665,6 +1017,7 @@ const AiCallRecordsPage = () => {
                     <Descriptions
                       key={handoff.handoffId}
                       column={2}
+                      styles={detailDescriptionStyles}
                       items={[
                         {
                           key: 'status',
@@ -694,44 +1047,11 @@ const AiCallRecordsPage = () => {
                 />
               )}
             </section>
-
-            <Collapse
-              size="small"
-              items={[
-                {
-                  key: 'events',
-                  label: `技术事件（${events.length}）`,
-                  children: detailErrors.events ? (
-                    <Alert showIcon title={detailErrors.events} type="error" />
-                  ) : events.length ? (
-                    <Flex vertical gap={8}>
-                      {events.map((event) => (
-                        <div key={event.eventId}>
-                          <Text strong>{event.eventType}</Text>
-                          <Text type="secondary">
-                            {' '}
-                            · {event.source} · {formatDateTime(event.eventTime)}
-                          </Text>
-                          <Paragraph copyable>
-                            {JSON.stringify(event.payload)}
-                          </Paragraph>
-                        </div>
-                      ))}
-                    </Flex>
-                  ) : (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="暂无技术事件"
-                    />
-                  ),
-                },
-              ]}
-            />
           </Flex>
         ) : (
           <Alert
             showIcon
-            title={detailErrors.events || '通话详情加载失败'}
+            title={detailErrors.detail || '通话详情加载失败'}
             type="error"
           />
         )}
