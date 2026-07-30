@@ -170,8 +170,9 @@ describe('RuoYi menu transform', () => {
       },
     ];
 
-    const once = attachAiCallManagementMenu(source);
-    const twice = attachAiCallManagementMenu(once);
+    const permissions = ['ai_call:voice:manage'];
+    const once = attachAiCallManagementMenu(source, permissions);
+    const twice = attachAiCallManagementMenu(once, permissions);
 
     expect(once[0].children?.slice(0, 4)).toEqual([
       expect.objectContaining({
@@ -195,6 +196,28 @@ describe('RuoYi menu transform', () => {
     expect(
       twice[0].children?.filter((item) => item.path === '/ai-call/tasks'),
     ).toHaveLength(1);
+  });
+
+  it('does not inject voice management without its independent permission', () => {
+    const menuData = attachAiCallManagementMenu(
+      [
+        {
+          path: '/ai-call',
+          name: 'AI Call',
+          children: [
+            {
+              path: '/ai-call/agents',
+              name: '坐席管理',
+            },
+          ],
+        },
+      ],
+      ['ai_call:agent:manage'],
+    );
+
+    expect(
+      menuData[0].children?.some((item) => item.path === '/ai-call/voices'),
+    ).toBe(false);
   });
 
   it('does not expose generic outbound entries without an AI Call management child', () => {

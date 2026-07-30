@@ -11,6 +11,7 @@ import React from 'react';
 import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
 import type { RuoyiRoute } from '@/services/ruoyi/menu';
 import { getRouters } from '@/services/ruoyi/menu';
+import { hasPermission } from '@/utils/permission';
 import { toRuoyiMenuIcon } from '@/utils/ruoyiIcons';
 
 export type RuoyiMenuDataItem = MenuDataItem & {
@@ -44,6 +45,7 @@ const salesIcpModelingTitle = 'ICP 建模';
 const aiCallTasksPath = '/ai-call/tasks';
 const aiCallRecordsPath = '/ai-call/records';
 const aiCallVoicesPath = '/ai-call/voices';
+const aiCallVoiceManagePermission = 'ai_call:voice:manage';
 const aiCallRulesPath = '/ai-call/rules';
 const aiCallManagementPaths = new Set([
   '/ai-call/agents',
@@ -174,11 +176,23 @@ export const attachSalesAgentOverviewMenu = (
 
 export const attachAiCallManagementMenu = (
   menuData: RuoyiMenuDataItem[],
+  permissions?: string[],
 ): RuoyiMenuDataItem[] =>
   menuData.map((item) => {
-    const children = item.children
-      ? attachAiCallManagementMenu(item.children as RuoyiMenuDataItem[])
-      : [];
+    const canManageVoices =
+      permissions === undefined ||
+      hasPermission({ permissions }, aiCallVoiceManagePermission);
+    const children = (
+      item.children
+        ? attachAiCallManagementMenu(
+            item.children as RuoyiMenuDataItem[],
+            permissions,
+          )
+        : []
+    ).filter(
+      (child) =>
+        canManageVoices || normalizePath(child.path) !== aiCallVoicesPath,
+    );
     const isAiCallRoot =
       normalizePath(item.path) === '/ai-call' ||
       String(item.name || '')
@@ -195,7 +209,10 @@ export const attachAiCallManagementMenu = (
     return {
       ...item,
       children: [
-        ...aiCallInjectedChildren,
+        ...aiCallInjectedChildren.filter(
+          (child) =>
+            canManageVoices || normalizePath(child.path) !== aiCallVoicesPath,
+        ),
         ...children.filter(
           (child) => !aiCallInjectedPaths.has(normalizePath(child.path)),
         ),
@@ -293,9 +310,11 @@ export const buildRuoyiMenuData = (routes: RuoyiRoute[] = []) =>
 export const buildLayoutMenuData = (
   ruoyiMenuData: RuoyiMenuDataItem[],
   _defaultMenuData: MenuDataItem[],
+  permissions?: string[],
 ) => {
   return attachAiCallManagementMenu(
     attachSalesAgentOverviewMenu(ruoyiMenuData),
+    permissions,
   );
 };
 

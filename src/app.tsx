@@ -26,6 +26,7 @@ import {
   getStoredDynamicTenantId,
 } from '@/adapters/ruoyi/dynamicTenant';
 import {
+  attachAiCallManagementMenu,
   buildLayoutMenuData,
   getCachedRuoyiMenuData,
   getFirstVisibleRuoyiPath,
@@ -1044,11 +1045,15 @@ export const layout: RunTimeLayoutConfig = ({
             menuContext.menuMode === 'workspace' &&
             menuContext.activeWorkspaceKey
           ) {
-            return menuContext.visibleMenuData;
+            return attachAiCallManagementMenu(
+              menuContext.visibleMenuData,
+              initialState.currentUser.permissions,
+            );
           }
           return buildLayoutMenuData(
             menuContext.visibleMenuData,
             defaultMenuData,
+            initialState.currentUser.permissions,
           );
         } catch {
           return buildLayoutMenuData([], defaultMenuData);
