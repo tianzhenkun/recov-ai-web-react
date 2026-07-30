@@ -1,4 +1,9 @@
 import { request } from '@umijs/max';
+import { listVoiceProfiles } from './ai-call-voices';
+import type {
+  AiCallVoiceProfile,
+  VoiceProfileQuery,
+} from './ai-call-voices.types';
 
 const AI_CALL_LAB_PREFIX = '/ai-call-lab-api/ai-call';
 
@@ -15,15 +20,7 @@ export type AiCallLabPage<T> = {
   total: number;
 };
 
-export type AiCallLabVoiceProfile = {
-  id?: number | string;
-  voice: string;
-  displayName?: string;
-  gender?: string;
-  voiceType?: string;
-  targetModel?: string;
-  remark?: string;
-};
+export type AiCallLabVoiceProfile = AiCallVoiceProfile;
 
 export type AiCallLabPromptProfile = {
   id?: number | string;
@@ -53,16 +50,8 @@ export const unwrapAiCallLabPage = <T>(
   return { rows: [], total: 0 };
 };
 
-export const getAiCallLabVoiceProfiles = async () => {
-  const response = await request<AiCallLabResponse<AiCallLabVoiceProfile>>(
-    `${AI_CALL_LAB_PREFIX}/voice-profiles`,
-    {
-      method: 'get',
-      params: { pageSize: 200 },
-    },
-  );
-  return unwrapAiCallLabPage(response);
-};
+export const getAiCallLabVoiceProfiles = (query: VoiceProfileQuery = {}) =>
+  listVoiceProfiles({ pageSize: 200, ...query });
 
 export const getAiCallLabPromptProfiles = async () => {
   const response = await request<AiCallLabResponse<AiCallLabPromptProfile>>(

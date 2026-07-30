@@ -5,14 +5,20 @@ import {
 } from './ai-call-lab';
 
 const mockRequest = jest.fn();
+const mockRuoyiRequest = jest.fn();
 
 jest.mock('@umijs/max', () => ({
   request: (...args: unknown[]) => mockRequest(...args),
 }));
 
+jest.mock('@/adapters/ruoyi/request', () => ({
+  ruoyiRequest: (...args: unknown[]) => mockRuoyiRequest(...args),
+}));
+
 describe('AI Call Lab configuration service', () => {
   beforeEach(() => {
     mockRequest.mockReset();
+    mockRuoyiRequest.mockReset();
   });
 
   it('unwraps data.rows and top-level rows responses', () => {
@@ -29,33 +35,41 @@ describe('AI Call Lab configuration service', () => {
     ).toEqual({ rows: [{ id: 'profile-2' }], total: 1 });
   });
 
-  it('loads prompt and voice profiles from the existing Lab endpoints', async () => {
-    mockRequest
-      .mockResolvedValueOnce({
-        data: {
-          rows: [{ id: 'prompt-1', name: '客户回访', sceneCode: 'follow_up' }],
-          total: 1,
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
-          rows: [{ voice: 'Cherry', displayName: '芊悦' }],
-          total: 1,
-        },
-      });
+  it('loads prompt profiles from the existing Lab endpoint', async () => {
+    mockRequest.mockResolvedValueOnce({
+      data: {
+        rows: [{ id: 'prompt-1', name: '客户回访', sceneCode: 'follow_up' }],
+        total: 1,
+      },
+    });
 
     await getAiCallLabPromptProfiles();
-    await getAiCallLabVoiceProfiles();
 
-    expect(mockRequest).toHaveBeenNthCalledWith(
-      1,
+    expect(mockRequest).toHaveBeenCalledWith(
       '/ai-call-lab-api/ai-call/prompt-profiles',
       { method: 'get', params: { pageSize: 200 } },
     );
-    expect(mockRequest).toHaveBeenNthCalledWith(
-      2,
-      '/ai-call-lab-api/ai-call/voice-profiles',
-      { method: 'get', params: { pageSize: 200 } },
+  });
+
+  it('loads only available voices for formal tasks through the authenticated voice service', async () => {
+    mockRuoyiRequest.mockResolvedValue({
+      code: 200,
+      rows: [],
+      total: 0,
+    });
+
+    await getAiCallLabVoiceProfiles({ availableOnly: true, pageSize: 200 });
+
+    expect(mockRuoyiRequest).toHaveBeenCalledWith(
+      '/ai-call/voice-profiles',
+      expect.objectContaining({
+        baseApi: '/ai-call-agent-api',
+        method: 'get',
+        params: expect.objectContaining({
+          availableOnly: true,
+          pageSize: 200,
+        }),
+      }),
     );
   });
 });

@@ -93,7 +93,11 @@ describe('single target AI Call task creation', () => {
       total: 1,
     });
     mockedVoiceProfiles.mockResolvedValue({
-      rows: [{ voice: 'Cherry', displayName: '芊悦' }],
+      rows: [
+        { voice: 'Cherry', displayName: '芊悦', status: 'ENABLED' },
+        { voice: null, displayName: '创建中音色', status: 'CREATING' },
+        { voice: 'Failed', displayName: '失败音色', status: 'CREATE_FAILED' },
+      ],
       total: 1,
     });
     mockedListRules.mockResolvedValue({
@@ -162,6 +166,26 @@ describe('single target AI Call task creation', () => {
     expect(screen.queryByText('下一步')).toBeNull();
     expect(screen.queryByText(/版本/)).toBeNull();
     expect(screen.getByText('00:00–23:59，最多重试 1 次')).toBeTruthy();
+  });
+
+  it('loads only available voices and links to voice management', async () => {
+    render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+
+    expect(mockedVoiceProfiles).toHaveBeenCalledWith({
+      availableOnly: true,
+      pageSize: 200,
+    });
+    expect(screen.getByText('芊悦 / Cherry')).toBeTruthy();
+    expect(screen.queryByText(/创建中音色/)).toBeNull();
+    expect(screen.queryByText(/失败音色/)).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '前往音色管理',
+      }),
+    );
+    expect(mockPush).toHaveBeenCalledWith('/ai-call/voices');
   });
 
   it('reserves bottom space for the primary action at 1280x720', async () => {

@@ -54,12 +54,14 @@ type TaskFormValues = {
   scheduledAt?: Dayjs;
 };
 
+type SelectableVoiceProfile = AiCallLabVoiceProfile & { voice: string };
+
 type ValidatedTask = {
   request: ValidationRequest;
   validation: ValidationResultData;
   values: TaskFormValues;
   prompt: AiCallLabPromptProfile;
-  voice: AiCallLabVoiceProfile;
+  voice: SelectableVoiceProfile;
   rule: AiCallRule;
 };
 
@@ -88,7 +90,7 @@ const CreateAiCallTaskPage = () => {
   const [promptProfiles, setPromptProfiles] = useState<
     AiCallLabPromptProfile[]
   >([]);
-  const [voiceProfiles, setVoiceProfiles] = useState<AiCallLabVoiceProfile[]>(
+  const [voiceProfiles, setVoiceProfiles] = useState<SelectableVoiceProfile[]>(
     [],
   );
   const [rules, setRules] = useState<AiCallRule[]>([]);
@@ -114,7 +116,7 @@ const CreateAiCallTaskPage = () => {
   useEffect(() => {
     Promise.all([
       getAiCallLabPromptProfiles(),
-      getAiCallLabVoiceProfiles(),
+      getAiCallLabVoiceProfiles({ availableOnly: true, pageSize: 200 }),
       listAiCallRules({
         pageNum: 1,
         pageSize: 200,
@@ -122,8 +124,15 @@ const CreateAiCallTaskPage = () => {
       }),
     ])
       .then(([promptResult, voiceResult, ruleResult]) => {
+        const selectableVoices = voiceResult.rows.filter(
+          (
+            item,
+          ): item is AiCallLabVoiceProfile & {
+            voice: string;
+          } => item.status === 'ENABLED' && Boolean(item.voice),
+        );
         setPromptProfiles(promptResult.rows);
-        setVoiceProfiles(voiceResult.rows);
+        setVoiceProfiles(selectableVoices);
         setRules(ruleResult.rows);
         form.setFieldsValue({
           taskMode: 'single',
@@ -131,7 +140,7 @@ const CreateAiCallTaskPage = () => {
           promptKey: promptResult.rows[0]
             ? getPromptKey(promptResult.rows[0])
             : undefined,
-          voice: voiceResult.rows[0]?.voice,
+          voice: selectableVoices[0]?.voice,
           ruleId: ruleResult.rows[0]?.ruleId,
         } as Partial<TaskFormValues>);
       })
@@ -451,7 +460,18 @@ const CreateAiCallTaskPage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="音色"
+                label={
+                  <Space size={4}>
+                    <span>音色</span>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => history.push('/ai-call/voices')}
+                    >
+                      前往音色管理
+                    </Button>
+                  </Space>
+                }
                 name="voice"
                 rules={[{ required: true, message: '请选择音色' }]}
               >
