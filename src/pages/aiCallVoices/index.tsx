@@ -505,6 +505,7 @@ const AiCallVoicesPage = () => {
         <RecovTableCard className="recov-toolbar-card">
           <div className="flex w-full flex-wrap items-start justify-between gap-3">
             <Form<VoiceFilters>
+              colon={false}
               form={filterForm}
               layout="inline"
               onFinish={applyFilters}
@@ -513,31 +514,34 @@ const AiCallVoicesPage = () => {
                 <Select
                   allowClear
                   aria-label="类型"
-                  className="w-36"
                   options={[
                     { label: '内置', value: '内置' },
                     { label: '自定义复刻', value: '自定义复刻' },
                   ]}
+                  placeholder="全部类型"
+                  style={{ width: 160 }}
                 />
               </Form.Item>
               <Form.Item label="性别" name="gender">
                 <Select
                   allowClear
                   aria-label="性别"
-                  className="w-32"
                   options={[
                     { label: '未知', value: '未知' },
                     { label: '女声', value: '女声' },
                     { label: '男声', value: '男声' },
                   ]}
+                  placeholder="全部性别"
+                  style={{ width: 160 }}
                 />
               </Form.Item>
               <Form.Item label="状态" name="status">
                 <Select
                   allowClear
                   aria-label="状态"
-                  className="w-36"
                   options={statusOptions}
+                  placeholder="全部状态"
+                  style={{ width: 160 }}
                 />
               </Form.Item>
               <Form.Item>

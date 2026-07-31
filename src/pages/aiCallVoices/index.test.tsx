@@ -334,6 +334,9 @@ describe('AI Call voice management page', () => {
     expect(screen.getByRole('combobox', { name: '类型' })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: '性别' })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: '状态' })).toBeTruthy();
+    expect(screen.getByText('全部类型')).toBeTruthy();
+    expect(screen.getByText('全部性别')).toBeTruthy();
+    expect(screen.getByText('全部状态')).toBeTruthy();
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '类型' }));
     fireEvent.click(await screen.findByTitle('自定义复刻'));
