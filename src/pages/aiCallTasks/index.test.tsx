@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { history } from '@umijs/max';
 import * as React from 'react';
 import AiCallTasksPage from './index';
 import {
@@ -172,6 +173,14 @@ describe('AI Call task list page', () => {
       expect.objectContaining({ pageNum: 1, pageSize: 20 }),
     );
     expect(screen.getByText('线路不可用')).toBeTruthy();
+  });
+
+  it('从任务列表进入外呼统计', async () => {
+    render(<AiCallTasksPage />);
+    await screen.findByText('运行任务');
+
+    fireEvent.click(screen.getByRole('button', { name: /外呼统计/ }));
+    expect(history.push).toHaveBeenCalledWith('/ai-call/statistics');
   });
 
   it('distinguishes Mock workflow results from real SIP connections', async () => {

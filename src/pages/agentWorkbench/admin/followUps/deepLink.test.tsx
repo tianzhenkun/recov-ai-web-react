@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import * as React from 'react';
 import {
   getAdminFollowUp,
@@ -7,13 +7,15 @@ import {
 import FollowUpAdminPage from '.';
 
 let mockDeepLinkFollowUpId = 'follow-up-1';
+let mockStatisticsSearch = '';
 
 jest.mock('@umijs/max', () => ({
   useSearchParams: () => [
     new URLSearchParams(
-      mockDeepLinkFollowUpId
-        ? `followUpId=${encodeURIComponent(mockDeepLinkFollowUpId)}`
-        : '',
+      mockStatisticsSearch ||
+        (mockDeepLinkFollowUpId
+          ? `followUpId=${encodeURIComponent(mockDeepLinkFollowUpId)}`
+          : ''),
     ),
   ],
 }));
@@ -28,7 +30,13 @@ jest.mock('@ant-design/pro-components', () => {
         React.createElement('h1', null, title),
         children,
       ),
-    ProTable: () => React.createElement('div'),
+    ProTable: (props: Record<string, unknown>) => {
+      const request = props.request as CallableFunction;
+      React.useEffect(() => {
+        void request({ current: 1, pageSize: 10 });
+      }, []);
+      return React.createElement('div');
+    },
   };
 });
 
@@ -67,6 +75,7 @@ describe('跟进任务管理深链', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDeepLinkFollowUpId = 'follow-up-1';
+    mockStatisticsSearch = '';
     (listAdminFollowUps as jest.Mock).mockResolvedValue({
       rows: [],
       total: 0,
@@ -85,6 +94,27 @@ describe('跟进任务管理深链', () => {
     expect(within(drawer).getByText('call-1')).toBeTruthy();
     expect(within(drawer).getByText('handoff_id')).toBeTruthy();
     expect(within(drawer).getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('继承外呼统计下钻的待跟进状态和来源通话时间', async () => {
+    mockDeepLinkFollowUpId = '';
+    mockStatisticsSearch = new URLSearchParams({
+      status: 'pending',
+      sourceStartedAtBegin: '2026-07-25T00:00:00+08:00',
+      sourceStartedAtEnd: '2026-07-31T16:20:00+08:00',
+    }).toString();
+
+    render(<FollowUpAdminPage />);
+
+    await waitFor(() =>
+      expect(listAdminFollowUps).toHaveBeenCalledWith({
+        pageNum: 1,
+        pageSize: 10,
+        status: 'pending',
+        sourceStartedAtBegin: '2026-07-25T00:00:00+08:00',
+        sourceStartedAtEnd: '2026-07-31T16:20:00+08:00',
+      }),
+    );
   });
 
   it('展示详情接口返回的关联回拨通话', async () => {

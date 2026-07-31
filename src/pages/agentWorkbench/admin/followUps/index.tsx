@@ -14,6 +14,7 @@ import {
   Timeline,
   Typography,
 } from 'antd';
+import dayjs from 'dayjs';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -99,13 +100,21 @@ const normalizeDetail = (response: unknown): FollowUpAdminDetail => {
 const FollowUpAdminPage = () => {
   const [searchParams] = useSearchParams();
   const deepLinkFollowUpId = searchParams.get('followUpId')?.trim() || '';
+  const presetStatus = searchParams.get('status')?.trim() || '';
+  const presetSourceStartedAtBegin =
+    searchParams.get('sourceStartedAtBegin')?.trim() || '';
+  const presetSourceStartedAtEnd =
+    searchParams.get('sourceStartedAtEnd')?.trim() || '';
+  const hasStatisticsPreset = Boolean(
+    presetStatus || presetSourceStartedAtBegin || presetSourceStartedAtEnd,
+  );
   const [metrics, setMetrics] = useState<Record<string, number>>({});
   const [detail, setDetail] = useState<FollowUpAdminDetail>();
   const [selectedFollowUpId, setSelectedFollowUpId] = useState<string>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string>();
   const [activeView, setActiveView] = useState(
-    deepLinkFollowUpId ? 'admin' : 'mine',
+    deepLinkFollowUpId || hasStatisticsPreset ? 'admin' : 'mine',
   );
   const detailRequestIdRef = useRef(0);
 
@@ -176,6 +185,7 @@ const FollowUpAdminPage = () => {
       {
         title: '任务状态',
         dataIndex: 'status',
+        initialValue: presetStatus || undefined,
         valueType: 'select',
         valueEnum: Object.fromEntries(
           ['pending', 'processing', 'completed', 'closed'].map((value) => [
@@ -194,6 +204,16 @@ const FollowUpAdminPage = () => {
         dataIndex: 'customer_callback_at_range',
         valueType: 'dateTimeRange',
         hideInTable: true,
+      },
+      {
+        title: '来源通话时间',
+        dataIndex: 'source_started_at_range',
+        valueType: 'dateTimeRange',
+        hideInTable: true,
+        initialValue:
+          presetSourceStartedAtBegin && presetSourceStartedAtEnd
+            ? [presetSourceStartedAtBegin, presetSourceStartedAtEnd]
+            : undefined,
       },
       { title: '客户关键字', dataIndex: 'customer_keyword', hideInTable: true },
       { title: '来源 call_id', dataIndex: 'source_call_id', hideInTable: true },
@@ -259,7 +279,12 @@ const FollowUpAdminPage = () => {
         ),
       },
     ],
-    [openDetail],
+    [
+      openDetail,
+      presetSourceStartedAtBegin,
+      presetSourceStartedAtEnd,
+      presetStatus,
+    ],
   );
 
   const detailTask = detail?.task;
@@ -330,12 +355,33 @@ const FollowUpAdminPage = () => {
                     defaultPageSize: 10,
                     showTotal: (total) => `共 ${total} 条`,
                   }}
-                  request={async ({ current, pageSize, ...filters }) => {
+                  request={async ({
+                    current,
+                    pageSize,
+                    source_started_at_range,
+                    ...filters
+                  }) => {
+                    const sourceRange = Array.isArray(source_started_at_range)
+                      ? source_started_at_range
+                      : undefined;
+                    const status =
+                      (filters.status as string | undefined) || presetStatus;
+                    const sourceStartedAtBegin = sourceRange?.[0]
+                      ? dayjs(sourceRange[0]).toISOString()
+                      : presetSourceStartedAtBegin;
+                    const sourceStartedAtEnd = sourceRange?.[1]
+                      ? dayjs(sourceRange[1]).toISOString()
+                      : presetSourceStartedAtEnd;
                     const page = unwrapPage<FollowUpTaskDto>(
                       await listAdminFollowUps({
                         pageNum: current,
                         pageSize,
                         ...filters,
+                        ...(status ? { status } : {}),
+                        ...(sourceStartedAtBegin
+                          ? { sourceStartedAtBegin }
+                          : {}),
+                        ...(sourceStartedAtEnd ? { sourceStartedAtEnd } : {}),
                       }),
                     );
                     setMetrics(page.metrics || {});

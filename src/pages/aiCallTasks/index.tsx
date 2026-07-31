@@ -1,4 +1,4 @@
-import { PlusOutlined } from '@ant-design/icons';
+import { BarChartOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { ProTable } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
@@ -315,13 +315,21 @@ const AiCallTasksPage = () => {
       <RecovListStack>
         <div className="flex items-center justify-between gap-4">
           <h2 className="m-0 text-xl font-semibold">外呼任务</h2>
-          <Button
-            icon={<PlusOutlined />}
-            type="primary"
-            onClick={() => history.push('/ai-call/tasks/create')}
-          >
-            新建任务
-          </Button>
+          <Space>
+            <Button
+              icon={<BarChartOutlined />}
+              onClick={() => history.push('/ai-call/statistics')}
+            >
+              外呼统计
+            </Button>
+            <Button
+              icon={<PlusOutlined />}
+              type="primary"
+              onClick={() => history.push('/ai-call/tasks/create')}
+            >
+              新建任务
+            </Button>
+          </Space>
         </div>
 
         <RecovTableCard>

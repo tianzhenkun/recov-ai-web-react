@@ -19,6 +19,8 @@ import {
   listAiCallRecords,
 } from './service';
 
+let mockSearchParams = 'taskId=task-1&targetId=target-1';
+
 jest.mock('./service', () => ({
   getAiCallRecordDetail: jest.fn(),
   getAiCallRecordDialogue: jest.fn(),
@@ -37,9 +39,7 @@ jest.mock('@umijs/max', () => ({
   history: {
     push: jest.fn(),
   },
-  useSearchParams: () => [
-    new URLSearchParams('taskId=task-1&targetId=target-1'),
-  ],
+  useSearchParams: () => [new URLSearchParams(mockSearchParams)],
 }));
 
 jest.mock('@ant-design/pro-components', () => {
@@ -171,6 +171,7 @@ const mockRecord = {
 describe('AI Call 通话记录页面', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSearchParams = 'taskId=task-1&targetId=target-1';
     (listAiCallRecords as jest.Mock).mockResolvedValue({
       rows: [mockRecord],
       total: 1,
@@ -273,6 +274,28 @@ describe('AI Call 通话记录页面', () => {
       ).toBeNull();
     }
     expect(within(tableColumns).queryByText('录音')).toBeNull();
+  });
+
+  it('继承外呼统计下钻的正式来源、结果和右开时间范围', async () => {
+    mockSearchParams = new URLSearchParams({
+      entryType: 'sip_outbound',
+      callResult: 'connected',
+      startedAtBegin: '2026-07-25T00:00:00+08:00',
+      startedAtEnd: '2026-07-31T16:20:00+08:00',
+    }).toString();
+
+    render(<AiCallRecordsPage />);
+
+    await waitFor(() =>
+      expect(listAiCallRecords).toHaveBeenCalledWith({
+        pageNum: 1,
+        pageSize: 10,
+        entryType: 'sip_outbound',
+        callResult: 'connected',
+        startedAtBegin: '2026-07-25T00:00:00+08:00',
+        startedAtEnd: '2026-07-31T16:20:00+08:00',
+      }),
+    );
   });
 
   it('分层展示客户意向、跟进建议和正式跟进任务入口', async () => {

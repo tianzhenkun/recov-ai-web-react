@@ -350,6 +350,10 @@ const AiCallRecordsPage = () => {
   const [searchParams] = useSearchParams();
   const presetTaskId = searchParams.get('taskId') || undefined;
   const presetTargetId = searchParams.get('targetId') || undefined;
+  const presetEntryType = searchParams.get('entryType') || undefined;
+  const presetCallResult = searchParams.get('callResult') || undefined;
+  const presetStartedAtBegin = searchParams.get('startedAtBegin') || undefined;
+  const presetStartedAtEnd = searchParams.get('startedAtEnd') || undefined;
   const [taskOptions, setTaskOptions] = useState<
     Array<{ label: string; value: string }>
   >(presetTaskId ? [{ label: presetTaskId, value: presetTaskId }] : []);
@@ -516,6 +520,7 @@ const AiCallRecordsPage = () => {
       {
         title: '通话来源',
         dataIndex: 'entryType',
+        initialValue: presetEntryType,
         valueType: 'select',
         valueEnum: {
           web: { text: entryTypeLabels.web },
@@ -527,6 +532,7 @@ const AiCallRecordsPage = () => {
       {
         title: '呼叫结果',
         dataIndex: 'callResult',
+        initialValue: presetCallResult,
         valueType: 'select',
         valueEnum: Object.fromEntries(
           Object.entries(callResultLabels).map(([value, text]) => [
@@ -566,6 +572,10 @@ const AiCallRecordsPage = () => {
       {
         title: '通话时间范围',
         dataIndex: 'startedAtRange',
+        initialValue:
+          presetStartedAtBegin && presetStartedAtEnd
+            ? [presetStartedAtBegin, presetStartedAtEnd]
+            : undefined,
         valueType: 'dateTimeRange',
         hideInTable: true,
       },
@@ -696,7 +706,16 @@ const AiCallRecordsPage = () => {
         ),
       },
     ],
-    [loadTaskOptions, openDetail, presetTaskId, taskOptions],
+    [
+      loadTaskOptions,
+      openDetail,
+      presetCallResult,
+      presetEntryType,
+      presetStartedAtBegin,
+      presetStartedAtEnd,
+      presetTaskId,
+      taskOptions,
+    ],
   );
 
   const record = detail?.record;
@@ -730,18 +749,31 @@ const AiCallRecordsPage = () => {
           const range = Array.isArray(startedAtRange)
             ? startedAtRange
             : undefined;
+          const entryType =
+            (filters.entryType as string | undefined) || presetEntryType;
+          const callResult =
+            (filters.callResult as string | undefined) || presetCallResult;
+          const startedAtBegin = range?.[0]
+            ? dayjs(range[0]).toISOString()
+            : presetStartedAtBegin;
+          const startedAtEnd = range?.[1]
+            ? dayjs(range[1]).toISOString()
+            : presetStartedAtEnd;
           const page = await listAiCallRecords({
             ...filters,
-            taskId: (filters.taskId as string | undefined) || presetTaskId,
-            targetId: presetTargetId,
             pageNum: current,
             pageSize,
-            ...(range?.[0]
-              ? { startedAtBegin: dayjs(range[0]).toISOString() }
+            ...((filters.taskId as string | undefined) || presetTaskId
+              ? {
+                  taskId:
+                    (filters.taskId as string | undefined) || presetTaskId,
+                }
               : {}),
-            ...(range?.[1]
-              ? { startedAtEnd: dayjs(range[1]).toISOString() }
-              : {}),
+            ...(presetTargetId ? { targetId: presetTargetId } : {}),
+            ...(entryType ? { entryType } : {}),
+            ...(callResult ? { callResult } : {}),
+            ...(startedAtBegin ? { startedAtBegin } : {}),
+            ...(startedAtEnd ? { startedAtEnd } : {}),
           });
           const unstable = hasUnstablePostCallData(page.rows);
           setHasUnstableRecords((current) =>
