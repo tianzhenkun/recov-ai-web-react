@@ -17,13 +17,16 @@ export type VoiceEnrollmentModalProps = {
 
 type VoiceEnrollmentFormValues = VoiceEnrollmentRequest;
 
+const RECOMMENDED_TRANSCRIPT =
+  '您好，我是您的智能服务专员，很高兴为您提供帮助。请问您现在方便接听吗？如果有任何疑问，都可以直接告诉我，我会耐心为您说明，并认真记录您的意见。';
+
 const initialFormValues = (
   initialDisplayName?: string,
 ): VoiceEnrollmentFormValues => ({
   displayName: initialDisplayName ?? '',
   gender: '未知',
   language: 'zh',
-  transcript: undefined,
+  transcript: RECOMMENDED_TRANSCRIPT,
   consentConfirmed: false,
 });
 
@@ -127,13 +130,17 @@ const VoiceEnrollmentModal = ({
       onOk={() => form.submit()}
       open={open}
       title={mode === 'reenroll' ? '重新上传声音样本' : '创建自定义音色'}
-      width={640}
+      width={720}
     >
       <Form<VoiceEnrollmentFormValues>
+        colon={false}
         form={form}
         initialValues={initialFormValues(initialDisplayName)}
-        layout="vertical"
+        labelAlign="left"
+        labelCol={{ xs: { span: 24 }, sm: { span: 6 } }}
+        layout="horizontal"
         onFinish={handleFinish}
+        wrapperCol={{ xs: { span: 24 }, sm: { span: 18 } }}
       >
         <Form.Item
           label="音色展示名"
@@ -196,8 +203,12 @@ const VoiceEnrollmentModal = ({
           </Upload.Dragger>
         </Form.Item>
 
-        <Form.Item label="录音文本（可选）" name="transcript">
-          <Input.TextArea maxLength={2000} rows={3} />
+        <Form.Item
+          extra="请按推荐文案朗读；如使用其他内容，请确保文字与录音完全一致。"
+          label="录音对应文本（建议填写）"
+          name="transcript"
+        >
+          <Input.TextArea maxLength={2000} rows={4} />
         </Form.Item>
 
         <Form.Item
@@ -211,6 +222,7 @@ const VoiceEnrollmentModal = ({
             },
           ]}
           valuePropName="checked"
+          wrapperCol={{ xs: { span: 24 }, sm: { offset: 6, span: 18 } }}
         >
           <Checkbox>
             我已获得声音权利人明确授权，并同意将录音发送至阿里云百炼进行声音复刻。

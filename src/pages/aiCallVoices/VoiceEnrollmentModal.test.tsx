@@ -9,6 +9,9 @@ import {
 import React from 'react';
 import VoiceEnrollmentModal from './VoiceEnrollmentModal';
 
+const RECOMMENDED_TRANSCRIPT =
+  '您好，我是您的智能服务专员，很高兴为您提供帮助。请问您现在方便接听吗？如果有任何疑问，都可以直接告诉我，我会耐心为您说明，并认真记录您的意见。';
+
 const getFileInput = () => {
   const input = document.querySelector('input[type="file"]');
   if (!(input instanceof HTMLInputElement)) {
@@ -165,5 +168,52 @@ describe('VoiceEnrollmentModal', () => {
       expect.objectContaining({ displayName: '客服小林' }),
       expect.objectContaining({ name: 'replacement.m4a' }),
     );
+  });
+
+  it('prefills and restores the recommended transcript', async () => {
+    const { rerender } = render(
+      <VoiceEnrollmentModal onCancel={jest.fn()} onSubmit={jest.fn()} open />,
+    );
+    const getTranscript = () =>
+      screen.getByLabelText('录音对应文本（建议填写）') as HTMLTextAreaElement;
+
+    expect(getTranscript().value).toBe(RECOMMENDED_TRANSCRIPT);
+    fireEvent.change(getTranscript(), {
+      target: { value: '临时内容' },
+    });
+    rerender(
+      <VoiceEnrollmentModal
+        onCancel={jest.fn()}
+        onSubmit={jest.fn()}
+        open={false}
+      />,
+    );
+    rerender(
+      <VoiceEnrollmentModal onCancel={jest.fn()} onSubmit={jest.fn()} open />,
+    );
+
+    await waitFor(() =>
+      expect(getTranscript().value).toBe(RECOMMENDED_TRANSCRIPT),
+    );
+  });
+
+  it('submits undefined when the recommended transcript is cleared', async () => {
+    const submit = jest.fn().mockResolvedValue(undefined);
+    render(
+      <VoiceEnrollmentModal onCancel={jest.fn()} onSubmit={submit} open />,
+    );
+    fillNameAndSample();
+    fireEvent.change(screen.getByLabelText('录音对应文本（建议填写）'), {
+      target: { value: '' },
+    });
+    const submitButton = screen.getByRole('button', {
+      name: '提交复刻',
+    }) as HTMLButtonElement;
+    fireEvent.click(screen.getByRole('checkbox'));
+    await waitFor(() => expect(submitButton.disabled).toBe(false));
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit.mock.calls[0][0].transcript).toBeUndefined();
   });
 });
