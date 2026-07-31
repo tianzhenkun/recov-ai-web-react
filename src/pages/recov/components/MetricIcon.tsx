@@ -1,5 +1,6 @@
 import { theme } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
+import React from 'react';
 
 export type MetricTone =
   | 'primary'

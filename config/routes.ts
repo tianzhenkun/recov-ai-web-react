@@ -621,6 +621,13 @@ export default [
     requiredPermission: 'ai_call:agent:manage',
   },
   {
+    path: '/ai-call/statistics',
+    component: './aiCallStatistics',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:agent:manage',
+  },
+  {
     path: '/ai-call/lines',
     component: './aiCallLines',
     hideInMenu: true,

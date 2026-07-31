@@ -1,0 +1,80 @@
+import { DualAxes } from '@ant-design/plots';
+import { Empty } from 'antd';
+import dayjs from 'dayjs';
+import React from 'react';
+import type { OutboundStatistics, StatisticsGranularity } from '../domain';
+
+type TrendItem = OutboundStatistics['trend'][number];
+
+type OutboundTrendChartProps = {
+  data: TrendItem[];
+  granularity: StatisticsGranularity;
+  onBucketClick: (bucketStart: string) => void;
+};
+
+const OutboundTrendChart = ({
+  data,
+  granularity,
+  onBucketClick,
+}: OutboundTrendChartProps) => {
+  if (data.length === 0) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+
+  const chartData = data.map((item) => ({
+    ...item,
+    bucketLabel: dayjs(item.bucketStart).format(
+      granularity === 'hour' ? 'HH:mm' : 'MM-DD',
+    ),
+    connectRatePercent: Number((item.connectRate * 100).toFixed(2)),
+  }));
+  const children = [
+    {
+      type: 'interval',
+      data: chartData,
+      yField: 'dialAttempts',
+      style: { fill: '#1677ff', fillOpacity: 0.82, maxWidth: 36 },
+      axis: { y: { title: '拨打次数' } },
+    },
+    {
+      type: 'line',
+      data: chartData,
+      yField: 'connectRatePercent',
+      shapeField: 'smooth',
+      style: { stroke: '#52c41a', lineWidth: 2 },
+      axis: {
+        y: {
+          position: 'right',
+          title: '接通率',
+          labelFormatter: (value: number) => `${value}%`,
+        },
+      },
+    },
+  ];
+
+  return (
+    <DualAxes
+      height={300}
+      xField="bucketLabel"
+      {...{ children }}
+      tooltip={{ title: 'bucketLabel' }}
+      legend={{
+        color: {
+          itemLabelText: (datum: { label?: string }) =>
+            datum.label === 'dialAttempts' ? '拨打次数' : '接通率',
+        },
+      }}
+      onEvent={(_, event) => {
+        if (event.type !== 'element:click') {
+          return;
+        }
+        const bucketStart = event.data?.data?.bucketStart;
+        if (typeof bucketStart === 'string') {
+          onBucketClick(bucketStart);
+        }
+      }}
+    />
+  );
+};
+
+export default OutboundTrendChart;
