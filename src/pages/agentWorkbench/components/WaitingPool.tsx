@@ -43,15 +43,26 @@ export const getHandoffSlaLevel = (seconds: number): HandoffSlaLevel => {
 };
 
 const unwrapCredential = (response: unknown): MediaCredentialDto => {
-  if (
+  const payload =
     response &&
     typeof response === 'object' &&
     'data' in response &&
     (response as { data?: unknown }).data
-  ) {
-    return (response as { data: MediaCredentialDto }).data;
+      ? (response as { data: unknown }).data
+      : response;
+  if (payload && typeof payload === 'object' && 'seat_token' in payload) {
+    const result = payload as {
+      handoff: HandoffDto;
+      seat_token: Omit<MediaCredentialDto, 'handoff'>;
+    };
+    return {
+      handoff: result.handoff,
+      livekit_url: result.seat_token.livekit_url,
+      participant_token: result.seat_token.participant_token,
+      participant_identity: result.seat_token.participant_identity,
+    };
   }
-  return response as MediaCredentialDto;
+  return payload as MediaCredentialDto;
 };
 
 const getErrorCode = (error: unknown) => {

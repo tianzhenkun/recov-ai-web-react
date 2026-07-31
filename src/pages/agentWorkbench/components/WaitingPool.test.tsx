@@ -123,6 +123,46 @@ describe('WaitingPool', () => {
     await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
   });
 
+  it('normalizes the backend handoff and seat token response before connecting media', async () => {
+    const acceptedHandoff: HandoffDto = {
+      ...handoff,
+      status: 'accepted',
+    };
+    const onClaimed = jest.fn();
+    const claim = jest.fn().mockResolvedValue({
+      code: 200,
+      data: {
+        handoff: acceptedHandoff,
+        seat_token: {
+          livekit_url: 'http://192.168.0.111:7890',
+          participant_token: 'agent-token',
+          participant_identity: 'human-agent-handoff-1',
+        },
+      },
+    });
+    render(
+      <WaitingPool
+        handoffs={[handoff]}
+        agentStatus="available"
+        consoleSessionId="session-1"
+        claim={claim}
+        onClaimed={onClaimed}
+        now={now}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /接管通话/ }));
+
+    await waitFor(() =>
+      expect(onClaimed).toHaveBeenCalledWith({
+        handoff: acceptedHandoff,
+        livekit_url: 'http://192.168.0.111:7890',
+        participant_token: 'agent-token',
+        participant_identity: 'human-agent-handoff-1',
+      }),
+    );
+  });
+
   it('removes an already claimed task and shows a stable notice', async () => {
     const onRemove = jest.fn();
     const claim = jest.fn().mockRejectedValue(
