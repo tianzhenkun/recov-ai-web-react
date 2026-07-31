@@ -322,7 +322,7 @@ const presenceData = ({ consoleSessionId }: PresenceInput) => ({
 export const getAgentConsoleBootstrap = () =>
   agentConsoleRequest<AgentConsoleBootstrapDto>(
     `${AGENT_CONSOLE_API_PREFIX}/bootstrap`,
-    { method: 'get' },
+    { method: 'get', skipErrorHandler: true },
   );
 
 export const setAgentOnline = (input: OnlinePresenceInput) =>
@@ -363,6 +363,7 @@ export const getPendingHandoffs = ({
     `${AGENT_CONSOLE_API_PREFIX}/handoffs/pending`,
     {
       method: 'get',
+      skipErrorHandler: true,
       params: {
         console_session_id: consoleSessionId,
         limit,
@@ -378,6 +379,7 @@ export const getHandoffContext = (
     `${AGENT_CONSOLE_API_PREFIX}/handoffs/${encodeId(handoffId)}/context`,
     {
       method: 'get',
+      skipErrorHandler: true,
       params: {
         console_session_id: consoleSessionId,
       },

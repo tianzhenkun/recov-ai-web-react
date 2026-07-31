@@ -96,11 +96,19 @@ describe('agent console service contract', () => {
     });
     expect(mockedRequest.mock.calls[5][1]).toMatchObject({
       method: 'get',
+      skipErrorHandler: true,
       params: {
         console_session_id: 'session-1',
         limit: 100,
       },
     });
+    expect(mockedRequest.mock.calls[0][1]).toMatchObject({
+      method: 'get',
+      skipErrorHandler: true,
+    });
+    expect(mockedRequest.mock.calls[1][1]).not.toHaveProperty(
+      'skipErrorHandler',
+    );
     expect(mockedRequest.mock.calls[6][1]).toMatchObject({
       method: 'post',
       headers: { 'Idempotency-Key': 'claim-1' },
@@ -164,6 +172,7 @@ describe('agent console service contract', () => {
       expect.objectContaining({
         baseApi: '/ai-call-agent-api',
         method: 'get',
+        skipErrorHandler: true,
         params: { console_session_id: 'session-1' },
       }),
     );
