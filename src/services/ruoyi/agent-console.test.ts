@@ -156,6 +156,19 @@ describe('agent console service contract', () => {
     });
   });
 
+  it('loads one handoff full context without expanding the waiting pool payload', async () => {
+    await call('getHandoffContext', 'handoff-1', 'session-1');
+
+    expect(mockedRequest).toHaveBeenCalledWith(
+      '/ai-call/agent-console/handoffs/handoff-1/context',
+      expect.objectContaining({
+        baseApi: '/ai-call-agent-api',
+        method: 'get',
+        params: { console_session_id: 'session-1' },
+      }),
+    );
+  });
+
   it('maps administration queries and safe recovery actions', async () => {
     await call('listAdminAgents', { status: 'available' });
     await call('createAdminAgent', {

@@ -25,6 +25,7 @@ import { useAgentCall } from './hooks/useAgentCall';
 import { useAgentEvents } from './hooks/useAgentEvents';
 import type { DeviceCheckState } from './hooks/useAgentPresence';
 import { useAgentPresence } from './hooks/useAgentPresence';
+import { useHandoffContext } from './hooks/useHandoffContext';
 import { isRetryableReadError, readWithGatewayRetry } from './utils/readRetry';
 import './index.css';
 
@@ -137,6 +138,10 @@ const AgentWorkbenchPage = () => {
   const currentHandoff = claimedCredential?.handoff;
   const nextHandoff = handoffs[0];
   const contextHandoff = currentHandoff ?? nextHandoff;
+  const handoffContext = useHandoffContext({
+    handoff: contextHandoff,
+    consoleSessionId: agent.consoleSessionId,
+  });
 
   useEffect(() => {
     if (agent.phase === 'ready' && agent.profile) void loadHandoffs();
@@ -401,8 +406,18 @@ const AgentWorkbenchPage = () => {
             />
           )}
         </Card>
-        <Card title="客户与交接信息" variant="borderless">
-          <HandoffContextPanel handoff={contextHandoff} />
+        <Card
+          className="agent-workbench-context-card"
+          title="客户与交接信息"
+          variant="borderless"
+        >
+          <HandoffContextPanel
+            handoff={contextHandoff}
+            context={handoffContext.context}
+            loading={handoffContext.loading}
+            errorMessage={handoffContext.errorMessage}
+            onRetry={handoffContext.retry}
+          />
         </Card>
       </div>
     </PageContainer>

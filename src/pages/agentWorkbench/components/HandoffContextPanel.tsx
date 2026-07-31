@@ -1,6 +1,10 @@
-import { Empty, Tag, Typography } from 'antd';
+import { Alert, Button, Empty, Spin, Tag, Typography } from 'antd';
 import * as React from 'react';
-import type { HandoffDto } from '@/services/ruoyi/agent-console';
+import { useEffect, useRef } from 'react';
+import type {
+  HandoffContextDto,
+  HandoffDto,
+} from '@/services/ruoyi/agent-console';
 import './HandoffContextPanel.css';
 
 const { Paragraph, Text } = Typography;
@@ -12,8 +16,38 @@ const sceneLabels: Record<string, string> = {
   intro_geo: 'GEO',
 };
 
-const HandoffContextPanel = ({ handoff }: { handoff?: HandoffDto }) => {
-  if (!handoff) {
+const dialogueSpeakerLabels: Record<'ai' | 'customer', string> = {
+  customer: '客户',
+  ai: 'AI',
+};
+
+export type HandoffContextPanelProps = {
+  handoff?: HandoffDto;
+  context?: HandoffContextDto;
+  loading?: boolean;
+  errorMessage?: string;
+  onRetry?: () => void;
+};
+
+const HandoffContextPanel = ({
+  handoff,
+  context,
+  loading = false,
+  errorMessage,
+  onRetry,
+}: HandoffContextPanelProps) => {
+  const dialogueScrollRef = useRef<HTMLDivElement>(null);
+  const displayHandoff = context || handoff;
+  const dialogue = context?.dialogue || [];
+
+  useEffect(() => {
+    const scroll = dialogueScrollRef.current;
+    if (scroll && dialogue.length) {
+      scroll.scrollTop = scroll.scrollHeight;
+    }
+  }, [context?.handoff_id, dialogue.length]);
+
+  if (!displayHandoff) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -25,55 +59,79 @@ const HandoffContextPanel = ({ handoff }: { handoff?: HandoffDto }) => {
   return (
     <div className="agent-handoff-context">
       <div className="agent-handoff-customer">
-        <Text strong>{handoff.masked_customer_name || '客户'}</Text>
+        <Text strong>{displayHandoff.masked_customer_name || '客户'}</Text>
         <Text type="secondary">
-          {handoff.masked_contact || '联系方式已脱敏'}
+          {displayHandoff.masked_contact || '联系方式已脱敏'}
         </Text>
-        <Tag>{sceneLabels[handoff.scene_code] || handoff.scene_code}</Tag>
+        <Tag>
+          {sceneLabels[displayHandoff.scene_code] || displayHandoff.scene_code}
+        </Tag>
       </div>
 
-      <section>
+      <section className="agent-handoff-summary">
         <Text className="agent-handoff-section-title" strong>
           交接摘要
         </Text>
         <Paragraph>
-          {handoff.handoff_summary || handoff.request_message || '摘要生成中'}
+          {displayHandoff.handoff_summary ||
+            displayHandoff.request_message ||
+            '摘要生成中'}
         </Paragraph>
       </section>
 
-      <section>
-        <Text className="agent-handoff-section-title" strong>
-          待处理事项
-        </Text>
-        {handoff.pending_items?.length ? (
-          <ul className="agent-handoff-list">
-            {handoff.pending_items.map((item) => (
-              <li key={item.text}>{item.text}</li>
-            ))}
-          </ul>
-        ) : (
-          <Text type="secondary">暂无明确待处理事项</Text>
-        )}
-      </section>
-
-      <section>
-        <Text className="agent-handoff-section-title" strong>
-          最近对话
-        </Text>
-        {handoff.recent_dialogue?.length ? (
-          <div className="agent-handoff-dialogue-list">
-            {handoff.recent_dialogue.slice(-6).map((item, index) => (
-              <div key={item.id || `${item.speaker_type}-${index}`}>
-                <Text type="secondary">
-                  {item.speaker_type === 'customer' ? '客户' : 'AI'}：
-                </Text>
-                <Text>{item.text}</Text>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Text type="secondary">暂无对话记录</Text>
-        )}
+      <section className="agent-handoff-dialogue">
+        <div className="agent-handoff-dialogue-heading">
+          <Text className="agent-handoff-section-title" strong>
+            完整会话
+          </Text>
+          <Text type="secondary">{dialogue.length} 条</Text>
+        </div>
+        {errorMessage ? (
+          <Alert
+            type="warning"
+            showIcon
+            title={errorMessage}
+            action={
+              onRetry ? (
+                <Button size="small" onClick={onRetry}>
+                  重试
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : null}
+        <Spin spinning={loading} description="正在加载完整会话">
+          {dialogue.length ? (
+            <div
+              className="agent-handoff-dialogue-scroll"
+              data-testid="dialogue-scroll"
+              ref={dialogueScrollRef}
+            >
+              {dialogue.map((item, index) => {
+                const speaker =
+                  item.speaker_type === 'customer' ? 'customer' : 'ai';
+                return (
+                  <article
+                    className="agent-handoff-dialogue-turn"
+                    data-speaker={speaker}
+                    data-testid="dialogue-turn"
+                    key={item.id || `${item.speaker_type}-${index}`}
+                  >
+                    <Text className="agent-handoff-dialogue-speaker">
+                      {dialogueSpeakerLabels[speaker]}
+                    </Text>
+                    <Text>{item.text}</Text>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={loading ? '正在加载完整会话' : '暂无对话记录'}
+            />
+          )}
+        </Spin>
       </section>
 
       <section className="agent-handoff-business">
@@ -82,15 +140,15 @@ const HandoffContextPanel = ({ handoff }: { handoff?: HandoffDto }) => {
         </Text>
         <div>
           <Text type="secondary">转人工原因：</Text>
-          {handoff.request_reason || '-'}
+          {displayHandoff.request_reason || '-'}
         </div>
         <div>
           <Text type="secondary">业务来源：</Text>
-          {handoff.request_source || '-'}
+          {displayHandoff.request_source || '-'}
         </div>
         <div>
           <Text type="secondary">通话编号：</Text>
-          {handoff.call_id}
+          {displayHandoff.call_id}
         </div>
       </section>
     </div>

@@ -157,6 +157,13 @@ export type HandoffDto = {
   failure_message?: string | null;
 };
 
+export type HandoffContextDto = Omit<
+  HandoffDto,
+  'pending_items' | 'recent_dialogue'
+> & {
+  dialogue: DialogueTurnDto[];
+};
+
 export type AgentConsoleBootstrapDto = {
   profile: AgentProfileDto;
   presence?: AgentPresenceDto;
@@ -359,6 +366,20 @@ export const getPendingHandoffs = ({
       params: {
         console_session_id: consoleSessionId,
         limit,
+      },
+    },
+  );
+
+export const getHandoffContext = (
+  handoffId: BigintString,
+  consoleSessionId: string,
+) =>
+  agentConsoleRequest<HandoffContextDto>(
+    `${AGENT_CONSOLE_API_PREFIX}/handoffs/${encodeId(handoffId)}/context`,
+    {
+      method: 'get',
+      params: {
+        console_session_id: consoleSessionId,
       },
     },
   );

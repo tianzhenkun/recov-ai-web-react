@@ -51,21 +51,29 @@
 
 .agent-workbench-grid {
   display: grid;
-  grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.35fr) minmax(
-      300px,
-      1fr
-    );
+  grid-template-columns:
+    minmax(280px, 0.8fr)
+    minmax(380px, 1fr)
+    minmax(420px, 480px);
   align-items: start;
   gap: 16px;
+  min-width: 0;
   min-height: 520px;
 }
 
 .agent-workbench-grid > .ant-card {
+  min-width: 0;
   min-height: 520px;
 }
 
 .agent-workbench-current-card {
   min-width: 0;
+}
+
+.agent-workbench-context-card {
+  width: 100%;
+  max-width: 480px;
+  justify-self: end;
 }
 
 .agent-workbench-queue-count {
@@ -103,7 +111,7 @@
   background: #f5f7fa;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1440px) {
   .agent-workbench-device-grid {
     grid-template-columns: repeat(3, minmax(108px, 1fr));
   }
@@ -114,6 +122,11 @@
 
   .agent-workbench-grid > :last-child {
     grid-column: 1 / -1;
+  }
+
+  .agent-workbench-context-card {
+    max-width: none;
+    justify-self: stretch;
   }
 }
 
