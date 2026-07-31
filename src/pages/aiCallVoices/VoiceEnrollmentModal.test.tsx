@@ -175,7 +175,7 @@ describe('VoiceEnrollmentModal', () => {
       <VoiceEnrollmentModal onCancel={jest.fn()} onSubmit={jest.fn()} open />,
     );
     const getTranscript = () =>
-      screen.getByLabelText('录音对应文本（建议填写）') as HTMLTextAreaElement;
+      screen.getByLabelText('录音对应文本') as HTMLTextAreaElement;
 
     expect(getTranscript().value).toBe(RECOMMENDED_TRANSCRIPT);
     fireEvent.change(getTranscript(), {
@@ -203,7 +203,7 @@ describe('VoiceEnrollmentModal', () => {
       <VoiceEnrollmentModal onCancel={jest.fn()} onSubmit={submit} open />,
     );
     fillNameAndSample();
-    fireEvent.change(screen.getByLabelText('录音对应文本（建议填写）'), {
+    fireEvent.change(screen.getByLabelText('录音对应文本'), {
       target: { value: '' },
     });
     const submitButton = screen.getByRole('button', {
@@ -215,5 +215,30 @@ describe('VoiceEnrollmentModal', () => {
 
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     expect(submit.mock.calls[0][0].transcript).toBeUndefined();
+  });
+
+  it('uses balanced desktop spacing for the enrollment form', () => {
+    render(
+      <VoiceEnrollmentModal onCancel={jest.fn()} onSubmit={jest.fn()} open />,
+    );
+
+    const modal = document.querySelector('.ant-modal') as HTMLElement;
+    const container = document.querySelector(
+      '.ant-modal-container',
+    ) as HTMLElement;
+    const displayNameLabel = screen
+      .getByText('音色展示名')
+      .closest('.ant-form-item-label') as HTMLElement;
+    const consentText = screen.getByText(
+      '我已获得声音权利人明确授权，并同意将录音发送至阿里云百炼进行声音复刻。',
+    );
+
+    expect(modal.style.width).toBe('800px');
+    expect(container.style.padding).toBe('32px');
+    expect(
+      displayNameLabel.classList.contains('ant-form-item-label-left'),
+    ).toBe(false);
+    expect(consentText.classList.contains('sm:whitespace-nowrap')).toBe(true);
+    expect(screen.queryByText('录音对应文本（建议填写）')).toBeNull();
   });
 });

@@ -129,14 +129,15 @@ const VoiceEnrollmentModal = ({
       onCancel={handleCancel}
       onOk={() => form.submit()}
       open={open}
+      styles={{ container: { padding: 32 } }}
       title={mode === 'reenroll' ? '重新上传声音样本' : '创建自定义音色'}
-      width={720}
+      width={800}
     >
       <Form<VoiceEnrollmentFormValues>
         colon={false}
         form={form}
         initialValues={initialFormValues(initialDisplayName)}
-        labelAlign="left"
+        labelAlign="right"
         labelCol={{ xs: { span: 24 }, sm: { span: 6 } }}
         layout="horizontal"
         onFinish={handleFinish}
@@ -205,7 +206,7 @@ const VoiceEnrollmentModal = ({
 
         <Form.Item
           extra="请按推荐文案朗读；如使用其他内容，请确保文字与录音完全一致。"
-          label="录音对应文本（建议填写）"
+          label="录音对应文本"
           name="transcript"
         >
           <Input.TextArea maxLength={2000} rows={4} />
@@ -225,7 +226,9 @@ const VoiceEnrollmentModal = ({
           wrapperCol={{ xs: { span: 24 }, sm: { offset: 6, span: 18 } }}
         >
           <Checkbox>
-            我已获得声音权利人明确授权，并同意将录音发送至阿里云百炼进行声音复刻。
+            <span className="sm:whitespace-nowrap">
+              我已获得声音权利人明确授权，并同意将录音发送至阿里云百炼进行声音复刻。
+            </span>
           </Checkbox>
         </Form.Item>
       </Form>
