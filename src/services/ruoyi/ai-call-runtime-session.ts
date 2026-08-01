@@ -59,6 +59,9 @@ const readErrorCode = (
   return undefined;
 };
 
+export const getAiCallRuntimeErrorCode = (error: unknown) =>
+  readErrorCode(error);
+
 export const waitForAiCallRuntimeReadyToken = async (
   callId: string,
   options: AiCallRuntimeReadyOptions = {},
@@ -85,7 +88,7 @@ export const waitForAiCallRuntimeReadyToken = async (
           token: await createAiCallRuntimeToken(callId),
         };
       } catch (error) {
-        const errorCode = readErrorCode(error);
+        const errorCode = getAiCallRuntimeErrorCode(error);
         if (errorCode === 'CALL_ENDING') {
           throw new AiCallRuntimeEndedBeforeReadyError(callId);
         }
