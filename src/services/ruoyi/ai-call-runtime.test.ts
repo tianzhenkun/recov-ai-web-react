@@ -1,5 +1,6 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
 import {
+  createAiCallRuntimeToken,
   createAiCallRuntimeStartCall,
   getAiCallRuntimeBootstrap,
 } from './ai-call-runtime';
@@ -86,6 +87,28 @@ describe('AI Call runtime entry service', () => {
       {
         baseApi: '/ai-call-agent-api',
         method: 'get',
+      },
+    );
+  });
+
+  it('requests a short-lived token only through the owner runtime gate', async () => {
+    const token = {
+      callId: 'call_101',
+      roomName: 'ai-call-call_101',
+      livekitUrl: 'wss://livekit.test',
+      participantToken: 'signed-token',
+      participantIdentity: 'caller-call_101',
+      expiresInSeconds: 60,
+    };
+    mockRuoyiRequest.mockResolvedValueOnce({ code: 200, data: token });
+
+    await expect(createAiCallRuntimeToken('call_101')).resolves.toEqual(token);
+    expect(mockRuoyiRequest).toHaveBeenCalledWith(
+      '/ai-call/runtime/calls/call_101/token',
+      {
+        baseApi: '/ai-call-agent-api',
+        method: 'post',
+        repeatSubmit: false,
       },
     );
   });

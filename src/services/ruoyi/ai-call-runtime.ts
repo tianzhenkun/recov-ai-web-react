@@ -5,6 +5,8 @@ const AI_CALL_AGENT_BASE_API = '/ai-call-agent-api';
 const RUNTIME_START_PATH = '/ai-call/runtime/start-call';
 const RUNTIME_BOOTSTRAP_PATH = (callId: string) =>
   `/ai-call/runtime/calls/${encodeURIComponent(callId)}/bootstrap`;
+const RUNTIME_TOKEN_PATH = (callId: string) =>
+  `/ai-call/runtime/calls/${encodeURIComponent(callId)}/token`;
 
 export type AiCallRuntimeEntry = 'web' | 'preview' | 'direct_sip';
 
@@ -41,6 +43,15 @@ export type AiCallRuntimeBootstrap = {
   tokenAvailable: boolean;
 };
 
+export type AiCallRuntimeToken = {
+  callId: string;
+  roomName: string;
+  livekitUrl: string;
+  participantToken: string;
+  participantIdentity: string;
+  expiresInSeconds: number;
+};
+
 const unwrapData = <T>(response: RuoyiResponse<T> | T): T => {
   if (!response || typeof response !== 'object' || !('code' in response)) {
     throw new Error('接口响应缺少 code');
@@ -71,5 +82,16 @@ export const getAiCallRuntimeBootstrap = async (
     await ruoyiRequest<AiCallRuntimeBootstrap>(RUNTIME_BOOTSTRAP_PATH(callId), {
       baseApi: AI_CALL_AGENT_BASE_API,
       method: 'get',
+    }),
+  );
+
+export const createAiCallRuntimeToken = async (
+  callId: string,
+): Promise<AiCallRuntimeToken> =>
+  unwrapData(
+    await ruoyiRequest<AiCallRuntimeToken>(RUNTIME_TOKEN_PATH(callId), {
+      baseApi: AI_CALL_AGENT_BASE_API,
+      method: 'post',
+      repeatSubmit: false,
     }),
   );
