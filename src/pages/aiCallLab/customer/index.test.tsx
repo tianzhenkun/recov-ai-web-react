@@ -7,32 +7,42 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 import {
-  createAiCallLabSession,
-  endAiCallLabSession,
+  AiCallBrowserRuntimeStartError,
+  createAiCallBrowserSession,
+  endAiCallBrowserSession,
+  getAiCallBrowserSessionState,
+  reportAiCallBrowserSessionEvent,
+} from '@/services/ruoyi/ai-call-browser-session';
+import {
   getAiCallLabDialoguePreview,
   getAiCallLabEvents,
   getAiCallLabHandoff,
   getAiCallLabPromptProfiles,
   getAiCallLabRecording,
-  getAiCallLabSession,
   getAiCallLabVoiceProfiles,
-  reportAiCallLabBrowserEvent,
 } from '@/services/ruoyi/ai-call-lab';
 import AiCallLabCustomerPage from './index';
 import { connectAiCallLabRoom } from './livekitClient';
 
 jest.mock('@/services/ruoyi/ai-call-lab', () => ({
-  createAiCallLabSession: jest.fn(),
-  endAiCallLabSession: jest.fn(),
   getAiCallLabDialoguePreview: jest.fn(),
   getAiCallLabEvents: jest.fn(),
   getAiCallLabHandoff: jest.fn(),
   getAiCallLabPromptProfiles: jest.fn(),
   getAiCallLabRecording: jest.fn(),
-  getAiCallLabSession: jest.fn(),
   getAiCallLabVoiceProfiles: jest.fn(),
-  reportAiCallLabBrowserEvent: jest.fn(),
 }));
+
+jest.mock('@/services/ruoyi/ai-call-browser-session', () => {
+  const actual = jest.requireActual('@/services/ruoyi/ai-call-browser-session');
+  return {
+    ...actual,
+    createAiCallBrowserSession: jest.fn(),
+    endAiCallBrowserSession: jest.fn(),
+    getAiCallBrowserSessionState: jest.fn(),
+    reportAiCallBrowserSessionEvent: jest.fn(),
+  };
+});
 
 jest.mock(
   './livekitClient',
@@ -42,16 +52,16 @@ jest.mock(
   { virtual: true },
 );
 
-const createSessionMock = createAiCallLabSession as jest.Mock;
-const endSessionMock = endAiCallLabSession as jest.Mock;
+const createSessionMock = createAiCallBrowserSession as jest.Mock;
+const endSessionMock = endAiCallBrowserSession as jest.Mock;
+const getSessionStateMock = getAiCallBrowserSessionState as jest.Mock;
+const reportBrowserEventMock = reportAiCallBrowserSessionEvent as jest.Mock;
 const getDialogueMock = getAiCallLabDialoguePreview as jest.Mock;
 const getEventsMock = getAiCallLabEvents as jest.Mock;
 const getHandoffMock = getAiCallLabHandoff as jest.Mock;
 const getPromptProfilesMock = getAiCallLabPromptProfiles as jest.Mock;
 const getRecordingMock = getAiCallLabRecording as jest.Mock;
-const getSessionMock = getAiCallLabSession as jest.Mock;
 const getVoiceProfilesMock = getAiCallLabVoiceProfiles as jest.Mock;
-const reportBrowserEventMock = reportAiCallLabBrowserEvent as jest.Mock;
 const connectRoomMock = connectAiCallLabRoom as jest.Mock;
 
 describe('AiCallLabCustomerPage', () => {
@@ -72,6 +82,7 @@ describe('AiCallLabCustomerPage', () => {
       total: 1,
     });
     createSessionMock.mockResolvedValue({
+      runtimeControlMode: 'legacy_local',
       callId: 'call-1',
       roomName: 'ai-call-call-1',
       model: 'qwen3.5-omni-plus-realtime',
@@ -79,11 +90,9 @@ describe('AiCallLabCustomerPage', () => {
       participantToken: 'token-1',
       livekitUrl: 'ws://127.0.0.1:7880',
     });
-    endSessionMock.mockResolvedValue({
-      code: 200,
-      data: { callId: 'call-1', status: 'completed' },
-    });
-    getSessionMock.mockResolvedValue({
+    endSessionMock.mockResolvedValue({ code: 200 });
+    getSessionStateMock.mockResolvedValue({
+      runtimeControlMode: 'legacy_local',
       callId: 'call-1',
       status: 'connected',
       metrics: { lastModelFirstAudioMs: 320 },
@@ -139,6 +148,7 @@ describe('AiCallLabCustomerPage', () => {
 
     await waitFor(() => {
       expect(createSessionMock).toHaveBeenCalledWith({
+        idempotencyKey: expect.any(String),
         voice: 'Tina',
         sceneCode: 'intro_geo',
         businessId: '',
@@ -171,9 +181,13 @@ describe('AiCallLabCustomerPage', () => {
           livekitUrl: 'ws://127.0.0.1:7880',
         }),
       );
-      expect(reportBrowserEventMock).toHaveBeenCalledWith('call-1', {
-        type: 'browser_ready',
-      });
+      expect(reportBrowserEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          callId: 'call-1',
+          runtimeControlMode: 'legacy_local',
+        }),
+        { type: 'browser_ready' },
+      );
     });
     expect(screen.getByText('麦克风：开')).toBeTruthy();
   });
@@ -198,18 +212,22 @@ describe('AiCallLabCustomerPage', () => {
       fireEvent.click(await screen.findByRole('button', { name: /创建会话/ }));
 
       await waitFor(() => {
-        expect(getSessionMock).toHaveBeenCalledWith('call-1');
+        expect(getSessionStateMock).toHaveBeenCalledWith(
+          expect.objectContaining({ callId: 'call-1' }),
+        );
       });
       expect(pollingCallbacks).toHaveLength(1);
       expect(screen.queryByRole('button', { name: /刷新观测/ })).toBeNull();
 
-      getSessionMock.mockClear();
+      getSessionStateMock.mockClear();
       await act(async () => {
         pollingCallbacks[0]();
       });
 
       await waitFor(() => {
-        expect(getSessionMock).toHaveBeenCalledWith('call-1');
+        expect(getSessionStateMock).toHaveBeenCalledWith(
+          expect.objectContaining({ callId: 'call-1' }),
+        );
       });
     } finally {
       setIntervalSpy.mockRestore();
@@ -238,16 +256,129 @@ describe('AiCallLabCustomerPage', () => {
     expect(createSessionMock).toHaveBeenCalledTimes(1);
   });
 
+  it('reuses the same start idempotency key after an unknown request failure', async () => {
+    createSessionMock.mockRejectedValueOnce(new Error('network response lost'));
+
+    render(React.createElement(AiCallLabCustomerPage));
+
+    const createButton = await screen.findByRole('button', {
+      name: /创建会话/,
+    });
+    fireEvent.click(createButton);
+    expect(await screen.findByText('会话创建失败')).toBeTruthy();
+
+    fireEvent.click(createButton);
+    await waitFor(() => expect(createSessionMock).toHaveBeenCalledTimes(2));
+
+    expect(createSessionMock.mock.calls[0][0].idempotencyKey).toBe(
+      createSessionMock.mock.calls[1][0].idempotencyKey,
+    );
+  });
+
+  it('keeps an accepted owner call visible when readiness polling fails', async () => {
+    createSessionMock.mockRejectedValueOnce(
+      new AiCallBrowserRuntimeStartError(
+        'call-accepted',
+        new Error('bootstrap unavailable'),
+      ),
+    );
+
+    render(React.createElement(AiCallLabCustomerPage));
+
+    fireEvent.click(await screen.findByRole('button', { name: /创建会话/ }));
+    expect(
+      await screen.findByText('会话已受理，但运行时尚未就绪'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /调试信息/ }));
+    expect(await screen.findByText('call-accepted')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /结束会话/ }).hasAttribute('disabled'),
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole('button', { name: /连接麦克风/ })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('polls only bootstrap facts for owner sessions and shows cleanup attention', async () => {
+    createSessionMock.mockResolvedValueOnce({
+      runtimeControlMode: 'owner_command_v1',
+      callId: 'call-owner',
+      roomName: 'ai-call-call-owner',
+      status: 'ready',
+      participantToken: 'owner-token',
+      livekitUrl: 'wss://livekit.test',
+    });
+    getSessionStateMock.mockResolvedValueOnce({
+      runtimeControlMode: 'owner_command_v1',
+      callId: 'call-owner',
+      roomName: 'ai-call-call-owner',
+      status: 'failed',
+      runtimePhase: 'terminal',
+      resourceCleanupStatus: 'attention_required',
+      resourceCleanupError: 'Provider query timed out',
+    });
+
+    render(React.createElement(AiCallLabCustomerPage));
+
+    fireEvent.click(await screen.findByRole('button', { name: /创建会话/ }));
+
+    expect(await screen.findByText('资源清理需人工处理')).toBeTruthy();
+    expect(screen.getByText('Provider query timed out')).toBeTruthy();
+    expect(getSessionStateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callId: 'call-owner',
+        runtimeControlMode: 'owner_command_v1',
+      }),
+    );
+    expect(getRecordingMock).not.toHaveBeenCalled();
+    expect(getHandoffMock).not.toHaveBeenCalled();
+    expect(getDialogueMock).not.toHaveBeenCalled();
+    expect(getEventsMock).not.toHaveBeenCalled();
+  });
+
+  it('disables duplicate owner ending after END_CALL is accepted', async () => {
+    const ownerSession = {
+      runtimeControlMode: 'owner_command_v1' as const,
+      callId: 'call-owner',
+      roomName: 'ai-call-call-owner',
+      status: 'ready',
+      runtimePhase: 'ready' as const,
+      participantToken: 'owner-token',
+      livekitUrl: 'wss://livekit.test',
+    };
+    createSessionMock.mockResolvedValueOnce(ownerSession);
+    getSessionStateMock
+      .mockResolvedValueOnce(ownerSession)
+      .mockRejectedValueOnce(new Error('bootstrap temporarily unavailable'));
+
+    render(React.createElement(AiCallLabCustomerPage));
+
+    fireEvent.click(await screen.findByRole('button', { name: /创建会话/ }));
+    await screen.findByText('ready');
+    fireEvent.click(screen.getByRole('button', { name: /结束会话/ }));
+
+    expect(await screen.findByText('结束请求已受理')).toBeTruthy();
+    expect(screen.getByText('ending')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /结束会话/ }).hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
   it('stops automatic polling and offers a manual refresh for a terminal session', async () => {
     const setIntervalSpy = jest.spyOn(window, 'setInterval');
     createSessionMock.mockResolvedValueOnce({
+      runtimeControlMode: 'legacy_local',
       callId: 'call-1',
       roomName: 'ai-call-call-1',
       status: 'completed',
       participantToken: 'token-1',
       livekitUrl: 'ws://127.0.0.1:7880',
     });
-    getSessionMock.mockResolvedValueOnce({
+    getSessionStateMock.mockResolvedValueOnce({
+      runtimeControlMode: 'legacy_local',
       callId: 'call-1',
       status: 'completed',
     });
@@ -309,12 +440,14 @@ describe('AiCallLabCustomerPage', () => {
       disconnect: disconnectMock,
       setMicrophoneEnabled: jest.fn(),
     });
-    getSessionMock
+    getSessionStateMock
       .mockResolvedValueOnce({
+        runtimeControlMode: 'legacy_local',
         callId: 'call-1',
         status: 'connected',
       })
       .mockResolvedValueOnce({
+        runtimeControlMode: 'legacy_local',
         callId: 'call-1',
         status: 'completed',
       });
@@ -330,7 +463,10 @@ describe('AiCallLabCustomerPage', () => {
 
     await waitFor(() => {
       expect(disconnectMock).toHaveBeenCalledTimes(1);
-      expect(endSessionMock).toHaveBeenCalledWith('call-1');
+      expect(endSessionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+        expect.any(String),
+      );
       expect(screen.getByText('completed')).toBeTruthy();
     });
     expect(
@@ -357,7 +493,10 @@ describe('AiCallLabCustomerPage', () => {
 
     await waitFor(() => {
       expect(disconnectMock).toHaveBeenCalledTimes(1);
-      expect(endSessionMock).toHaveBeenCalledWith('call-1');
+      expect(endSessionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+        expect.any(String),
+      );
     });
     expect(screen.getByText('麦克风：未连接')).toBeTruthy();
     expect(
@@ -366,16 +505,23 @@ describe('AiCallLabCustomerPage', () => {
     expect(
       await screen.findByText('本地已断开，但后端会话结束失败，请重试'),
     ).toBeTruthy();
+
+    const firstDedupeKey = endSessionMock.mock.calls[0][1];
+    fireEvent.click(screen.getByRole('button', { name: /结束会话/ }));
+    await waitFor(() => expect(endSessionMock).toHaveBeenCalledTimes(2));
+    expect(endSessionMock.mock.calls[1][1]).toBe(firstDedupeKey);
   });
 
   it('ends the backend session when LiveKit joining fails', async () => {
     connectRoomMock.mockRejectedValueOnce(new Error('LiveKit unavailable'));
-    getSessionMock
+    getSessionStateMock
       .mockResolvedValueOnce({
+        runtimeControlMode: 'legacy_local',
         callId: 'call-1',
         status: 'ready',
       })
       .mockResolvedValueOnce({
+        runtimeControlMode: 'legacy_local',
         callId: 'call-1',
         status: 'completed',
       });
@@ -390,20 +536,62 @@ describe('AiCallLabCustomerPage', () => {
     expect(createButton.hasAttribute('disabled')).toBe(false);
     fireEvent.click(createButton);
     await waitFor(() => expect(createSessionMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(getSessionMock).toHaveBeenCalledWith('call-1'));
+    await waitFor(() =>
+      expect(getSessionStateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+      ),
+    );
     fireEvent.click(screen.getByRole('button', { name: /连接麦克风/ }));
 
     await waitFor(() => {
-      expect(endSessionMock).toHaveBeenCalledWith('call-1');
+      expect(endSessionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+        expect.any(String),
+      );
       expect(screen.getByText('completed')).toBeTruthy();
     });
     expect(screen.getByText('麦克风：未连接')).toBeTruthy();
   });
 
+  it('reports owner join rollback as accepted instead of completed cleanup', async () => {
+    const ownerSession = {
+      runtimeControlMode: 'owner_command_v1' as const,
+      callId: 'call-owner',
+      roomName: 'ai-call-call-owner',
+      status: 'ready',
+      runtimePhase: 'ready' as const,
+      participantToken: 'owner-token',
+      livekitUrl: 'wss://livekit.test',
+    };
+    createSessionMock.mockResolvedValueOnce(ownerSession);
+    getSessionStateMock
+      .mockResolvedValueOnce(ownerSession)
+      .mockResolvedValueOnce({
+        ...ownerSession,
+        status: 'ending',
+        runtimePhase: 'ending',
+      });
+    connectRoomMock.mockRejectedValueOnce(new Error('LiveKit unavailable'));
+
+    render(React.createElement(AiCallLabCustomerPage));
+
+    fireEvent.click(await screen.findByRole('button', { name: /创建会话/ }));
+    await screen.findByText('ready');
+    fireEvent.click(screen.getByRole('button', { name: /连接麦克风/ }));
+
+    expect(
+      await screen.findByText(
+        '麦克风连接失败：LiveKit unavailable；结束请求已提交',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/后端会话已回收/)).toBeNull();
+  });
+
   it('keeps manual ending available when join rollback cannot end the backend session', async () => {
     connectRoomMock.mockRejectedValueOnce(new Error('LiveKit unavailable'));
     endSessionMock.mockRejectedValueOnce(new Error('end failed'));
-    getSessionMock.mockResolvedValueOnce({
+    getSessionStateMock.mockResolvedValueOnce({
+      runtimeControlMode: 'legacy_local',
       callId: 'call-1',
       status: 'ready',
     });
@@ -418,11 +606,18 @@ describe('AiCallLabCustomerPage', () => {
     expect(createButton.hasAttribute('disabled')).toBe(false);
     fireEvent.click(createButton);
     await waitFor(() => expect(createSessionMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(getSessionMock).toHaveBeenCalledWith('call-1'));
+    await waitFor(() =>
+      expect(getSessionStateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+      ),
+    );
     fireEvent.click(screen.getByRole('button', { name: /连接麦克风/ }));
 
     await waitFor(() => {
-      expect(endSessionMock).toHaveBeenCalledWith('call-1');
+      expect(endSessionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+        expect.any(String),
+      );
     });
     expect(
       screen.getByRole('button', { name: /结束会话/ }).hasAttribute('disabled'),

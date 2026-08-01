@@ -25,23 +25,26 @@ import {
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
 import {
+  AiCallBrowserRuntimeStartError,
+  type AiCallBrowserSession,
+  createAiCallBrowserSession,
+  endAiCallBrowserSession,
+  getAiCallBrowserSessionState,
+  reportAiCallBrowserSessionEvent,
+} from '@/services/ruoyi/ai-call-browser-session';
+import {
   type AiCallLabDialogueSegment,
   type AiCallLabEvent,
   type AiCallLabHandoff,
   type AiCallLabPromptProfile,
   type AiCallLabRecording,
-  type AiCallLabSession,
   type AiCallLabVoiceProfile,
-  createAiCallLabSession,
-  endAiCallLabSession,
   getAiCallLabDialoguePreview,
   getAiCallLabEvents,
   getAiCallLabHandoff,
   getAiCallLabPromptProfiles,
   getAiCallLabRecording,
-  getAiCallLabSession,
   getAiCallLabVoiceProfiles,
-  reportAiCallLabBrowserEvent,
 } from '@/services/ruoyi/ai-call-lab';
 import {
   type AiCallLabRoomConnection,
@@ -53,6 +56,12 @@ const getEventName = (item: AiCallLabEvent) =>
   item.eventType || item.type || item.eventId || '-';
 
 const TERMINAL_SESSION_STATUSES = new Set(['completed', 'failed']);
+let clientOperationSequence = 0;
+
+const createClientOperationKey = (operation: string) => {
+  clientOperationSequence += 1;
+  return `${operation}:${Date.now().toString(36)}:${clientOperationSequence.toString(36)}`;
+};
 
 const AiCallLabCustomerPage = () => {
   const [messageApi, messageContextHolder] = message.useMessage();
@@ -68,7 +77,7 @@ const AiCallLabCustomerPage = () => {
   const [businessParamsText, setBusinessParamsText] = useState(
     '{\n  "customerName": "张总"\n}',
   );
-  const [session, setSession] = useState<AiCallLabSession | null>(null);
+  const [session, setSession] = useState<AiCallBrowserSession | null>(null);
   const [recording, setRecording] = useState<AiCallLabRecording | null>(null);
   const [handoff, setHandoff] = useState<AiCallLabHandoff | null>(null);
   const [dialogueRows, setDialogueRows] = useState<AiCallLabDialogueSegment[]>(
@@ -84,10 +93,31 @@ const AiCallLabCustomerPage = () => {
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [debugDrawerOpen, setDebugDrawerOpen] = useState(false);
   const roomConnectionRef = useRef<AiCallLabRoomConnection | null>(null);
+  const sessionRef = useRef<AiCallBrowserSession | null>(null);
+  const startIdempotencyKeyRef = useRef<string | null>(null);
+  const endDedupeKeyRef = useRef<{ callId: string; key: string } | null>(null);
+
+  const replaceSession = useCallback((next: AiCallBrowserSession | null) => {
+    sessionRef.current = next;
+    setSession(next);
+  }, []);
+
+  const getEndDedupeKey = useCallback((callId: string) => {
+    if (endDedupeKeyRef.current?.callId === callId) {
+      return endDedupeKeyRef.current.key;
+    }
+    const key = createClientOperationKey(`web:end:${callId}`);
+    endDedupeKeyRef.current = { callId, key };
+    return key;
+  }, []);
 
   const configReady = Boolean(selectedVoice && selectedSceneCode);
   const sessionTerminal = Boolean(
-    session?.status && TERMINAL_SESSION_STATUSES.has(session.status),
+    (session?.status && TERMINAL_SESSION_STATUSES.has(session.status)) ||
+      session?.runtimePhase === 'terminal',
+  );
+  const sessionEnding = Boolean(
+    session?.status === 'ending' || session?.runtimePhase === 'ending',
   );
   const sessionActive = Boolean(session && !sessionTerminal);
 
@@ -114,11 +144,18 @@ const AiCallLabCustomerPage = () => {
   }, [messageApi]);
 
   const refreshObservability = useCallback(
-    async (targetCallId?: string) => {
-      const callId = targetCallId || session?.callId;
-      if (!callId) return;
+    async (targetSession?: AiCallBrowserSession) => {
+      const currentSession = targetSession || sessionRef.current;
+      if (!currentSession) return;
       setObservabilityLoading(true);
       try {
+        if (currentSession.runtimeControlMode === 'owner_command_v1') {
+          replaceSession({
+            ...currentSession,
+            ...(await getAiCallBrowserSessionState(currentSession)),
+          });
+          return;
+        }
         const [
           nextSession,
           nextRecording,
@@ -126,13 +163,13 @@ const AiCallLabCustomerPage = () => {
           dialogueResult,
           eventResult,
         ] = await Promise.all([
-          getAiCallLabSession(callId),
-          getAiCallLabRecording(callId),
-          getAiCallLabHandoff(callId),
-          getAiCallLabDialoguePreview(callId),
-          getAiCallLabEvents(callId),
+          getAiCallBrowserSessionState(currentSession),
+          getAiCallLabRecording(currentSession.callId),
+          getAiCallLabHandoff(currentSession.callId),
+          getAiCallLabDialoguePreview(currentSession.callId),
+          getAiCallLabEvents(currentSession.callId),
         ]);
-        setSession((prev) => ({ ...prev, ...nextSession }));
+        replaceSession({ ...currentSession, ...nextSession });
         setRecording(nextRecording);
         setHandoff(nextHandoff);
         setDialogueRows(dialogueResult.rows);
@@ -143,7 +180,7 @@ const AiCallLabCustomerPage = () => {
         setObservabilityLoading(false);
       }
     },
-    [messageApi, session?.callId],
+    [messageApi, replaceSession],
   );
 
   useEffect(() => {
@@ -161,7 +198,8 @@ const AiCallLabCustomerPage = () => {
     const callId = session?.callId;
     if (!callId || sessionTerminal || ending) return undefined;
     const timer = window.setInterval(() => {
-      void refreshObservability(callId);
+      const currentSession = sessionRef.current;
+      if (currentSession) void refreshObservability(currentSession);
     }, 1500);
     return () => window.clearInterval(timer);
   }, [ending, refreshObservability, session?.callId, sessionTerminal]);
@@ -179,27 +217,50 @@ const AiCallLabCustomerPage = () => {
 
     setCreating(true);
     try {
-      const nextSession = await createAiCallLabSession({
+      const idempotencyKey =
+        startIdempotencyKeyRef.current || createClientOperationKey('web:start');
+      startIdempotencyKeyRef.current = idempotencyKey;
+      const nextSession = await createAiCallBrowserSession({
+        idempotencyKey,
         voice: selectedVoice,
         sceneCode: selectedSceneCode,
         businessId: businessId.trim(),
         businessParams,
       });
-      setSession(nextSession);
+      startIdempotencyKeyRef.current = null;
+      endDedupeKeyRef.current = null;
+      replaceSession(nextSession);
       setRecording(null);
       setHandoff(null);
       setDialogueRows([]);
       setEventRows([]);
-      await refreshObservability(nextSession.callId);
-    } catch {
-      messageApi.error('会话创建失败');
+      await refreshObservability(nextSession);
+    } catch (error) {
+      if (error instanceof AiCallBrowserRuntimeStartError) {
+        startIdempotencyKeyRef.current = null;
+        endDedupeKeyRef.current = null;
+        const acceptedSession: AiCallBrowserSession = {
+          runtimeControlMode: 'owner_command_v1',
+          callId: error.callId,
+          status: 'starting',
+          runtimePhase: 'starting',
+        };
+        replaceSession(acceptedSession);
+        setRecording(null);
+        setHandoff(null);
+        setDialogueRows([]);
+        setEventRows([]);
+        messageApi.warning('会话已受理，但运行时尚未就绪');
+      } else {
+        messageApi.error('会话创建失败');
+      }
     } finally {
       setCreating(false);
     }
   };
 
   const handleConnectMicrophone = async () => {
-    if (!session) {
+    if (!session?.participantToken || !session.livekitUrl) {
       messageApi.warning('请先创建会话');
       return;
     }
@@ -209,7 +270,7 @@ const AiCallLabCustomerPage = () => {
       roomConnectionRef.current = connection;
       setRoomConnected(true);
       setMicrophoneEnabled(true);
-      await reportAiCallLabBrowserEvent(session.callId, {
+      await reportAiCallBrowserSessionEvent(session, {
         type: 'browser_ready',
       });
     } catch (error) {
@@ -224,12 +285,23 @@ const AiCallLabCustomerPage = () => {
       }
       const errorMessage = error instanceof Error ? error.message : '';
       try {
-        await endAiCallLabSession(session.callId);
-        await refreshObservability(session.callId);
+        await endAiCallBrowserSession(session, getEndDedupeKey(session.callId));
+        if (session.runtimeControlMode === 'owner_command_v1') {
+          replaceSession({
+            ...session,
+            status: 'ending',
+            runtimePhase: 'ending',
+          });
+        }
+        await refreshObservability(session);
+        const rollbackResult =
+          session.runtimeControlMode === 'owner_command_v1'
+            ? '结束请求已提交'
+            : '后端会话已回收';
         messageApi.error(
           errorMessage
-            ? `麦克风连接失败：${errorMessage}；后端会话已回收`
-            : '麦克风连接失败，后端会话已回收',
+            ? `麦克风连接失败：${errorMessage}；${rollbackResult}`
+            : `麦克风连接失败，${rollbackResult}`,
         );
       } catch {
         messageApi.error(
@@ -248,7 +320,7 @@ const AiCallLabCustomerPage = () => {
     const nextEnabled = !microphoneEnabled;
     await roomConnectionRef.current.setMicrophoneEnabled(nextEnabled);
     setMicrophoneEnabled(nextEnabled);
-    await reportAiCallLabBrowserEvent(session.callId, {
+    await reportAiCallBrowserSessionEvent(session, {
       type: nextEnabled
         ? 'browser_microphone_unmuted'
         : 'browser_microphone_muted',
@@ -256,8 +328,8 @@ const AiCallLabCustomerPage = () => {
   };
 
   const handleEndSession = async () => {
-    if (!session || sessionTerminal) return;
-    const { callId } = session;
+    if (!session || sessionTerminal || sessionEnding) return;
+    const currentSession = session;
     const connection = roomConnectionRef.current;
     roomConnectionRef.current = null;
     setRoomConnected(false);
@@ -269,9 +341,23 @@ const AiCallLabCustomerPage = () => {
       messageApi.warning('本地连接断开异常，正在继续结束后端会话');
     }
     try {
-      await endAiCallLabSession(callId);
-      await refreshObservability(callId);
-      messageApi.success('会话已结束');
+      await endAiCallBrowserSession(
+        currentSession,
+        getEndDedupeKey(currentSession.callId),
+      );
+      if (currentSession.runtimeControlMode === 'owner_command_v1') {
+        replaceSession({
+          ...currentSession,
+          status: 'ending',
+          runtimePhase: 'ending',
+        });
+      }
+      await refreshObservability(currentSession);
+      messageApi.success(
+        currentSession.runtimeControlMode === 'owner_command_v1'
+          ? '结束请求已受理'
+          : '会话已结束',
+      );
     } catch {
       messageApi.error('本地已断开，但后端会话结束失败，请重试');
     } finally {
@@ -302,6 +388,14 @@ const AiCallLabCustomerPage = () => {
       ? '生成中'
       : '-';
   const hasRecordingOrHandoff = Boolean(recording || handoff);
+  const cleanupStatusText =
+    session?.resourceCleanupStatus === 'reconciling'
+      ? '资源清理中'
+      : session?.resourceCleanupStatus === 'attention_required'
+        ? '资源清理需人工处理'
+        : session?.resourceCleanupStatus === 'clean'
+          ? '资源已清理'
+          : null;
 
   return (
     <RecovListPage
@@ -413,7 +507,13 @@ const AiCallLabCustomerPage = () => {
                   <Button
                     icon={<AudioOutlined />}
                     loading={connecting}
-                    disabled={!session || roomConnected}
+                    disabled={
+                      !session?.participantToken ||
+                      !session.livekitUrl ||
+                      roomConnected ||
+                      sessionEnding ||
+                      sessionTerminal
+                    }
                     onClick={() => void handleConnectMicrophone()}
                   >
                     连接麦克风
@@ -434,7 +534,7 @@ const AiCallLabCustomerPage = () => {
                   <Button
                     icon={<DisconnectOutlined />}
                     loading={ending}
-                    disabled={!session || sessionTerminal}
+                    disabled={!session || sessionEnding || sessionTerminal}
                     onClick={() => void handleEndSession()}
                   >
                     结束会话
@@ -454,6 +554,21 @@ const AiCallLabCustomerPage = () => {
                   <MetricItem label="首包" value={firstAudioText} />
                   <MetricItem label="浏览器" value={microphoneText} />
                   <MetricItem label="AI 音频" value={aiAudioText} />
+                  {cleanupStatusText && (
+                    <MetricItem label="资源清理" value={cleanupStatusText} />
+                  )}
+                  {session?.resourceCleanupError && (
+                    <MetricItem
+                      label="清理告警"
+                      value={session.resourceCleanupError}
+                    />
+                  )}
+                  {session?.failureMessage && (
+                    <MetricItem
+                      label="失败原因"
+                      value={session.failureMessage}
+                    />
+                  )}
                 </div>
               </Spin>
             </RecovTableCard>
@@ -544,6 +659,10 @@ const AiCallLabCustomerPage = () => {
             <MetricItem label="Call ID" value={session?.callId || '-'} />
             <MetricItem label="房间" value={session?.roomName || '-'} />
             <MetricItem label="模型" value={session?.model || '-'} />
+            <MetricItem
+              label="运行时模式"
+              value={session?.runtimeControlMode || '-'}
+            />
             <MetricItem label="Egress ID" value={recording?.egressId || '-'} />
             <MetricItem
               label="原始录音地址"
