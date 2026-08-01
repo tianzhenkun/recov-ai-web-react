@@ -2,22 +2,33 @@ import {
   AiCallBrowserRuntimeStartError,
   createAiCallBrowserSession,
   endAiCallBrowserSession,
+  getAiCallBrowserSessionState,
+  reportAiCallBrowserSessionEvent,
 } from './ai-call-browser-session';
-import { createAiCallLabSession, endAiCallLabSession } from './ai-call-lab';
+import {
+  createAiCallLabSession,
+  endAiCallLabSession,
+  getAiCallLabSession,
+  reportAiCallLabBrowserEvent,
+} from './ai-call-lab';
 import {
   createAiCallRuntimeEndCall,
   createAiCallRuntimeStartCall,
+  getAiCallRuntimeBootstrap,
 } from './ai-call-runtime';
 import { waitForAiCallRuntimeReadyToken } from './ai-call-runtime-session';
 
 jest.mock('./ai-call-lab', () => ({
   createAiCallLabSession: jest.fn(),
   endAiCallLabSession: jest.fn(),
+  getAiCallLabSession: jest.fn(),
+  reportAiCallLabBrowserEvent: jest.fn(),
 }));
 
 jest.mock('./ai-call-runtime', () => ({
   createAiCallRuntimeEndCall: jest.fn(),
   createAiCallRuntimeStartCall: jest.fn(),
+  getAiCallRuntimeBootstrap: jest.fn(),
 }));
 
 jest.mock('./ai-call-runtime-session', () => ({
@@ -28,8 +39,11 @@ jest.mock('./ai-call-runtime-session', () => ({
 
 const createLegacyMock = createAiCallLabSession as jest.Mock;
 const endLegacyMock = endAiCallLabSession as jest.Mock;
+const getLegacyMock = getAiCallLabSession as jest.Mock;
+const reportLegacyEventMock = reportAiCallLabBrowserEvent as jest.Mock;
 const createRuntimeMock = createAiCallRuntimeStartCall as jest.Mock;
 const endRuntimeMock = createAiCallRuntimeEndCall as jest.Mock;
+const getRuntimeBootstrapMock = getAiCallRuntimeBootstrap as jest.Mock;
 const waitRuntimeMock = waitForAiCallRuntimeReadyToken as jest.Mock;
 
 const request = {
@@ -183,5 +197,81 @@ describe('AI Call browser session entry routing', () => {
       endReason: 'user_requested',
     });
     expect(endLegacyMock).toHaveBeenCalledWith('call-legacy');
+  });
+
+  it('refreshes owner state from bootstrap without reading the legacy registry', async () => {
+    getRuntimeBootstrapMock.mockResolvedValueOnce({
+      callId: 'call-owner',
+      entryType: 'web',
+      phase: 'terminal',
+      roomName: 'ai-call-call-owner',
+      runtimeFencingToken: 3,
+      tokenAvailable: false,
+      status: 'failed',
+      resourceCleanupStatus: 'attention_required',
+      resourceCleanupError: 'Provider query timed out',
+      failureStage: 'runtime_start',
+      failureMessage: 'START_UNCERTAIN',
+    });
+
+    await expect(
+      getAiCallBrowserSessionState({
+        runtimeControlMode: 'owner_command_v1',
+        callId: 'call-owner',
+        status: 'starting',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        callId: 'call-owner',
+        roomName: 'ai-call-call-owner',
+        status: 'failed',
+        runtimePhase: 'terminal',
+        resourceCleanupStatus: 'attention_required',
+        resourceCleanupError: 'Provider query timed out',
+        failureStage: 'runtime_start',
+        failureMessage: 'START_UNCERTAIN',
+      }),
+    );
+    expect(getRuntimeBootstrapMock).toHaveBeenCalledWith('call-owner');
+    expect(getLegacyMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy state and browser events on the legacy endpoints only', async () => {
+    const legacySession = {
+      runtimeControlMode: 'legacy_local' as const,
+      callId: 'call-legacy',
+      status: 'created',
+    };
+    getLegacyMock.mockResolvedValueOnce({
+      callId: 'call-legacy',
+      status: 'connected',
+    });
+    reportLegacyEventMock.mockResolvedValueOnce({});
+
+    await expect(getAiCallBrowserSessionState(legacySession)).resolves.toEqual({
+      ...legacySession,
+      status: 'connected',
+    });
+    await reportAiCallBrowserSessionEvent(legacySession, {
+      type: 'browser_ready',
+    });
+
+    expect(getLegacyMock).toHaveBeenCalledWith('call-legacy');
+    expect(reportLegacyEventMock).toHaveBeenCalledWith('call-legacy', {
+      type: 'browser_ready',
+    });
+    expect(getRuntimeBootstrapMock).not.toHaveBeenCalled();
+  });
+
+  it('does not send owner browser events into the legacy local registry', async () => {
+    await reportAiCallBrowserSessionEvent(
+      {
+        runtimeControlMode: 'owner_command_v1',
+        callId: 'call-owner',
+      },
+      { type: 'browser_ready' },
+    );
+
+    expect(reportLegacyEventMock).not.toHaveBeenCalled();
   });
 });

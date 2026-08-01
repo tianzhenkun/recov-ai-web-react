@@ -1,13 +1,18 @@
 import {
+  type AiCallLabBrowserEvent,
   type AiCallLabCreateSessionRequest,
   type AiCallLabSession,
   createAiCallLabSession,
   endAiCallLabSession,
+  getAiCallLabSession,
+  reportAiCallLabBrowserEvent,
 } from './ai-call-lab';
 import {
+  type AiCallRuntimeBootstrap,
   type AiCallRuntimeStartAccepted,
   createAiCallRuntimeEndCall,
   createAiCallRuntimeStartCall,
+  getAiCallRuntimeBootstrap,
 } from './ai-call-runtime';
 import {
   getAiCallRuntimeErrorCode,
@@ -20,6 +25,11 @@ export type AiCallBrowserSessionStartRequest = AiCallLabCreateSessionRequest & {
 
 export type AiCallBrowserSession = AiCallLabSession & {
   runtimeControlMode: 'owner_command_v1' | 'legacy_local';
+  runtimePhase?: AiCallRuntimeBootstrap['phase'];
+  resourceCleanupStatus?: AiCallRuntimeBootstrap['resourceCleanupStatus'];
+  resourceCleanupError?: string | null;
+  failureStage?: string | null;
+  failureMessage?: string | null;
 };
 
 export class AiCallBrowserRuntimeStartError extends Error {
@@ -88,4 +98,32 @@ export const endAiCallBrowserSession = async (
     });
   }
   return endAiCallLabSession(session.callId);
+};
+
+export const getAiCallBrowserSessionState = async (
+  session: AiCallBrowserSession,
+): Promise<AiCallBrowserSession> => {
+  if (session.runtimeControlMode === 'legacy_local') {
+    return { ...session, ...(await getAiCallLabSession(session.callId)) };
+  }
+
+  const bootstrap = await getAiCallRuntimeBootstrap(session.callId);
+  return {
+    ...session,
+    roomName: bootstrap.roomName,
+    status: bootstrap.status,
+    runtimePhase: bootstrap.phase,
+    resourceCleanupStatus: bootstrap.resourceCleanupStatus,
+    resourceCleanupError: bootstrap.resourceCleanupError,
+    failureStage: bootstrap.failureStage,
+    failureMessage: bootstrap.failureMessage,
+  };
+};
+
+export const reportAiCallBrowserSessionEvent = async (
+  session: Pick<AiCallBrowserSession, 'callId' | 'runtimeControlMode'>,
+  event: AiCallLabBrowserEvent,
+): Promise<void> => {
+  if (session.runtimeControlMode === 'owner_command_v1') return;
+  await reportAiCallLabBrowserEvent(session.callId, event);
 };
