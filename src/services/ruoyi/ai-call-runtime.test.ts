@@ -78,12 +78,18 @@ describe('AI Call runtime entry service', () => {
       agentMediaReadyAt: null,
       terminalRequestedAt: null,
       tokenAvailable: false,
+      status: 'preparing',
+      resourceCleanupStatus: 'not_started',
+      resourceCleanupError: null,
+      failureStage: null,
+      failureMessage: null,
     };
     mockRuoyiRequest.mockResolvedValueOnce({ code: 200, data: bootstrap });
 
-    await expect(getAiCallRuntimeBootstrap('call_101')).resolves.toEqual(
-      bootstrap,
-    );
+    const result = await getAiCallRuntimeBootstrap('call_101');
+
+    expect(result).toEqual(bootstrap);
+    expect(result.resourceCleanupStatus).toBe('not_started');
     expect(mockRuoyiRequest).toHaveBeenCalledWith(
       '/ai-call/runtime/calls/call_101/bootstrap',
       {

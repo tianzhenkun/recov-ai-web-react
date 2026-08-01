@@ -44,6 +44,15 @@ export type AiCallRuntimeBootstrap = {
   agentMediaReadyAt?: string | null;
   terminalRequestedAt?: string | null;
   tokenAvailable: boolean;
+  status: string;
+  resourceCleanupStatus:
+    | 'not_started'
+    | 'reconciling'
+    | 'clean'
+    | 'attention_required';
+  resourceCleanupError: string | null;
+  failureStage: string | null;
+  failureMessage: string | null;
 };
 
 export type AiCallRuntimeToken = {
