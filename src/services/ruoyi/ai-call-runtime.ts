@@ -7,6 +7,8 @@ const RUNTIME_BOOTSTRAP_PATH = (callId: string) =>
   `/ai-call/runtime/calls/${encodeURIComponent(callId)}/bootstrap`;
 const RUNTIME_TOKEN_PATH = (callId: string) =>
   `/ai-call/runtime/calls/${encodeURIComponent(callId)}/token`;
+const RUNTIME_END_PATH = (callId: string) =>
+  `/ai-call/runtime/calls/${encodeURIComponent(callId)}/end`;
 
 export type AiCallRuntimeEntry = 'web' | 'preview' | 'direct_sip';
 
@@ -52,6 +54,19 @@ export type AiCallRuntimeToken = {
   expiresInSeconds: number;
 };
 
+export type AiCallRuntimeEndRequest = {
+  dedupeKey: string;
+  endReason?: string;
+};
+
+export type AiCallRuntimeEndAccepted = {
+  acceptanceStatus: 'ACCEPTED';
+  callId: string;
+  commandId: string;
+  commandSeq: string;
+  commandStatus: string;
+};
+
 const unwrapData = <T>(response: RuoyiResponse<T> | T): T => {
   if (!response || typeof response !== 'object' || !('code' in response)) {
     throw new Error('接口响应缺少 code');
@@ -92,6 +107,19 @@ export const createAiCallRuntimeToken = async (
     await ruoyiRequest<AiCallRuntimeToken>(RUNTIME_TOKEN_PATH(callId), {
       baseApi: AI_CALL_AGENT_BASE_API,
       method: 'post',
+      repeatSubmit: false,
+    }),
+  );
+
+export const createAiCallRuntimeEndCall = async (
+  callId: string,
+  data: AiCallRuntimeEndRequest,
+): Promise<AiCallRuntimeEndAccepted> =>
+  unwrapData(
+    await ruoyiRequest<AiCallRuntimeEndAccepted>(RUNTIME_END_PATH(callId), {
+      baseApi: AI_CALL_AGENT_BASE_API,
+      method: 'post',
+      data,
       repeatSubmit: false,
     }),
   );

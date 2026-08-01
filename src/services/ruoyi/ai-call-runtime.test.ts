@@ -1,7 +1,8 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
 import {
-  createAiCallRuntimeToken,
+  createAiCallRuntimeEndCall,
   createAiCallRuntimeStartCall,
+  createAiCallRuntimeToken,
   getAiCallRuntimeBootstrap,
 } from './ai-call-runtime';
 
@@ -108,6 +109,36 @@ describe('AI Call runtime entry service', () => {
       {
         baseApi: '/ai-call-agent-api',
         method: 'post',
+        repeatSubmit: false,
+      },
+    );
+  });
+
+  it('submits a retry-safe END_CALL and keeps the real command status', async () => {
+    const accepted = {
+      acceptanceStatus: 'ACCEPTED',
+      callId: 'call_101',
+      commandId: '202',
+      commandSeq: '2',
+      commandStatus: 'PENDING',
+    };
+    mockRuoyiRequest.mockResolvedValueOnce({ code: 200, data: accepted });
+
+    await expect(
+      createAiCallRuntimeEndCall('call_101', {
+        dedupeKey: 'call_101:web_client:click-1',
+        endReason: 'user_requested',
+      }),
+    ).resolves.toEqual(accepted);
+    expect(mockRuoyiRequest).toHaveBeenCalledWith(
+      '/ai-call/runtime/calls/call_101/end',
+      {
+        baseApi: '/ai-call-agent-api',
+        method: 'post',
+        data: {
+          dedupeKey: 'call_101:web_client:click-1',
+          endReason: 'user_requested',
+        },
         repeatSubmit: false,
       },
     );
