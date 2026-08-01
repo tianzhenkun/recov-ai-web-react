@@ -1,5 +1,8 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
-import { createAiCallRuntimeStartCall } from './ai-call-runtime';
+import {
+  createAiCallRuntimeStartCall,
+  getAiCallRuntimeBootstrap,
+} from './ai-call-runtime';
 
 jest.mock('@/adapters/ruoyi/request', () => ({
   ruoyiRequest: jest.fn(),
@@ -59,5 +62,31 @@ describe('AI Call runtime entry service', () => {
         payload: { voice: 'v1' },
       }),
     ).rejects.toThrow('接口响应缺少 data');
+  });
+
+  it('reads owner bootstrap readiness without treating it as a token', async () => {
+    const bootstrap = {
+      callId: 'call_101',
+      entryType: 'web',
+      phase: 'starting',
+      roomName: 'ai-call-call_101',
+      participantIdentity: 'agent-call_101',
+      runtimeFencingToken: 7,
+      agentMediaReadyAt: null,
+      terminalRequestedAt: null,
+      tokenAvailable: false,
+    };
+    mockRuoyiRequest.mockResolvedValueOnce({ code: 200, data: bootstrap });
+
+    await expect(getAiCallRuntimeBootstrap('call_101')).resolves.toEqual(
+      bootstrap,
+    );
+    expect(mockRuoyiRequest).toHaveBeenCalledWith(
+      '/ai-call/runtime/calls/call_101/bootstrap',
+      {
+        baseApi: '/ai-call-agent-api',
+        method: 'get',
+      },
+    );
   });
 });
