@@ -26,6 +26,7 @@ export type AiCallRuntimeStartRequest = {
 };
 
 export type AiCallRuntimeStartAccepted = {
+  acceptanceStatus: 'ACCEPTED';
   commandId: string;
   callId: string;
   commandSeq: string;

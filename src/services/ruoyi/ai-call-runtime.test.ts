@@ -19,6 +19,7 @@ describe('AI Call runtime entry service', () => {
 
   it('submits an authenticated owner START_CALL through the agent proxy', async () => {
     const accepted = {
+      acceptanceStatus: 'ACCEPTED',
       commandId: '101',
       callId: 'call_101',
       commandSeq: '1',
