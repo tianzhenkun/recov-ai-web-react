@@ -147,6 +147,12 @@ export const getAllowedTaskActions = (status: TaskStatus): TaskActionKey[] =>
 export const isTaskPollingStatus = (status: TaskStatus): boolean =>
   status === 'RUNNING' || status === 'PAUSING' || status === 'STOPPING';
 
+export const shouldPollTask = (
+  task: Pick<AiCallTask, 'status' | 'executionMode'>,
+): boolean =>
+  isTaskPollingStatus(task.status) ||
+  (task.status === 'SCHEDULED' && task.executionMode === 'immediate');
+
 export const getTaskProgress = (task: AiCallTask): number =>
   task.totalTargets === 0
     ? 0

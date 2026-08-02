@@ -175,6 +175,28 @@ describe('AI Call task detail page', () => {
     expect(screen.queryByTestId('linphone-active-status')).toBeNull();
   });
 
+  it('refreshes an immediate task while it is still scheduled', async () => {
+    const task = await mockedGetTask();
+    mockedGetTask.mockReset();
+    mockedGetTask
+      .mockResolvedValueOnce({
+        ...task,
+        status: 'SCHEDULED',
+        completedTargets: 0,
+      })
+      .mockResolvedValue({
+        ...task,
+        status: 'COMPLETED',
+        completedTargets: 100,
+      });
+
+    render(<AiCallTaskDetailPage />);
+
+    expect(await screen.findByText('已完成')).toBeTruthy();
+    expect(screen.getAllByText('100')).toHaveLength(2);
+    await waitFor(() => expect(mockedGetTask).toHaveBeenCalledTimes(2));
+  });
+
   it('uses attempt provenance to distinguish mock success from a real connection', async () => {
     const task = await mockedGetTask();
     mockedGetTask.mockResolvedValue({

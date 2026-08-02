@@ -3,6 +3,7 @@ import {
   getAllowedTaskActions,
   getTaskProgress,
   isTaskPollingStatus,
+  shouldPollTask,
   type TaskStatus,
 } from './domain';
 
@@ -58,6 +59,15 @@ describe('AI Call task domain', () => {
     [TaskStatus, boolean]
   >)('reports whether %s requires polling', (status, expected) => {
     expect(isTaskPollingStatus(status)).toBe(expected);
+  });
+
+  it.each([
+    [buildTask({ status: 'SCHEDULED', executionMode: 'immediate' }), true],
+    [buildTask({ status: 'SCHEDULED', executionMode: 'scheduled' }), false],
+    [buildTask({ status: 'RUNNING', executionMode: 'immediate' }), true],
+    [buildTask({ status: 'COMPLETED', executionMode: 'immediate' }), false],
+  ])('reports whether task $status in $executionMode mode requires detail polling', (task, expected) => {
+    expect(shouldPollTask(task)).toBe(expected);
   });
 
   it('calculates progress from completed targets', () => {

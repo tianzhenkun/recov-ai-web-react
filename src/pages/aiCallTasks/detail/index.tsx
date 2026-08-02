@@ -28,7 +28,7 @@ import {
   type AiCallTask,
   type AiCallTaskTarget,
   getTaskProgress,
-  isTaskPollingStatus,
+  shouldPollTask,
   type TargetStatus,
 } from '../domain';
 import { useVisiblePolling } from '../hooks/useVisiblePolling';
@@ -151,7 +151,7 @@ const AiCallTaskDetailPage = () => {
   }, [taskId]);
 
   useVisiblePolling({
-    enabled: Boolean(task && isTaskPollingStatus(task.status)),
+    enabled: Boolean(task && shouldPollTask(task)),
     intervalMs: 5_000,
     onTick: async () => {
       await Promise.all([loadTask(), actionRef.current?.reload()]);
