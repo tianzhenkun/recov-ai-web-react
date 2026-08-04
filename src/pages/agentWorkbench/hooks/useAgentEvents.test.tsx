@@ -79,7 +79,6 @@ describe('useAgentEvents', () => {
       />,
     );
 
-    act(() => connector.handlers.onOpen());
     act(() => connector.handlers.onEvent({ type: 'agent.handoff.requested' }));
 
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
@@ -113,7 +112,7 @@ describe('useAgentEvents', () => {
     expect(sound.play).not.toHaveBeenCalled();
   });
 
-  it('uses a low-frequency poll when the event stream is unavailable', async () => {
+  it('refreshes immediately and every three seconds when the event stream is unavailable', () => {
     jest.useFakeTimers();
     const connector = createConnector();
     const refresh = jest.fn();
@@ -123,16 +122,70 @@ describe('useAgentEvents', () => {
           agentStatus: 'available',
           refresh,
           connector: connector.connect,
-          pollIntervalMs: 30_000,
         }}
       />,
     );
 
     act(() => connector.handlers.onError(new Error('stream failed')));
     expect(screen.getByTestId('transport').textContent).toBe('polling');
-    act(() => jest.advanceTimersByTime(30_000));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    act(() => jest.advanceTimersByTime(2_999));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    act(() => jest.advanceTimersByTime(1));
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
 
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  it('refreshes once when the event stream reconnects without polling while healthy', () => {
+    jest.useFakeTimers();
+    const connector = createConnector();
+    const refresh = jest.fn();
+    render(
+      <EventsHarness
+        options={{
+          agentStatus: 'available',
+          refresh,
+          connector: connector.connect,
+        }}
+      />,
+    );
+
+    act(() => connector.handlers.onOpen());
+    expect(refresh).toHaveBeenCalledTimes(1);
+    act(() => jest.advanceTimersByTime(3_000));
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the event stream connected when the refresh callback changes', () => {
+    const connector = createConnector();
+    const firstRefresh = jest.fn();
+    const { rerender } = render(
+      <EventsHarness
+        options={{
+          agentStatus: 'available',
+          refresh: firstRefresh,
+          connector: connector.connect,
+        }}
+      />,
+    );
+
+    act(() => connector.handlers.onOpen());
+    expect(firstRefresh).toHaveBeenCalledTimes(1);
+
+    const nextRefresh = jest.fn();
+    rerender(
+      <EventsHarness
+        options={{
+          agentStatus: 'available',
+          refresh: nextRefresh,
+          connector: connector.connect,
+        }}
+      />,
+    );
+
+    expect(connector.connect).toHaveBeenCalledTimes(1);
+    expect(connector.disconnect).not.toHaveBeenCalled();
+    act(() => connector.handlers.onEvent({ type: 'presence.changed' }));
+    expect(nextRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('does not repeatedly request denied notification permission', async () => {

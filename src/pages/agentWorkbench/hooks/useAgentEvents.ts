@@ -34,7 +34,7 @@ export type UseAgentEventsOptions = {
 
 const NOTIFICATION_REQUESTED_KEY =
   'agent-workbench:notification-permission-requested';
-const DEFAULT_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_POLL_INTERVAL_MS = 3_000;
 
 const parseEventType = (raw: string, fallback?: string) => {
   try {
@@ -58,7 +58,7 @@ export const connectAgentEventStream: AgentEventConnector = (handlers) => {
     method: 'GET',
     headers,
     signal: controller.signal,
-    openWhenHidden: false,
+    openWhenHidden: true,
     onopen: async (response) => {
       const contentType = response.headers.get('content-type') || '';
       if (!response.ok || !contentType.startsWith(EventStreamContentType)) {
@@ -142,13 +142,14 @@ export const useAgentEvents = (options: UseAgentEventsOptions) => {
     'connecting',
   );
   const [unreadCount, setUnreadCount] = useState(0);
+  const refreshRef = useRef(options.refresh);
+  refreshRef.current = options.refresh;
 
-  const refresh = options.refresh;
   const agentStatus = options.agentStatus;
 
   const handleEvent = useCallback(
     (event: { type?: string }) => {
-      void refresh();
+      void refreshRef.current();
       if (!isNewHandoffEvent(event.type)) return;
       setUnreadCount((count) => count + 1);
       if (agentStatus !== 'available') return;
@@ -160,22 +161,32 @@ export const useAgentEvents = (options: UseAgentEventsOptions) => {
         });
       }
     },
-    [agentStatus, notifications, refresh, sound],
+    [agentStatus, notifications, sound],
   );
 
   useEffect(() => {
     setTransport('connecting');
     return connector({
-      onOpen: () => setTransport('sse'),
+      onOpen: () => {
+        setTransport('sse');
+        void refreshRef.current();
+      },
       onEvent: handleEvent,
-      onError: () => setTransport('polling'),
+      onError: () => {
+        setTransport('polling');
+        void refreshRef.current();
+      },
     });
   }, [connector, handleEvent]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => void refresh(), pollIntervalMs);
+    if (transport !== 'polling') return undefined;
+    const timer = window.setInterval(
+      () => void refreshRef.current(),
+      pollIntervalMs,
+    );
     return () => window.clearInterval(timer);
-  }, [pollIntervalMs, refresh]);
+  }, [pollIntervalMs, transport]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
