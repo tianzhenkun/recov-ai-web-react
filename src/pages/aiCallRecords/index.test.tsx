@@ -276,6 +276,36 @@ describe('AI Call 通话记录页面', () => {
     expect(within(tableColumns).queryByText('录音')).toBeNull();
   });
 
+  it('未明确同意时不把跟进线索展示为明确需求', async () => {
+    (getAiCallRecordSemanticAnalysis as jest.Mock).mockResolvedValue({
+      callId: 'call-1',
+      analysisSceneCode: 'intro_geo',
+      analysisStatus: '2',
+      analysisResult: {
+        follow_up: {
+          required: true,
+          consent: 'missing',
+          reason: '客户询问试用，但未明确同意后续联系',
+          confidence: 'low',
+        },
+      },
+      analysisRetryCount: 0,
+    });
+
+    render(<AiCallRecordsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    expect(
+      within(detailDrawer).getByText('存在后续跟进线索，客户尚未明确同意'),
+    ).toBeTruthy();
+    expect(
+      within(detailDrawer).queryByText('已识别到明确的后续联系需求'),
+    ).toBeNull();
+  });
+
   it('继承外呼统计下钻的正式来源、结果和右开时间范围', async () => {
     mockSearchParams = new URLSearchParams({
       entryType: 'sip_outbound',

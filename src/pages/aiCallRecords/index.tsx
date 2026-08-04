@@ -232,6 +232,13 @@ const renderAnalysisValue = (key: string, value: unknown) => {
     const consent = String(followUp.consent || 'missing');
     const confidence = String(followUp.confidence || '');
     const preferredAt = String(followUp.preferred_time || '').trim();
+    const followUpDecision = followUp.required
+      ? consent === 'explicit'
+        ? '客户已明确同意后续联系'
+        : '存在后续跟进线索，客户尚未明确同意'
+      : consent === 'refused'
+        ? '客户明确拒绝后续联系'
+        : '未识别到明确的后续联系需求';
     return (
       <Descriptions
         column={1}
@@ -242,6 +249,11 @@ const renderAnalysisValue = (key: string, value: unknown) => {
             key: 'suggested',
             label: '处理建议',
             children: followUp.required ? '建议跟进' : '无需跟进',
+          },
+          {
+            key: 'decision',
+            label: '跟进判断',
+            children: followUpDecision,
           },
           {
             key: 'consent',
