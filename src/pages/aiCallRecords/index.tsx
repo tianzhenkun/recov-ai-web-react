@@ -53,11 +53,14 @@ const entryTypeLabels: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   created: '已创建',
+  pending: '待处理',
+  processing: '处理中',
   starting: '启动中',
   running: '通话中',
   active: '通话中',
   ending: '结束中',
   completed: '已完成',
+  closed: '已关闭',
   failed: '失败',
 };
 
@@ -165,6 +168,14 @@ const followUpConfidenceLabels: Record<string, string> = {
   high: '高',
   medium: '中',
   low: '低',
+};
+
+const dispositionLabels: Record<string, string> = {
+  resolved: '已解决',
+  follow_up_required: '需要后续跟进',
+  customer_refused: '客户拒绝',
+  invalid_contact: '联系方式无效',
+  other: '其他',
 };
 
 const renderAnalysisValue = (key: string, value: unknown) => {
@@ -724,6 +735,8 @@ const AiCallRecordsPage = () => {
     recording?.playUrl ||
     recording?.tracks?.find((track) => track.playUrl)?.playUrl;
   const executionConfig = detail?.executionConfig;
+  const afterCallWork = detail?.afterCallWork;
+  const followUp = detail?.followUp;
   const analysisResult = analysis?.analysisResult || {};
   const analysisItems = analysisFieldOrder
     .filter((key) => Object.hasOwn(analysisResult, key))
@@ -1005,40 +1018,119 @@ const AiCallRecordsPage = () => {
             </section>
 
             <section>
-              <Title level={5}>AI 分析与转人工</Title>
-              {detailErrors.analysis ? (
-                <Alert showIcon title={detailErrors.analysis} type="error" />
-              ) : analysis ? (
-                <Flex vertical gap={12}>
-                  <Text>
-                    分析状态：
-                    {analysisStatusLabels[analysis.analysisStatus] ||
-                      analysis.analysisStatus}
-                  </Text>
-                  {analysis.analysisError ? (
+              {afterCallWork ? (
+                <>
+                  <Title level={5}>坐席最终处置</Title>
+                  <Descriptions
+                    column={1}
+                    styles={detailDescriptionStyles}
+                    items={[
+                      {
+                        key: 'disposition',
+                        label: '处置结果',
+                        children: (
+                          <Tag
+                            color={
+                              afterCallWork.needsFollowUp
+                                ? 'warning'
+                                : 'success'
+                            }
+                          >
+                            {dispositionLabels[afterCallWork.dispositionCode] ||
+                              afterCallWork.dispositionCode}
+                          </Tag>
+                        ),
+                      },
+                      {
+                        key: 'summary',
+                        label: '处理备注',
+                        children: afterCallWork.summary || '-',
+                      },
+                      {
+                        key: 'agent',
+                        label: '提交坐席',
+                        children: afterCallWork.agentIdentity,
+                      },
+                      {
+                        key: 'submittedAt',
+                        label: '提交时间',
+                        children: formatDateTime(afterCallWork.submittedAt),
+                      },
+                      ...(followUp
+                        ? [
+                            {
+                              key: 'followUp',
+                              label: '跟进任务',
+                              children: (
+                                <Flex align="center" gap={8} wrap>
+                                  <Tag>
+                                    {statusLabels[followUp.status] ||
+                                      followUp.status}
+                                  </Tag>
+                                  <Text>{followUp.reason}</Text>
+                                  <Button
+                                    size="small"
+                                    type="link"
+                                    onClick={() =>
+                                      history.push(
+                                        `/ai-call/follow-ups?followUpId=${encodeURIComponent(
+                                          followUp.id,
+                                        )}`,
+                                      )
+                                    }
+                                  >
+                                    查看跟进任务
+                                  </Button>
+                                </Flex>
+                              ),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                </>
+              ) : (
+                <>
+                  <Title level={5}>AI 分析与转人工</Title>
+                  {detailErrors.analysis ? (
                     <Alert
                       showIcon
-                      title={analysis.analysisError}
+                      title={detailErrors.analysis}
                       type="error"
                     />
-                  ) : analysisItems.length ? (
-                    <Descriptions
-                      column={1}
-                      styles={detailDescriptionStyles}
-                      items={analysisItems}
-                    />
+                  ) : analysis ? (
+                    <Flex vertical gap={12}>
+                      <Text>
+                        分析状态：
+                        {analysisStatusLabels[analysis.analysisStatus] ||
+                          analysis.analysisStatus}
+                      </Text>
+                      {analysis.analysisError ? (
+                        <Alert
+                          showIcon
+                          title={analysis.analysisError}
+                          type="error"
+                        />
+                      ) : analysisItems.length ? (
+                        <Descriptions
+                          column={1}
+                          styles={detailDescriptionStyles}
+                          items={analysisItems}
+                        />
+                      ) : (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="暂无结构化分析结果"
+                        />
+                      )}
+                    </Flex>
                   ) : (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="暂无结构化分析结果"
+                      description="暂无 AI 分析"
                     />
                   )}
-                </Flex>
-              ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无 AI 分析"
-                />
+                </>
               )}
 
               {detailErrors.handoffs ? (

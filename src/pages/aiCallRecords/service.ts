@@ -60,6 +60,18 @@ export type AiCallRecordEvent = {
 export type AiCallRecordDetail = {
   record: AiCallRecord;
   lastEvent?: AiCallRecordEvent | null;
+  afterCallWork?: {
+    agentIdentity: string;
+    dispositionCode: string;
+    summary?: string | null;
+    needsFollowUp: boolean;
+    submittedAt: string;
+  } | null;
+  followUp?: {
+    id: string;
+    status: string;
+    reason: string;
+  } | null;
   executionConfig?: {
     promptProfileId?: string | null;
     promptName?: string | null;
