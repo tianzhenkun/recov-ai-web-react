@@ -11,6 +11,10 @@ import { useAgentCall } from './useAgentCall';
 
 jest.mock('livekit-client', () => ({
   ConnectionQuality: {},
+  DisconnectReason: {
+    PARTICIPANT_REMOVED: 4,
+    ROOM_DELETED: 5,
+  },
   RoomEvent: {
     Disconnected: 'disconnected',
     TrackSubscribed: 'trackSubscribed',
@@ -35,7 +39,7 @@ const credential = {
 };
 
 const createRoom = () => {
-  let disconnected: (() => void) | undefined;
+  let disconnected: ((reason?: number) => void) | undefined;
   let remoteAudio: (() => void) | undefined;
   return {
     connect: jest.fn().mockResolvedValue(undefined),
@@ -50,7 +54,7 @@ const createRoom = () => {
       remoteAudio = handler;
     }),
     onNetworkQuality: jest.fn(),
-    emitDisconnected: () => disconnected?.(),
+    emitDisconnected: (reason?: number) => disconnected?.(reason),
     emitRemoteAudio: () => remoteAudio?.(),
   };
 };
@@ -271,6 +275,34 @@ describe('useAgentCall', () => {
         'reconnect-token',
       ),
     );
+  });
+
+  it('enters wrap-up without reconnecting when LiveKit deletes the room', async () => {
+    const room = createRoom();
+    const services = createServices();
+    const onWrapUp = jest.fn();
+    render(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory: () => room,
+          services,
+          onWrapUp,
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('connected'),
+    );
+
+    act(() => room.emitDisconnected(5));
+
+    await waitFor(() =>
+      expect(onWrapUp).toHaveBeenCalledWith(credential.handoff),
+    );
+    expect(services.reconnectToken).not.toHaveBeenCalled();
+    expect(screen.getByTestId('phase').textContent).toBe('wrap_up_quick');
   });
 
   it('enters wrap-up on reconnect timeout without claiming another task', async () => {

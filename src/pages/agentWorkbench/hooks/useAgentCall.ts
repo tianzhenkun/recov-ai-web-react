@@ -1,6 +1,7 @@
 import {
   type ConnectionQuality,
   createLocalAudioTrack,
+  DisconnectReason,
   type LocalAudioTrack,
   type Participant,
   type RemoteTrack,
@@ -50,7 +51,7 @@ export type AgentRoomConnection = {
   setMicrophoneEnabled: (enabled: boolean) => Promise<void>;
   switchAudioInput: (deviceId: string) => Promise<void>;
   disconnect: () => Promise<void> | void;
-  onDisconnected: (handler: () => void) => void;
+  onDisconnected: (handler: (reason?: DisconnectReason) => void) => void;
   onRemoteAudio: (handler: () => void) => void;
   onNetworkQuality: (handler: (quality: AgentNetworkQuality) => void) => void;
 };
@@ -162,12 +163,12 @@ const unwrapCredential = (response: unknown): MediaCredentialDto => {
 export const createLiveKitAgentRoom = (): AgentRoomConnection => {
   const room = new Room({ adaptiveStream: true, dynacast: true });
   let localAudioTrack: LocalAudioTrack | undefined;
-  let disconnectHandler: (() => void) | undefined;
+  let disconnectHandler: ((reason?: DisconnectReason) => void) | undefined;
   let remoteAudioHandler: (() => void) | undefined;
   let qualityHandler: ((quality: AgentNetworkQuality) => void) | undefined;
   const attachedAudio = new Set<HTMLMediaElement>();
 
-  room.on(RoomEvent.Disconnected, () => disconnectHandler?.());
+  room.on(RoomEvent.Disconnected, (reason) => disconnectHandler?.(reason));
   room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
     if (track.kind !== Track.Kind.Audio) return;
     const element = track.attach();
@@ -304,13 +305,22 @@ export const useAgentCall = ({
       room.onNetworkQuality((quality) => {
         if (generation === generationRef.current) setNetworkQuality(quality);
       });
-      room.onDisconnected(() => {
+      room.onDisconnected((reason) => {
         if (
           generation !== generationRef.current ||
           intentionalDisconnectRef.current ||
           reconnectingRef.current ||
           endingRef.current
         ) {
+          return;
+        }
+        if (
+          reason === DisconnectReason.ROOM_DELETED ||
+          reason === DisconnectReason.PARTICIPANT_REMOVED
+        ) {
+          setPhase('wrap_up_quick');
+          setErrorMessage('');
+          onWrapUp?.(nextCredential.handoff);
           return;
         }
         reconnectingRef.current = true;
