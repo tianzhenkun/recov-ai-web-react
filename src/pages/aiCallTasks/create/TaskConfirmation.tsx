@@ -1,5 +1,6 @@
 import { Button, Descriptions } from 'antd';
 import React from 'react';
+import './TaskConfirmation.css';
 
 type TaskConfirmationProps = {
   taskName: string;
@@ -30,7 +31,7 @@ const TaskConfirmation = ({
   creating,
   onConfirm,
 }: TaskConfirmationProps) => (
-  <div>
+  <div className="ai-call-task-confirmation">
     <h3 className="mt-0 text-base font-semibold">人工确认摘要</h3>
     <Descriptions
       bordered
