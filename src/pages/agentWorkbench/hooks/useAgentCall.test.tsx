@@ -131,6 +131,40 @@ describe('useAgentCall', () => {
     expect(screen.getByTestId('phase').textContent).toBe('connected');
   });
 
+  it('keeps the active room when only the refresh callback changes', async () => {
+    const room = createRoom();
+    const services = createServices();
+    const roomFactory = jest.fn(() => room);
+    const view = render(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory,
+          services,
+          refresh: jest.fn(),
+        }}
+      />,
+    );
+    await waitFor(() => expect(services.mediaReady).toHaveBeenCalledTimes(1));
+
+    view.rerender(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory,
+          services,
+          refresh: jest.fn(),
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(roomFactory).toHaveBeenCalledTimes(1));
+    expect(services.mediaReady).toHaveBeenCalledTimes(1);
+    expect(room.disconnect).not.toHaveBeenCalled();
+  });
+
   it('marks subscribed remote audio as playable', async () => {
     const room = createRoom();
     render(
@@ -271,10 +305,121 @@ describe('useAgentCall', () => {
     expect(screen.getByTestId('phase').textContent).toBe('wrap_up_quick');
   });
 
+  it('enters wrap-up when the handoff is already terminal during reconnect', async () => {
+    const room = createRoom();
+    const services = createServices();
+    services.reconnectToken.mockRejectedValueOnce({
+      response: {
+        code: 500,
+        data: { errorCode: 'HANDOFF_STATE_CONFLICT' },
+      },
+    });
+    const onWrapUp = jest.fn();
+    render(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory: () => room,
+          services,
+          onWrapUp,
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('connected'),
+    );
+    act(() => room.emitDisconnected());
+
+    await waitFor(() =>
+      expect(onWrapUp).toHaveBeenCalledWith(credential.handoff),
+    );
+    expect(screen.getByTestId('phase').textContent).toBe('wrap_up_quick');
+    expect(screen.getByTestId('error').textContent).toBe('');
+  });
+
   it('completes through the backend, while unmount only disconnects local media', async () => {
     const room = createRoom();
     const services = createServices();
+    const onWrapUp = jest.fn();
     const view = render(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory: () => room,
+          services,
+          onWrapUp,
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('connected'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '结束' }));
+    await waitFor(() => expect(services.complete).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('ended'),
+    );
+    expect(room.disconnect).toHaveBeenCalledTimes(1);
+    expect(onWrapUp).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    expect(services.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores a retryable connected state when completion fails', async () => {
+    const room = createRoom();
+    const services = createServices();
+    const refresh = jest.fn().mockResolvedValue(undefined);
+    services.complete
+      .mockRejectedValueOnce({
+        response: { data: { msg: '通话状态写入失败' } },
+      })
+      .mockResolvedValueOnce({ code: 200 });
+    render(
+      <Harness
+        options={{
+          credential,
+          consoleSessionId: 'session-1',
+          roomFactory: () => room,
+          services,
+          refresh,
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('connected'),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '结束' }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('connected'),
+    );
+    expect(screen.getByTestId('error').textContent).toBe('通话状态写入失败');
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '结束' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('ended'),
+    );
+    expect(services.complete).toHaveBeenCalledTimes(2);
+    expect(room.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request a reconnect token while completion is pending', async () => {
+    const room = createRoom();
+    const services = createServices();
+    let resolveComplete: ((value: { code: number }) => void) | undefined;
+    services.complete.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveComplete = resolve;
+        }),
+    );
+    render(
       <Harness
         options={{
           credential,
@@ -287,11 +432,24 @@ describe('useAgentCall', () => {
     await waitFor(() =>
       expect(screen.getByTestId('phase').textContent).toBe('connected'),
     );
-    fireEvent.click(screen.getByRole('button', { name: '结束' }));
-    await waitFor(() => expect(services.complete).toHaveBeenCalledTimes(1));
-    expect(room.disconnect).toHaveBeenCalledTimes(1);
 
-    view.unmount();
-    expect(services.complete).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '结束' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('ending'),
+    );
+    act(() => room.emitDisconnected());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(services.reconnectToken).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveComplete?.({ code: 200 });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('ended'),
+    );
   });
 });

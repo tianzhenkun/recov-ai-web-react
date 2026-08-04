@@ -84,17 +84,58 @@ const idempotencyInput = (
   idempotencyKey: crypto.randomUUID(),
 });
 
-const getErrorCode = (error: unknown) => {
-  if (!error || typeof error !== 'object') return undefined;
-  const data = Reflect.get(error, 'data');
+const readErrorCode = (value: unknown) => {
+  if (!value || typeof value !== 'object') return undefined;
+  const direct =
+    Reflect.get(value, 'errorCode') || Reflect.get(value, 'error_code');
+  if (typeof direct === 'string') return direct;
+  const data = Reflect.get(value, 'data');
   if (data && typeof data === 'object') {
-    return Reflect.get(data, 'errorCode') || Reflect.get(data, 'error_code');
+    const nested =
+      Reflect.get(data, 'errorCode') || Reflect.get(data, 'error_code');
+    if (typeof nested === 'string') return nested;
   }
-  return Reflect.get(error, 'errorCode') || Reflect.get(error, 'error_code');
+  return undefined;
 };
 
-const getErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
+const getErrorCode = (error: unknown) => {
+  if (!error || typeof error !== 'object') return undefined;
+  return (
+    readErrorCode(error) ||
+    readErrorCode(Reflect.get(error, 'response')) ||
+    readErrorCode(Reflect.get(error, 'info'))
+  );
+};
+
+const readErrorMessage = (value: unknown) => {
+  if (!value || typeof value !== 'object') return undefined;
+  const direct = Reflect.get(value, 'msg');
+  if (typeof direct === 'string' && direct.trim()) return direct.trim();
+  const data = Reflect.get(value, 'data');
+  if (data && typeof data === 'object') {
+    const nested = Reflect.get(data, 'msg');
+    if (typeof nested === 'string' && nested.trim()) return nested.trim();
+  }
+  return undefined;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error && typeof error === 'object') {
+    const businessMessage =
+      readErrorMessage(error) ||
+      readErrorMessage(Reflect.get(error, 'response')) ||
+      readErrorMessage(Reflect.get(error, 'info'));
+    if (businessMessage) return businessMessage;
+  }
+  if (
+    error instanceof Error &&
+    error.message &&
+    !/^Request failed with status code \d+$/i.test(error.message)
+  ) {
+    return error.message;
+  }
+  return fallback;
+};
 
 const stageErrorMessages: Partial<Record<AgentCallConnectionStage, string>> = {
   livekit_connecting: '已认领，但无法连接通话房间',
@@ -220,6 +261,12 @@ export const useAgentCall = ({
   const connectionStageRef = useRef<AgentCallConnectionStage>('idle');
   const intentionalDisconnectRef = useRef(false);
   const reconnectingRef = useRef(false);
+  const endingRef = useRef(false);
+  const refreshRef = useRef(refresh);
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
 
   const updateConnectionStage = useCallback(
     (stage: AgentCallConnectionStage) => {
@@ -234,8 +281,11 @@ export const useAgentCall = ({
     roomRef.current = undefined;
     if (!room) return;
     intentionalDisconnectRef.current = true;
-    await room.disconnect();
-    intentionalDisconnectRef.current = false;
+    try {
+      await room.disconnect();
+    } finally {
+      intentionalDisconnectRef.current = false;
+    }
   }, []);
 
   const connectCredential = useCallback(
@@ -258,7 +308,8 @@ export const useAgentCall = ({
         if (
           generation !== generationRef.current ||
           intentionalDisconnectRef.current ||
-          reconnectingRef.current
+          reconnectingRef.current ||
+          endingRef.current
         ) {
           return;
         }
@@ -277,11 +328,18 @@ export const useAgentCall = ({
             await connectCredential(reconnectCredential, true);
           })
           .catch((error) => {
-            if (getErrorCode(error) === 'AGENT_RECONNECT_TIMEOUT') {
+            const errorCode = getErrorCode(error);
+            if (errorCode === 'AGENT_RECONNECT_TIMEOUT') {
               const reason = '坐席网络重连超时，通话已转入话后处理';
               setPhase('wrap_up_quick');
               setErrorMessage(reason);
               onWrapUp?.(nextCredential.handoff, reason);
+              return;
+            }
+            if (errorCode === 'HANDOFF_STATE_CONFLICT') {
+              setPhase('wrap_up_quick');
+              setErrorMessage('');
+              onWrapUp?.(nextCredential.handoff);
               return;
             }
             setPhase('error');
@@ -343,7 +401,7 @@ export const useAgentCall = ({
         stageErrorMessages[connectionStageRef.current] ||
           getErrorMessage(error, '人工通话接入失败，请刷新坐席状态'),
       );
-      await refresh?.();
+      await refreshRef.current?.();
     });
     return () => {
       active = false;
@@ -355,7 +413,6 @@ export const useAgentCall = ({
     consoleSessionId,
     credential,
     disconnectCurrentRoom,
-    refresh,
     updateConnectionStage,
   ]);
 
@@ -370,15 +427,36 @@ export const useAgentCall = ({
   }, []);
 
   const endCall = useCallback(async () => {
-    if (!credential || !consoleSessionId || phase === 'ending') return;
+    if (
+      !credential ||
+      !consoleSessionId ||
+      phase === 'ending' ||
+      endingRef.current
+    ) {
+      return;
+    }
+    endingRef.current = true;
     setPhase('ending');
-    await services.complete(
-      credential.handoff.handoff_id,
-      idempotencyInput(consoleSessionId),
-    );
-    await disconnectCurrentRoom();
-    setPhase('ended');
-    onWrapUp?.(credential.handoff);
+    setErrorMessage('');
+    try {
+      await services.complete(
+        credential.handoff.handoff_id,
+        idempotencyInput(consoleSessionId),
+      );
+      await disconnectCurrentRoom();
+      setPhase('ended');
+      onWrapUp?.(credential.handoff);
+    } catch (error) {
+      setPhase('connected');
+      setErrorMessage(getErrorMessage(error, '结束通话失败，请重试'));
+      try {
+        await refreshRef.current?.();
+      } catch {
+        // 保留原始结束错误，状态刷新失败由下一次心跳或手动重试继续收敛。
+      }
+    } finally {
+      endingRef.current = false;
+    }
   }, [
     consoleSessionId,
     credential,
