@@ -135,7 +135,7 @@ describe('useAgentEvents', () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
-  it('refreshes once when the event stream reconnects without polling while healthy', () => {
+  it('keeps polling every three seconds while the event stream is healthy', () => {
     jest.useFakeTimers();
     const connector = createConnector();
     const refresh = jest.fn();
@@ -152,7 +152,7 @@ describe('useAgentEvents', () => {
     act(() => connector.handlers.onOpen());
     expect(refresh).toHaveBeenCalledTimes(1);
     act(() => jest.advanceTimersByTime(3_000));
-    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the event stream connected when the refresh callback changes', () => {

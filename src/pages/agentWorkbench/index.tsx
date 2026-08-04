@@ -87,47 +87,56 @@ const AgentWorkbenchPage = () => {
     [],
   );
 
-  const loadHandoffs = useCallback(async () => {
-    if (!agent.profile || !agent.consoleSessionId) {
-      setHandoffs([]);
-      return;
-    }
-    if (agent.status !== 'available' || claimedCredential) return;
-    setHandoffsLoading(true);
-    try {
-      const response = await readWithGatewayRetry(
-        () =>
-          getPendingHandoffs({
-            consoleSessionId: agent.consoleSessionId,
-            limit: 100,
-          }),
-        {
-          onRetry: () => setReadErrorMessage('坐席服务暂不可用，正在重新连接'),
-        },
-      );
-      const envelope = response as unknown as {
-        data?: PageResult<HandoffDto>;
-        rows?: HandoffDto[];
-      };
-      const page = envelope.data;
-      setHandoffs(
-        page?.rows || (Array.isArray(envelope.rows) ? envelope.rows : []) || [],
-      );
-      setReadErrorMessage('');
-    } catch (error) {
-      setReadErrorMessage(
-        isRetryableReadError(error)
-          ? '坐席服务暂不可用，请点击重新连接'
-          : '待接通话加载失败，请点击重新连接',
-      );
-    } finally {
-      setHandoffsLoading(false);
-    }
-  }, [agent.consoleSessionId, agent.profile, agent.status, claimedCredential]);
+  const loadHandoffs = useCallback(
+    async (showLoading = true) => {
+      if (!agent.profile || !agent.consoleSessionId) {
+        setHandoffs([]);
+        return;
+      }
+      if (agent.status !== 'available' || claimedCredential) return;
+      if (showLoading) setHandoffsLoading(true);
+      try {
+        const response = await readWithGatewayRetry(
+          () =>
+            getPendingHandoffs({
+              consoleSessionId: agent.consoleSessionId,
+              limit: 100,
+            }),
+          {
+            onRetry: () =>
+              setReadErrorMessage('坐席服务暂不可用，正在重新连接'),
+          },
+        );
+        const envelope = response as unknown as {
+          data?: PageResult<HandoffDto>;
+          rows?: HandoffDto[];
+        };
+        const page = envelope.data;
+        setHandoffs(
+          page?.rows ||
+            (Array.isArray(envelope.rows) ? envelope.rows : []) ||
+            [],
+        );
+        setReadErrorMessage('');
+      } catch (error) {
+        setReadErrorMessage(
+          isRetryableReadError(error)
+            ? '坐席服务暂不可用，请点击重新连接'
+            : '待接通话加载失败，请点击重新连接',
+        );
+      } finally {
+        if (showLoading) setHandoffsLoading(false);
+      }
+    },
+    [agent.consoleSessionId, agent.profile, agent.status, claimedCredential],
+  );
+
+  const pollHandoffs = useCallback(() => loadHandoffs(false), [loadHandoffs]);
 
   const agentEvents = useAgentEvents({
     agentStatus: agent.status,
     refresh: loadHandoffs,
+    pollRefresh: pollHandoffs,
   });
   const agentCall = useAgentCall({
     credential: claimedCredential,

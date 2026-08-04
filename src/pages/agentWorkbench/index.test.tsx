@@ -12,7 +12,7 @@ jest.mock('./hooks/useAgentPresence', () => ({
 }));
 
 jest.mock('./hooks/useAgentEvents', () => ({
-  useAgentEvents: () => mockUseAgentEvents(),
+  useAgentEvents: (...args: unknown[]) => mockUseAgentEvents(...args),
 }));
 
 jest.mock('./hooks/useAgentCall', () => ({
@@ -153,6 +153,36 @@ describe('AgentWorkbenchPage presence shell', () => {
     expect(mockGetPendingHandoffs).toHaveBeenCalledWith({
       consoleSessionId: 'session-1',
       limit: 100,
+    });
+  });
+
+  it('refreshes the waiting pool silently for event-loss recovery', async () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      status: 'available',
+      consoleSessionId: 'session-1',
+    });
+    const view = render(<AgentWorkbenchPage />);
+    await act(async () => Promise.resolve());
+
+    const eventOptions = mockUseAgentEvents.mock.calls.at(-1)?.[0];
+    expect(typeof eventOptions.pollRefresh).toBe('function');
+
+    let resolvePoll: (value: unknown) => void = () => undefined;
+    mockGetPendingHandoffs.mockImplementationOnce(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+    act(() => {
+      void eventOptions.pollRefresh();
+    });
+
+    expect(view.container.querySelector('.ant-spin-spinning')).toBeNull();
+
+    await act(async () => {
+      resolvePoll({ code: 200, data: { rows: [], total: 0 } });
     });
   });
 

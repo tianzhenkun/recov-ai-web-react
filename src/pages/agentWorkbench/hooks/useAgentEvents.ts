@@ -26,6 +26,7 @@ export type AgentNotificationAdapter = {
 export type UseAgentEventsOptions = {
   agentStatus: string;
   refresh: () => void | Promise<void>;
+  pollRefresh?: () => void | Promise<void>;
   connector?: AgentEventConnector;
   pollIntervalMs?: number;
   sound?: { play: () => void | Promise<void> };
@@ -144,6 +145,8 @@ export const useAgentEvents = (options: UseAgentEventsOptions) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const refreshRef = useRef(options.refresh);
   refreshRef.current = options.refresh;
+  const pollRefreshRef = useRef(options.pollRefresh ?? options.refresh);
+  pollRefreshRef.current = options.pollRefresh ?? options.refresh;
 
   const agentStatus = options.agentStatus;
 
@@ -180,13 +183,12 @@ export const useAgentEvents = (options: UseAgentEventsOptions) => {
   }, [connector, handleEvent]);
 
   useEffect(() => {
-    if (transport !== 'polling') return undefined;
     const timer = window.setInterval(
-      () => void refreshRef.current(),
+      () => void pollRefreshRef.current(),
       pollIntervalMs,
     );
     return () => window.clearInterval(timer);
-  }, [pollIntervalMs, transport]);
+  }, [pollIntervalMs]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
