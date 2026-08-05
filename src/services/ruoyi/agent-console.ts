@@ -213,6 +213,18 @@ export type FollowUpAttemptDto = {
   customer_callback_at?: string | null;
 };
 
+export type FollowUpRecordDto = {
+  id: BigintString;
+  call_id: string;
+  entry_type: string;
+  status: string;
+  end_reason?: string | null;
+  started_at: string;
+  answered_at?: string | null;
+  ended_at?: string | null;
+  duration_ms?: number | null;
+};
+
 export type FollowUpTaskDto = {
   id: BigintString;
   source_type: FollowUpSourceType;
@@ -231,6 +243,8 @@ export type FollowUpTaskDto = {
   closed_remark?: string | null;
   attempts?: FollowUpAttemptDto[];
   latest_attempt?: FollowUpAttemptDto | null;
+  source_record?: FollowUpRecordDto | null;
+  callback_records?: FollowUpRecordDto[];
   created_at: string;
   updated_at?: string;
 };

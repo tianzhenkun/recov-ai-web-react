@@ -2,12 +2,15 @@ import { PhoneOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
+  Descriptions,
+  Drawer,
   Empty,
   Flex,
   Input,
   Modal,
   Select,
   Spin,
+  Table,
   Tabs,
   Tag,
   Typography,
@@ -24,16 +27,19 @@ import {
   createFollowUpAttempt,
   type FollowUpCallbackCredentialDto,
   type FollowUpTaskDto,
+  getAgentFollowUp,
   type IdempotentSessionInput,
   listAgentFollowUps,
   startFollowUpCall,
 } from '@/services/ruoyi/agent-console';
 import './FollowUpPanel.css';
+import FollowUpCallDetail from './FollowUpCallDetail';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 type FollowUpServices = {
   list: (params?: Record<string, unknown>) => Promise<unknown>;
+  detail: (followUpId: string) => Promise<unknown>;
   claim: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
   call: (followUpId: string, input: IdempotentSessionInput) => Promise<unknown>;
   complete: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
@@ -72,6 +78,7 @@ type FollowUpPanelProps = {
 
 const defaultServices: FollowUpServices = {
   list: listAgentFollowUps,
+  detail: getAgentFollowUp,
   claim: claimFollowUp,
   call: startFollowUpCall,
   complete: completeFollowUp,
@@ -108,6 +115,35 @@ const followUpStatusLabels: Record<FollowUpTaskDto['status'], string> = {
   closed: '已关闭',
 };
 
+const followUpSourceLabels: Record<FollowUpTaskDto['source_type'], string> = {
+  after_call_work: '接通后跟进',
+  handoff_unanswered: '人工未接回访',
+  ai_post_call: 'AI 话后跟进',
+};
+
+const attemptResultLabels: Record<AttemptResult, string> = {
+  connected: '已接通',
+  no_answer: '无人接听',
+  busy: '占线',
+  rejected: '客户拒接',
+  invalid_contact: '无效联系方式',
+  technical_failure: '技术失败',
+};
+
+const callStatusLabels: Record<string, string> = {
+  dialing: '正在呼叫',
+  ringing: '等待接听',
+  connected: '通话中',
+  completed: '已结束',
+  failed: '呼叫失败',
+};
+
+const formatCallbackAt = (value?: string | null) =>
+  value ? new Date(value).toLocaleString() : '未约定回访时间';
+
+const latestAttemptOf = (task: FollowUpTaskDto) =>
+  task.latest_attempt || task.attempts?.at(-1);
+
 const FollowUpPanel = ({
   agentStatus = 'available',
   callbackEnabled = false,
@@ -131,6 +167,8 @@ const FollowUpPanel = ({
   const [attemptRemark, setAttemptRemark] = useState('');
   const [attemptError, setAttemptError] = useState('');
   const [callbackAt, setCallbackAt] = useState('');
+  const [selectedTask, setSelectedTask] = useState<FollowUpTaskDto>();
+  const [selectedCallId, setSelectedCallId] = useState<string>();
   const inFlightRef = useRef(new Set<string>());
 
   const loadTasks = useCallback(async () => {
@@ -176,6 +214,21 @@ const FollowUpPanel = ({
       setTasks((current) => current.filter((item) => item.id !== task.id));
     });
 
+  const openTaskDetail = (task: FollowUpTaskDto) =>
+    runOnce(`detail:${task.id}`, async () => {
+      setSelectedTask(task);
+      try {
+        const detail = unwrapData(
+          await services.detail(task.id),
+        ) as FollowUpTaskDto;
+        setSelectedTask((current) =>
+          current?.id === task.id ? detail : current,
+        );
+      } catch {
+        setNotice('跟进任务详情加载失败，请重试');
+      }
+    });
+
   const callCustomer = (task: FollowUpTaskDto) =>
     runOnce(`call:${task.id}`, async () => {
       if (!consoleSessionId) {
@@ -194,6 +247,72 @@ const FollowUpPanel = ({
 
   const terminal = (task: FollowUpTaskDto) =>
     ['completed', 'closed'].includes(task.status);
+  const selectedTaskLatestAttempt = selectedTask
+    ? latestAttemptOf(selectedTask)
+    : undefined;
+  const selectedTaskCallbacks = selectedTask?.callback_records || [];
+
+  const taskActions = (task: FollowUpTaskDto) => (
+    <Flex gap="small" wrap>
+      <Button
+        type="link"
+        size="small"
+        onClick={() => void openTaskDetail(task)}
+      >
+        查看详情
+      </Button>
+      {!terminal(task) &&
+      scope === 'unassigned' &&
+      !task.owner_agent_identity ? (
+        <Button type="link" size="small" onClick={() => void claim(task)}>
+          认领回访
+        </Button>
+      ) : null}
+      {!terminal(task) && scope === 'mine' ? (
+        <>
+          {callbackEnabled ? (
+            <Button
+              type="link"
+              size="small"
+              icon={<PhoneOutlined />}
+              disabled={agentStatus !== 'available' || !consoleSessionId}
+              onClick={() => void callCustomer(task)}
+            >
+              呼叫客户
+            </Button>
+          ) : null}
+          <Button
+            type="link"
+            size="small"
+            disabled={latestAttemptOf(task)?.attempt_result !== 'connected'}
+            title={
+              latestAttemptOf(task)?.attempt_result === 'connected'
+                ? undefined
+                : '请先登记已联系结果'
+            }
+            onClick={() =>
+              void services
+                .complete(task.id, crypto.randomUUID())
+                .then(loadTasks)
+            }
+          >
+            完成任务
+          </Button>
+          <Button type="link" size="small" onClick={() => setAttemptTask(task)}>
+            登记联系结果
+          </Button>
+          <Button
+            danger
+            type="link"
+            size="small"
+            onClick={() => setCloseTask(task)}
+          >
+            关闭任务
+          </Button>
+        </>
+      ) : null}
+    </Flex>
+  );
 
   return (
     <div className="agent-follow-up-panel">
@@ -215,79 +334,60 @@ const FollowUpPanel = ({
       />
       <Spin spinning={loading}>
         {tasks.length ? (
-          <div className="agent-follow-up-list">
-            {tasks.map((task) => (
-              <article className="agent-follow-up-item" key={task.id}>
-                <Flex justify="space-between" align="flex-start" gap="small">
-                  <div>
-                    <Text strong>
-                      {task.masked_contact || '联系方式已脱敏'}
-                    </Text>
-                    <div>
-                      <Text type="secondary">{task.follow_up_reason}</Text>
-                    </div>
-                  </div>
+          <Table<FollowUpTaskDto>
+            rowKey="id"
+            size="middle"
+            pagination={false}
+            scroll={{ x: 920 }}
+            dataSource={tasks}
+            columns={[
+              {
+                title: '客户',
+                dataIndex: 'masked_contact',
+                width: 150,
+                render: (value) => value || '联系方式已脱敏',
+              },
+              {
+                title: '跟进原因',
+                dataIndex: 'follow_up_reason',
+                ellipsis: true,
+              },
+              {
+                title: '应跟进时间',
+                dataIndex: 'customer_callback_at',
+                width: 190,
+                render: (value) => formatCallbackAt(value),
+              },
+              {
+                title: '最近联系结果',
+                key: 'latest_attempt',
+                width: 170,
+                render: (_, task) => {
+                  const latest = latestAttemptOf(task);
+                  return latest
+                    ? `${attemptResultLabels[latest.attempt_result]} · ${new Date(latest.contacted_at).toLocaleString()}`
+                    : '-';
+                },
+              },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                width: 100,
+                render: (_, task) => (
                   <Tag color={terminal(task) ? 'default' : 'processing'}>
                     {followUpStatusLabels[task.status]}
                   </Tag>
-                </Flex>
-                <div className="agent-follow-up-time">
-                  <Text type="secondary">
-                    {task.customer_callback_at
-                      ? `客户预约：${new Date(task.customer_callback_at).toLocaleString()}`
-                      : '未约定回访时间'}
-                  </Text>
-                </div>
-                {!terminal(task) ? (
-                  <Flex gap="small" wrap>
-                    {scope === 'unassigned' && !task.owner_agent_identity ? (
-                      <Button type="primary" onClick={() => void claim(task)}>
-                        认领回访
-                      </Button>
-                    ) : (
-                      <>
-                        {callbackEnabled ? (
-                          <Button
-                            type="primary"
-                            icon={<PhoneOutlined />}
-                            disabled={agentStatus !== 'available'}
-                            onClick={() => void callCustomer(task)}
-                          >
-                            呼叫客户
-                          </Button>
-                        ) : null}
-                        <Button
-                          disabled={
-                            task.latest_attempt?.attempt_result !== 'connected'
-                          }
-                          title={
-                            task.latest_attempt?.attempt_result === 'connected'
-                              ? undefined
-                              : '请先登记已联系结果'
-                          }
-                          onClick={() =>
-                            void services
-                              .complete(task.id, crypto.randomUUID())
-                              .then(loadTasks)
-                          }
-                        >
-                          完成任务
-                        </Button>
-                        <Button onClick={() => setAttemptTask(task)}>
-                          登记联系结果
-                        </Button>
-                        <Button danger onClick={() => setCloseTask(task)}>
-                          关闭任务
-                        </Button>
-                      </>
-                    )}
-                  </Flex>
-                ) : (
-                  <Text type="secondary">任务已进入终态，仅供查看</Text>
-                )}
-              </article>
-            ))}
-          </div>
+                ),
+              },
+              {
+                title: '操作',
+                key: 'actions',
+                fixed: 'right',
+                width: 260,
+                render: (_, task) => taskActions(task),
+              },
+            ]}
+          />
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -297,6 +397,150 @@ const FollowUpPanel = ({
           />
         )}
       </Spin>
+
+      <Drawer
+        title={selectedCallId ? '通话详情' : '跟进任务详情'}
+        open={Boolean(selectedTask)}
+        size={selectedCallId ? 800 : 520}
+        extra={
+          selectedCallId ? (
+            <Flex align="center" gap="small" wrap>
+              <Button type="link" onClick={() => setSelectedCallId(undefined)}>
+                返回跟进任务详情
+              </Button>
+              <Button
+                type="link"
+                href={`/ai-call/records?callId=${encodeURIComponent(selectedCallId)}&view=list`}
+              >
+                在通话记录中查看
+              </Button>
+            </Flex>
+          ) : null
+        }
+        onClose={() => {
+          setSelectedCallId(undefined);
+          setSelectedTask(undefined);
+        }}
+      >
+        {selectedCallId ? (
+          <FollowUpCallDetail callId={selectedCallId} />
+        ) : selectedTask ? (
+          <Flex vertical gap={24}>
+            <Descriptions
+              column={1}
+              items={[
+                {
+                  key: 'contact',
+                  label: '客户',
+                  children: selectedTask.masked_contact || '联系方式已脱敏',
+                },
+                {
+                  key: 'source',
+                  label: '来源',
+                  children: followUpSourceLabels[selectedTask.source_type],
+                },
+                {
+                  key: 'reason',
+                  label: '跟进原因',
+                  children: selectedTask.follow_up_reason,
+                },
+                {
+                  key: 'summary',
+                  label: '任务摘要',
+                  children: selectedTask.summary || '暂无摘要',
+                },
+                {
+                  key: 'callback',
+                  label: '应跟进时间',
+                  children: formatCallbackAt(selectedTask.customer_callback_at),
+                },
+                {
+                  key: 'latest',
+                  label: '最近联系结果',
+                  children: selectedTaskLatestAttempt
+                    ? attemptResultLabels[
+                        selectedTaskLatestAttempt.attempt_result
+                      ]
+                    : '暂无联系记录',
+                },
+              ]}
+            />
+            <section>
+              <Title level={5}>关联通话</Title>
+              <Descriptions
+                column={1}
+                items={[
+                  {
+                    key: 'sourceCall',
+                    label: '原始通话',
+                    children: (
+                      <Flex align="center" gap="small" wrap>
+                        <Text>
+                          {selectedTask.source_record
+                            ? `${formatCallbackAt(selectedTask.source_record.started_at)} · ${callStatusLabels[selectedTask.source_record.status] || '状态未知'}`
+                            : selectedTask.source_call_id}
+                        </Text>
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() =>
+                            setSelectedCallId(selectedTask.source_call_id)
+                          }
+                        >
+                          查看通话详情
+                        </Button>
+                      </Flex>
+                    ),
+                  },
+                  {
+                    key: 'callbackCalls',
+                    label: '历次回拨',
+                    children: selectedTaskCallbacks.length ? (
+                      <Flex vertical gap="small">
+                        {selectedTaskCallbacks.map((record, index) => {
+                          const attempt = selectedTask.attempts?.find(
+                            (item) => item.related_call_id === record.call_id,
+                          );
+                          return (
+                            <Flex
+                              key={record.call_id}
+                              align="center"
+                              gap="small"
+                              wrap
+                            >
+                              <Text>{`第${index + 1}次人工回拨`}</Text>
+                              <Text type="secondary">
+                                {formatCallbackAt(record.started_at)}
+                              </Text>
+                              <Tag>
+                                {attempt
+                                  ? attemptResultLabels[attempt.attempt_result]
+                                  : callStatusLabels[record.status] ||
+                                    '状态未知'}
+                              </Tag>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() =>
+                                  setSelectedCallId(record.call_id)
+                                }
+                              >
+                                查看本次通话详情
+                              </Button>
+                            </Flex>
+                          );
+                        })}
+                      </Flex>
+                    ) : (
+                      <Text type="secondary">暂无回拨记录</Text>
+                    ),
+                  },
+                ]}
+              />
+            </section>
+          </Flex>
+        ) : null}
+      </Drawer>
 
       <Modal
         title="关闭跟进任务"

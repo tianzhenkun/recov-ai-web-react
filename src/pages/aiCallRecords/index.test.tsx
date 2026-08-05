@@ -709,4 +709,17 @@ describe('AI Call 通话记录页面', () => {
     ).toBe('/ai-call/records?callId=call-original-1');
     expect(within(detailDrawer).getByText('历次回拨')).toBeTruthy();
   });
+
+  it('从跟进次要入口进入时只筛选单条记录且不自动展开详情', async () => {
+    mockSearchParams = 'callId=call-1&view=list';
+
+    render(<AiCallRecordsPage />);
+
+    await waitFor(() =>
+      expect(listAiCallRecords).toHaveBeenCalledWith(
+        expect.objectContaining({ callId: 'call-1' }),
+      ),
+    );
+    expect(getAiCallRecordDetail).not.toHaveBeenCalled();
+  });
 });

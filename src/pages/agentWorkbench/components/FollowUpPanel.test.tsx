@@ -4,9 +4,25 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import * as React from 'react';
+import {
+  getAiCallRecordDetail,
+  getAiCallRecordDialogue,
+  getAiCallRecordHandoffs,
+  getAiCallRecordRecording,
+  getAiCallRecordSemanticAnalysis,
+} from '@/pages/aiCallRecords/service';
 import FollowUpPanel from './FollowUpPanel';
+
+jest.mock('@/pages/aiCallRecords/service', () => ({
+  getAiCallRecordDetail: jest.fn(),
+  getAiCallRecordDialogue: jest.fn(),
+  getAiCallRecordHandoffs: jest.fn(),
+  getAiCallRecordRecording: jest.fn(),
+  getAiCallRecordSemanticAnalysis: jest.fn(),
+}));
 
 const unanswered = {
   id: '1',
@@ -32,8 +48,16 @@ const createServices = () => ({
   }),
   call: jest.fn().mockResolvedValue({
     code: 200,
-    data: { call_id: 'callback-1', status: 'accepted' },
+    data: {
+      call_id: 'callback-1',
+      status: 'accepted',
+      livekit_url: 'wss://livekit.example.com',
+      participant_token: 'callback-token',
+      participant_identity: 'human-callback-callback-1',
+      expires_in_seconds: 60,
+    },
   }),
+  detail: jest.fn().mockResolvedValue({ code: 200, data: unanswered }),
   complete: jest.fn().mockResolvedValue({ code: 200 }),
   attempt: jest.fn().mockResolvedValue({ code: 200 }),
   close: jest.fn().mockResolvedValue({ code: 200 }),
@@ -57,6 +81,7 @@ describe('FollowUpPanel', () => {
 
   it('shows accepted instead of connected after a callback request', async () => {
     const services = createServices();
+    const onCallAccepted = jest.fn();
     services.list.mockResolvedValue({
       code: 200,
       data: {
@@ -64,13 +89,28 @@ describe('FollowUpPanel', () => {
         total: 1,
       },
     });
-    render(<FollowUpPanel services={services} callbackEnabled />);
+    render(
+      <FollowUpPanel
+        services={services}
+        callbackEnabled
+        consoleSessionId="session-1"
+        onCallAccepted={onCallAccepted}
+      />,
+    );
     fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
     expect(await screen.findByText('138****0000')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /呼叫客户/ }));
     expect(
       await screen.findByText('回拨任务已受理，等待最终通话状态'),
     ).toBeTruthy();
+    expect(services.call).toHaveBeenCalledWith(
+      unanswered.id,
+      expect.objectContaining({ consoleSessionId: 'session-1' }),
+    );
+    expect(onCallAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({ call_id: 'callback-1' }),
+      expect.objectContaining({ id: unanswered.id }),
+    );
   });
 
   it('keeps system callback hidden until the real callback capability is enabled', async () => {
@@ -115,6 +155,154 @@ describe('FollowUpPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
     expect(await screen.findByText('139****0000')).toBeTruthy();
     expect(screen.queryByText('138****0000')).toBeNull();
+  });
+
+  it('uses a task table and opens the selected task details', async () => {
+    const services = createServices();
+    render(<FollowUpPanel services={services} />);
+
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '客户' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '操作' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
+    const drawer = await screen.findByRole('dialog', {
+      name: '跟进任务详情',
+    });
+    expect(within(drawer).getByText('等待超时未接入人工')).toBeTruthy();
+    expect(within(drawer).getByText('未约定回访时间')).toBeTruthy();
+  });
+
+  it('drills into a related call in the same drawer and returns to the task', async () => {
+    const services = createServices();
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [{ ...unanswered, owner_agent_identity: 'agent-1' }],
+        total: 1,
+      },
+    });
+    services.detail.mockResolvedValue({
+      code: 200,
+      data: {
+        ...unanswered,
+        owner_agent_identity: 'agent-1',
+        source_record: {
+          id: 'record-1',
+          call_id: 'call-1',
+          entry_type: 'owner_runtime',
+          status: 'completed',
+          started_at: '2026-07-22T08:00:00Z',
+        },
+        callback_records: [
+          {
+            id: 'record-2',
+            call_id: 'callback-1',
+            entry_type: 'sip_callback',
+            status: 'completed',
+            started_at: '2026-07-22T09:00:00Z',
+            duration_ms: 65000,
+          },
+        ],
+        attempts: [
+          {
+            id: 'attempt-1',
+            follow_up_id: '1',
+            agent_identity: 'agent-1',
+            contact_channel: 'manual_phone',
+            attempt_result: 'connected',
+            related_call_id: 'callback-1',
+            contacted_at: '2026-07-22T09:01:05Z',
+          },
+        ],
+      },
+    });
+    (getAiCallRecordDetail as jest.Mock).mockResolvedValue({
+      record: {
+        id: 'record-1',
+        callId: 'call-1',
+        entryType: 'owner_runtime',
+        status: 'completed',
+        endReason: 'customer_end',
+        startedAt: '2026-07-22T08:00:00Z',
+        answeredAt: '2026-07-22T08:00:02Z',
+        endedAt: '2026-07-22T08:01:05Z',
+        durationMs: 65000,
+      },
+    });
+    (getAiCallRecordRecording as jest.Mock).mockResolvedValue({
+      id: 'recording-1',
+      callId: 'call-1',
+      status: 'completed',
+      playUrl: 'https://example.com/call-1.mp3',
+    });
+    (getAiCallRecordDialogue as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          callId: 'call-1',
+          segmentNo: 1,
+          speakerType: 'customer',
+          text: '我想了解价格',
+          segmentStatus: 'final',
+        },
+      ],
+      total: 1,
+    });
+    (getAiCallRecordSemanticAnalysis as jest.Mock).mockResolvedValue({
+      callId: 'call-1',
+      analysisSceneCode: 'intro_geo',
+      analysisStatus: '2',
+      analysisResult: { summary: '客户关注价格' },
+      analysisRetryCount: 0,
+    });
+    (getAiCallRecordHandoffs as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          id: 'handoff-row-1',
+          handoffId: 'handoff-1',
+          callId: 'call-1',
+          status: 'connected',
+          requestReason: 'customer_request',
+          requestedAt: '2026-07-22T08:00:30Z',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<FollowUpPanel services={services} />);
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    expect(await screen.findByText('138****0000')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
+
+    const drawer = await screen.findByRole('dialog', {
+      name: '跟进任务详情',
+    });
+    expect(services.detail).toHaveBeenCalledWith('1');
+    expect(await within(drawer).findByText('关联通话')).toBeTruthy();
+    expect(within(drawer).getByText('原始通话')).toBeTruthy();
+    expect(within(drawer).getByText('第1次人工回拨')).toBeTruthy();
+    expect(within(drawer).getAllByText('已接通')).toHaveLength(2);
+    fireEvent.click(
+      within(drawer).getByRole('button', { name: '查看通话详情' }),
+    );
+
+    const callDrawer = await screen.findByRole('dialog', { name: '通话详情' });
+    expect(getAiCallRecordDetail).toHaveBeenCalledWith('call-1');
+    expect(await within(callDrawer).findByText('我想了解价格')).toBeTruthy();
+    expect(within(callDrawer).getByText('客户关注价格')).toBeTruthy();
+    expect(within(callDrawer).getByText('转人工记录')).toBeTruthy();
+    expect(
+      within(callDrawer)
+        .getByRole('link', { name: '在通话记录中查看' })
+        .getAttribute('href'),
+    ).toBe('/ai-call/records?callId=call-1&view=list');
+
+    fireEvent.click(
+      within(callDrawer).getByRole('button', { name: '返回跟进任务详情' }),
+    );
+    expect(
+      await screen.findByRole('dialog', { name: '跟进任务详情' }),
+    ).toBeTruthy();
   });
 
   it('allows completion only after an effective connected contact result exists', async () => {

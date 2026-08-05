@@ -372,6 +372,7 @@ const AiCallRecordsPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);
   const [searchParams] = useSearchParams();
   const presetCallId = searchParams.get('callId')?.trim() || undefined;
+  const presetListOnly = searchParams.get('view') === 'list';
   const presetTaskId = searchParams.get('taskId') || undefined;
   const presetTargetId = searchParams.get('targetId') || undefined;
   const presetEntryType = searchParams.get('entryType') || undefined;
@@ -485,8 +486,8 @@ const AiCallRecordsPage = () => {
   }, []);
 
   useEffect(() => {
-    if (presetCallId) void openDetail(presetCallId);
-  }, [openDetail, presetCallId]);
+    if (presetCallId && !presetListOnly) void openDetail(presetCallId);
+  }, [openDetail, presetCallId, presetListOnly]);
 
   useEffect(() => {
     if (!hasUnstableRecords) {
@@ -795,6 +796,7 @@ const AiCallRecordsPage = () => {
             ...filters,
             pageNum: current,
             pageSize,
+            ...(presetCallId ? { callId: presetCallId } : {}),
             ...((filters.taskId as string | undefined) || presetTaskId
               ? {
                   taskId:
