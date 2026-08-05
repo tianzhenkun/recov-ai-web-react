@@ -79,6 +79,44 @@ describe('FollowUpPanel', () => {
     await waitFor(() => expect(services.claim).toHaveBeenCalledTimes(1));
   });
 
+  it('claims a callback when HTTP does not provide randomUUID', async () => {
+    const services = createServices();
+    const originalRandomUUID = globalThis.crypto.randomUUID;
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      render(<FollowUpPanel services={services} />);
+      fireEvent.click(await screen.findByRole('button', { name: '认领回访' }));
+
+      await waitFor(() =>
+        expect(services.claim).toHaveBeenCalledWith(
+          unanswered.id,
+          expect.stringMatching(/^follow-up-/),
+        ),
+      );
+    } finally {
+      Object.defineProperty(globalThis.crypto, 'randomUUID', {
+        configurable: true,
+        value: originalRandomUUID,
+      });
+    }
+  });
+
+  it('shows a clear message when claiming a callback fails', async () => {
+    const services = createServices();
+    services.claim.mockRejectedValue(new Error('claim failed'));
+    render(<FollowUpPanel services={services} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '认领回访' }));
+
+    expect(
+      await screen.findByText('回访任务认领失败，请刷新后重试'),
+    ).toBeTruthy();
+  });
+
   it('shows accepted instead of connected after a callback request', async () => {
     const services = createServices();
     const onCallAccepted = jest.fn();

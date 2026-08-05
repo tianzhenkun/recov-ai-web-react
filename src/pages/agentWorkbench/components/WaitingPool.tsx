@@ -139,7 +139,13 @@ const WaitingPool = ({
   };
 
   return (
-    <div className="agent-waiting-pool">
+    <div
+      className={
+        visibleHandoffs.length
+          ? 'agent-waiting-pool'
+          : 'agent-waiting-pool agent-workbench-empty-state'
+      }
+    >
       {notice ? (
         <Alert
           className="agent-waiting-pool-notice"

@@ -141,6 +141,14 @@ const callStatusLabels: Record<string, string> = {
 const formatCallbackAt = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : '未约定回访时间';
 
+const createIdempotencyKey = () => {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid === 'function')
+    return randomUuid.call(globalThis.crypto);
+  // ponytail: HTTP fallback only; HTTPS restores Web Crypto UUIDs.
+  return `follow-up-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
 const latestAttemptOf = (task: FollowUpTaskDto) =>
   task.latest_attempt || task.attempts?.at(-1);
 
@@ -209,9 +217,13 @@ const FollowUpPanel = ({
 
   const claim = (task: FollowUpTaskDto) =>
     runOnce(`claim:${task.id}`, async () => {
-      await services.claim(task.id, crypto.randomUUID());
-      setNotice('回访任务认领成功，负责人已固定为当前坐席');
-      setTasks((current) => current.filter((item) => item.id !== task.id));
+      try {
+        await services.claim(task.id, createIdempotencyKey());
+        setNotice('回访任务认领成功，负责人已固定为当前坐席');
+        setTasks((current) => current.filter((item) => item.id !== task.id));
+      } catch {
+        setNotice('回访任务认领失败，请刷新后重试');
+      }
     });
 
   const openTaskDetail = (task: FollowUpTaskDto) =>
@@ -238,7 +250,7 @@ const FollowUpPanel = ({
       const response = unwrapData(
         await services.call(task.id, {
           consoleSessionId,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createIdempotencyKey(),
         }),
       ) as FollowUpCallbackCredentialDto;
       setNotice('回拨任务已受理，等待最终通话状态');
@@ -292,7 +304,7 @@ const FollowUpPanel = ({
             }
             onClick={() =>
               void services
-                .complete(task.id, crypto.randomUUID())
+                .complete(task.id, createIdempotencyKey())
                 .then(loadTasks)
             }
           >
@@ -565,7 +577,7 @@ const FollowUpPanel = ({
           await services.close(closeTask.id, {
             closedReason: closeReason,
             closedRemark: closeRemark.trim() || undefined,
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: createIdempotencyKey(),
           });
           setCloseTask(undefined);
           setCloseReason(undefined);
@@ -626,7 +638,7 @@ const FollowUpPanel = ({
             customerCallbackAt: callbackAt
               ? new Date(callbackAt).toISOString()
               : undefined,
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: createIdempotencyKey(),
           });
           setNotice(
             attemptResult === 'connected'

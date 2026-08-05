@@ -54,15 +54,21 @@ describe('HandoffContextPanel', () => {
     expect(screen.queryByText(/2026-07-30T10:00/)).toBeNull();
     expect(
       screen
-        .getByText('AI 开场')
+        .getByText('AI：AI 开场')
         .closest('[data-speaker]')
         ?.getAttribute('data-speaker'),
     ).toBe('ai');
     expect(
+      screen.getByText('AI：AI 开场').closest('[data-speaker]')?.textContent,
+    ).toBe('AI：AI 开场');
+    expect(
       screen
-        .getByText('客户回复')
+        .getByText('客户：客户回复')
         .closest('[data-speaker]')
         ?.getAttribute('data-speaker'),
     ).toBe('customer');
+    expect(
+      screen.getByText('客户：客户回复').closest('[data-speaker]')?.textContent,
+    ).toBe('客户：客户回复');
   });
 });

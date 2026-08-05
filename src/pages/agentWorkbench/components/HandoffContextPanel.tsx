@@ -49,10 +49,12 @@ const HandoffContextPanel = ({
 
   if (!displayHandoff) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="转人工请求到达后显示业务上下文"
-      />
+      <div className="agent-workbench-empty-state">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="转人工请求到达后显示业务上下文"
+        />
+      </div>
     );
   }
 
@@ -117,10 +119,9 @@ const HandoffContextPanel = ({
                     data-testid="dialogue-turn"
                     key={item.id || `${item.speaker_type}-${index}`}
                   >
-                    <Text className="agent-handoff-dialogue-speaker">
-                      {dialogueSpeakerLabels[speaker]}
+                    <Text className="agent-handoff-dialogue-text">
+                      {`${dialogueSpeakerLabels[speaker]}：${item.text}`}
                     </Text>
-                    <Text>{item.text}</Text>
                   </article>
                 );
               })}

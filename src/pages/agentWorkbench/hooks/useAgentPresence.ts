@@ -5,6 +5,7 @@ import {
   type AgentPresenceDto,
   type AgentProfileDto,
   getAgentConsoleBootstrap,
+  type HandoffDto,
   heartbeatAgent,
   pauseAgent,
   setAgentOffline,
@@ -110,11 +111,23 @@ const resolveBlockReason = (error: unknown): AgentBlockReason => {
 };
 
 export const getOrCreateConsoleSessionId = () => {
-  if (typeof sessionStorage === 'undefined') return crypto.randomUUID();
-  const existing = sessionStorage.getItem(SESSION_STORAGE_KEY);
+  const randomUuid = globalThis.crypto?.randomUUID;
+  const createSessionId = () => {
+    if (typeof randomUuid === 'function') {
+      return randomUuid.call(globalThis.crypto);
+    }
+    // ponytail: non-cryptographic HTTP fallback; HTTPS restores Web Crypto.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+      const random = Math.floor(Math.random() * 16);
+      return (char === 'x' ? random : (random & 0x3) | 0x8).toString(16);
+    });
+  };
+  const storage = globalThis.sessionStorage;
+  if (!storage) return createSessionId();
+  const existing = storage.getItem(SESSION_STORAGE_KEY);
   if (existing) return existing;
-  const created = crypto.randomUUID();
-  sessionStorage.setItem(SESSION_STORAGE_KEY, created);
+  const created = createSessionId();
+  storage.setItem(SESSION_STORAGE_KEY, created);
   return created;
 };
 
@@ -216,6 +229,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
   const [blockReason, setBlockReason] = useState<AgentBlockReason>('');
   const [profile, setProfile] = useState<AgentProfileDto>();
   const [presence, setPresence] = useState<AgentPresenceDto>();
+  const [currentHandoff, setCurrentHandoff] = useState<HandoffDto>();
   const [deviceResult, setDeviceResult] = useState<DevicePreflightResult>({
     ok: false,
     checks: emptyChecks,
@@ -242,6 +256,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
         setBlockReason('unregistered');
         setProfile(undefined);
         setPresence(undefined);
+        setCurrentHandoff(undefined);
         setPhase('blocked');
         return;
       }
@@ -249,6 +264,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       if (!result.profile.enabled) {
         setBlockReason('disabled');
         setPresence(undefined);
+        setCurrentHandoff(undefined);
         setPhase('blocked');
         return;
       }
@@ -263,11 +279,13 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
         nextPresence.console_session_id !== consoleSessionId;
       if (ownedByAnotherSession) {
         setPresence({ ...nextPresence, status: 'offline' });
+        setCurrentHandoff(undefined);
         setErrorMessage(
           '当前坐席已在其他页面上线；如确认原页面已关闭，请重新点击上线接听。',
         );
       } else {
         setPresence(nextPresence);
+        setCurrentHandoff(result.current_handoff ?? undefined);
       }
       setPhase('ready');
     } catch (error) {
@@ -289,23 +307,35 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
   }, [bootstrap]);
 
   useEffect(() => {
-    const recover = () => {
-      if (document.visibilityState === 'visible') void bootstrap();
+    const recover = async () => {
+      if (document.visibilityState !== 'visible') return;
+      if (status && !['offline', 'paused'].includes(status)) {
+        try {
+          setPresence(
+            unwrapData(await services.heartbeat({ consoleSessionId })),
+          );
+        } catch {
+          // bootstrap 会以服务端状态为准恢复页面。
+        }
+      }
+      await bootstrap();
     };
-    window.addEventListener('online', recover);
-    window.addEventListener('pageshow', recover);
-    document.addEventListener('visibilitychange', recover);
+    const handleRecover = () => {
+      void recover();
+    };
+    window.addEventListener('online', handleRecover);
+    window.addEventListener('pageshow', handleRecover);
+    document.addEventListener('visibilitychange', handleRecover);
     return () => {
-      window.removeEventListener('online', recover);
-      window.removeEventListener('pageshow', recover);
-      document.removeEventListener('visibilitychange', recover);
+      window.removeEventListener('online', handleRecover);
+      window.removeEventListener('pageshow', handleRecover);
+      document.removeEventListener('visibilitychange', handleRecover);
     };
-  }, [bootstrap]);
+  }, [bootstrap, consoleSessionId, services, status]);
 
   useEffect(() => {
     if (!status || ['offline', 'paused'].includes(status)) return undefined;
     const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
       void services
         .heartbeat({ consoleSessionId })
         .then((response) => {
@@ -371,6 +401,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       status,
       profile,
       presence,
+      currentHandoff,
       blockReason,
       errorMessage,
       consoleSessionId,
@@ -393,6 +424,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
       phase,
       presence,
       profile,
+      currentHandoff,
       serviceRecovering,
       services,
       status,

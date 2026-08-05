@@ -133,9 +133,14 @@ const AgentWorkbenchPage = () => {
 
   const pollHandoffs = useCallback(() => loadHandoffs(false), [loadHandoffs]);
 
+  const refreshWorkbench = useCallback(async () => {
+    await agent.bootstrap();
+    await loadHandoffs();
+  }, [agent.bootstrap, loadHandoffs]);
+
   const agentEvents = useAgentEvents({
     agentStatus: agent.status,
-    refresh: loadHandoffs,
+    refresh: refreshWorkbench,
     pollRefresh: pollHandoffs,
   });
   const agentCall = useAgentCall({
@@ -144,7 +149,7 @@ const AgentWorkbenchPage = () => {
     refresh: loadHandoffs,
     onWrapUp: handleWrapUp,
   });
-  const currentHandoff = claimedCredential?.handoff;
+  const currentHandoff = claimedCredential?.handoff ?? agent.currentHandoff;
   const nextHandoff = handoffs[0];
   const contextHandoff = currentHandoff ?? nextHandoff;
   const handoffContext = useHandoffContext({
@@ -155,6 +160,13 @@ const AgentWorkbenchPage = () => {
   useEffect(() => {
     if (agent.phase === 'ready' && agent.profile) void loadHandoffs();
   }, [agent.phase, agent.profile, loadHandoffs]);
+
+  useEffect(() => {
+    if (claimedCredential && ['offline', 'paused'].includes(agent.status)) {
+      setClaimedCredential(undefined);
+      setWrapUpReason('');
+    }
+  }, [agent.status, claimedCredential]);
 
   const busy = ['loading', 'checking', 'updating'].includes(agent.phase);
   const status = agent.status || 'offline';
@@ -180,7 +192,10 @@ const AgentWorkbenchPage = () => {
     serviceMessage === '待接通话加载失败，请点击重新连接';
 
   return (
-    <PageContainer className="agent-workbench-page" pageHeaderRender={false}>
+    <PageContainer
+      className="agent-workbench-page agent-workbench-viewport"
+      pageHeaderRender={false}
+    >
       <div className="agent-workbench-heading">
         <div>
           <Title level={3}>坐席工作台</Title>
@@ -382,7 +397,7 @@ const AgentWorkbenchPage = () => {
                 </Text>
               </div>
             ) : (
-              <div className="agent-workbench-idle">
+              <div className="agent-workbench-idle agent-workbench-empty-state">
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={idleDescription}
@@ -390,7 +405,8 @@ const AgentWorkbenchPage = () => {
               </div>
             )
           ) : currentHandoff &&
-            ['ended', 'wrap_up_quick'].includes(agentCall.phase) ? (
+            (status === 'wrap_up_quick' ||
+              ['ended', 'wrap_up_quick'].includes(agentCall.phase)) ? (
             <QuickWrapUp
               handoff={currentHandoff}
               abnormalReason={wrapUpReason}

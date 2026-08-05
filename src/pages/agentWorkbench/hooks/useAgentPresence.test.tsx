@@ -9,6 +9,7 @@ import {
 import * as React from 'react';
 import {
   type DevicePreflightResult,
+  getOrCreateConsoleSessionId,
   type UseAgentPresenceOptions,
   useAgentPresence,
 } from './useAgentPresence';
@@ -81,6 +82,9 @@ const PresenceHarness = ({
         {agent.serviceRecovering ? 'yes' : 'no'}
       </div>
       <div data-testid="session-id">{agent.consoleSessionId}</div>
+      <div data-testid="current-handoff">
+        {agent.currentHandoff?.handoff_id || ''}
+      </div>
       <button type="button" onClick={() => void agent.goOnline()}>
         上线
       </button>
@@ -216,6 +220,59 @@ describe('useAgentPresence', () => {
     expect(globalThis.crypto.randomUUID).toHaveBeenCalledTimes(1);
   });
 
+  it('creates a console session id when Web Crypto is unavailable', () => {
+    const crypto = globalThis.crypto;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const sessionId = getOrCreateConsoleSessionId();
+
+      expect(sessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        configurable: true,
+        value: crypto,
+      });
+    }
+  });
+
+  it('restores the current handoff from bootstrap after a page refresh', async () => {
+    const services = createServices();
+    services.bootstrap.mockResolvedValueOnce({
+      code: 200,
+      data: {
+        profile,
+        presence: {
+          ...presence('wrap_up_quick'),
+          active_handoff_id: 'handoff-wrap-up',
+          active_call_id: 'call-wrap-up',
+        },
+        current_handoff: {
+          handoff_id: 'handoff-wrap-up',
+          call_id: 'call-wrap-up',
+          scene_code: 'intro_geo',
+          status: 'completed',
+          requested_at: '2026-07-31T01:00:00Z',
+        },
+      },
+    });
+
+    render(
+      <PresenceHarness options={{ services, devicePreflight: jest.fn() }} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-handoff').textContent).toBe(
+        'handoff-wrap-up',
+      );
+    });
+  });
+
   it('keeps this tab offline when another console session owns the agent', async () => {
     jest.useFakeTimers();
     const services = createServices();
@@ -254,7 +311,39 @@ describe('useAgentPresence', () => {
     expect(services.heartbeat).not.toHaveBeenCalled();
   });
 
-  it('heartbeats only while the page is visible and adopts expiry state', async () => {
+  it('keeps heartbeating while the page is hidden', async () => {
+    jest.useFakeTimers();
+    const services = createServices();
+    services.bootstrap.mockResolvedValueOnce({
+      code: 200,
+      data: { profile, presence: presence('available') },
+    });
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    });
+
+    render(
+      <PresenceHarness
+        options={{
+          services,
+          devicePreflight: jest.fn(),
+          heartbeatIntervalMs: 1_000,
+        }}
+      />,
+    );
+    await screen.findByText('available');
+
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+      await Promise.resolve();
+    });
+
+    expect(services.heartbeat).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('status').textContent).toBe('available');
+  });
+
+  it('adopts the expired status returned by heartbeat', async () => {
     jest.useFakeTimers();
     const services = createServices();
     services.bootstrap.mockResolvedValueOnce({
@@ -287,16 +376,6 @@ describe('useAgentPresence', () => {
     expect(screen.getByTestId('error').textContent).toBe(
       '坐席会话已过期，请重新上线',
     );
-
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      value: 'hidden',
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(2_000);
-      await Promise.resolve();
-    });
-    expect(services.heartbeat).toHaveBeenCalledTimes(1);
   });
 
   it('re-bootstraps after the network or visible page recovers', async () => {
@@ -314,6 +393,28 @@ describe('useAgentPresence', () => {
     await waitFor(() => {
       expect(services.bootstrap).toHaveBeenCalledTimes(3);
     });
+  });
+
+  it('renews an online lease before bootstrapping a visible page', async () => {
+    const services = createServices();
+    services.bootstrap.mockResolvedValue({
+      code: 200,
+      data: { profile, presence: presence('available') },
+    });
+    render(
+      <PresenceHarness options={{ services, devicePreflight: jest.fn() }} />,
+    );
+    await screen.findByText('available');
+
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await waitFor(() => {
+      expect(services.heartbeat).toHaveBeenCalledTimes(1);
+      expect(services.bootstrap).toHaveBeenCalledTimes(2);
+    });
+    expect(services.heartbeat.mock.invocationCallOrder[0]).toBeLessThan(
+      services.bootstrap.mock.invocationCallOrder[1],
+    );
   });
 
   it('retries a gateway bootstrap five times with a friendly recovery state', async () => {

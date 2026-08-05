@@ -76,6 +76,66 @@
   justify-self: end;
 }
 
+@media (min-width: 1200px) {
+  .agent-workbench-viewport {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .agent-workbench-viewport > .ant-pro-page-container-children-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .agent-workbench-viewport .agent-workbench-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns:
+      minmax(240px, 0.8fr)
+      minmax(300px, 1fr)
+      minmax(360px, 420px);
+    align-items: stretch;
+  }
+
+  .agent-workbench-viewport .agent-workbench-grid > .ant-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .agent-workbench-viewport .agent-workbench-grid > .ant-card > .ant-card-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .agent-workbench-viewport
+    .agent-workbench-grid
+    > .ant-card
+    > .ant-card-body
+    > * {
+    min-width: 0;
+  }
+
+  .agent-workbench-viewport .agent-workbench-empty-state {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .agent-workbench-viewport .agent-workbench-empty-state > .ant-spin,
+  .agent-workbench-viewport
+    .agent-workbench-empty-state
+    > .ant-spin
+    > .ant-spin-container {
+    width: 100%;
+  }
+}
+
 .agent-workbench-queue-count {
   display: inline-grid;
   min-width: 22px;
@@ -111,7 +171,7 @@
   background: #f5f7fa;
 }
 
-@media (max-width: 1440px) {
+@media (max-width: 1199px) {
   .agent-workbench-device-grid {
     grid-template-columns: repeat(3, minmax(108px, 1fr));
   }

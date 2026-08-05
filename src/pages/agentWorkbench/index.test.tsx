@@ -109,6 +109,19 @@ describe('AgentWorkbenchPage presence shell', () => {
     expect(screen.queryByRole('button', { name: '上线接听' })).toBeNull();
   });
 
+  it('uses the viewport workbench layout for an available agent', () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      status: 'available',
+    });
+
+    const view = render(<AgentWorkbenchPage />);
+
+    expect(
+      view.container.querySelector('.agent-workbench-viewport'),
+    ).toBeTruthy();
+  });
+
   it('does not query the public waiting pool while the agent is offline', async () => {
     mockUseAgentPresence.mockReturnValue({
       ...basePresence,
@@ -119,6 +132,27 @@ describe('AgentWorkbenchPage presence shell', () => {
 
     expect(await screen.findByText('暂无待接通话')).toBeTruthy();
     expect(mockGetPendingHandoffs).not.toHaveBeenCalled();
+  });
+
+  it('fills each empty state across its card content', async () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      consoleSessionId: 'session-1',
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    for (const description of [
+      '暂无待接通话',
+      '上线后开始接听转人工请求',
+      '转人工请求到达后显示业务上下文',
+    ]) {
+      expect(
+        (await screen.findByText(description)).closest(
+          '.agent-workbench-empty-state',
+        ),
+      ).toBeTruthy();
+    }
   });
 
   it('loads the public waiting pool from the agent console service', async () => {
