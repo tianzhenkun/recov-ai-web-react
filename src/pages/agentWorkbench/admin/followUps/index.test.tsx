@@ -22,16 +22,18 @@ describe('follow-up processing page', () => {
     expect(source).not.toContain('修改正常结果');
   });
 
-  it('keeps callback controls compact and enters contact result after ending', () => {
+  it('keeps callback controls in a modal and enters contact result after ending', () => {
     const source = fs.readFileSync(sourcePath, 'utf8');
     for (const text of [
       'message.useMessage',
-      'agent-follow-up-current-call',
+      '<Modal',
+      'open={Boolean(callback)}',
+      "agent.status === 'available' || agent.goOnline()",
       'attemptTaskToOpen',
       'onEndCall={endCallbackCall}',
     ])
       expect(source).toContain(text);
+    expect(source).not.toContain('agent-follow-up-current-call');
     expect(source).not.toContain('<Alert');
-    expect(source).not.toContain('title="当前回拨通话"');
   });
 });

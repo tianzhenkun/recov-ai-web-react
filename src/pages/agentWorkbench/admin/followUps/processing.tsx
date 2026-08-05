@@ -1,5 +1,5 @@
 import { PageContainer } from '@ant-design/pro-components';
-import { Card, message } from 'antd';
+import { Modal, message } from 'antd';
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import type {
@@ -24,8 +24,8 @@ const FollowUpProcessingPage = () => {
     refresh: agent.bootstrap,
   });
   const prepareCallback = useCallback(async () => {
-    return agent.goOnline();
-  }, [agent.goOnline]);
+    return agent.status === 'available' || agent.goOnline();
+  }, [agent.goOnline, agent.status]);
   const endCallbackCall = useCallback(async () => {
     const task = callbackTask;
     if (!(await callbackCall.endCall()) || !task) return;
@@ -46,17 +46,22 @@ const FollowUpProcessingPage = () => {
   return (
     <PageContainer className="agent-admin-page" title="跟进处理">
       {messageContextHolder}
-      {callback ? (
-        <Card className="agent-follow-up-current-call" size="small">
-          <CurrentCallPanel
-            {...callbackCall}
-            endConfirmDescription="结束后客户将退出本次回拨，并自动进入联系结果登记。"
-            onToggleMicrophone={callbackCall.toggleMicrophone}
-            onSwitchAudioInput={callbackCall.switchAudioInput}
-            onEndCall={endCallbackCall}
-          />
-        </Card>
-      ) : null}
+      <Modal
+        title="回拨通话"
+        open={Boolean(callback)}
+        width={760}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+      >
+        <CurrentCallPanel
+          {...callbackCall}
+          endConfirmDescription="结束后客户将退出本次回拨，并自动进入联系结果登记。"
+          onToggleMicrophone={callbackCall.toggleMicrophone}
+          onSwitchAudioInput={callbackCall.switchAudioInput}
+          onEndCall={endCallbackCall}
+        />
+      </Modal>
       <FollowUpPanel
         agentStatus={agent.status}
         callbackEnabled
