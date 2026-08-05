@@ -35,6 +35,7 @@ export type CurrentCallPanelProps = {
   remoteAudioReady: boolean;
   networkQuality: AgentNetworkQuality;
   errorMessage?: string;
+  endConfirmDescription?: string;
   onToggleMicrophone: () => void | Promise<void>;
   onSwitchAudioInput: (deviceId: string) => void | Promise<void>;
   onEndCall: () => void | Promise<void>;
@@ -76,6 +77,7 @@ const CurrentCallPanel = ({
   remoteAudioReady,
   networkQuality,
   errorMessage,
+  endConfirmDescription = '结束后客户将退出本次通话，坐席进入快速话后处理。该操作不可撤销。',
   onToggleMicrophone,
   onSwitchAudioInput,
   onEndCall,
@@ -187,7 +189,7 @@ const CurrentCallPanel = ({
           }
         }}
       >
-        结束后客户将退出本次通话，坐席进入快速话后处理。该操作不可撤销。
+        {endConfirmDescription}
       </Modal>
     </div>
   );

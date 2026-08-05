@@ -142,7 +142,14 @@ describe('agent console service contract', () => {
       idempotencyKey: 'attempt-1',
     });
     await call('claimFollowUp', 'follow-up-1', 'follow-up-claim-1');
-    await call('startFollowUpCall', 'follow-up-1', 'follow-up-call-1');
+    await call('startFollowUpCall', 'follow-up-1', {
+      consoleSessionId: 'session-1',
+      idempotencyKey: 'follow-up-call-1',
+    });
+    await call('endFollowUpCall', 'follow-up-1', 'call-1', {
+      consoleSessionId: 'session-1',
+      idempotencyKey: 'follow-up-end-1',
+    });
     await call('completeFollowUp', 'follow-up-1', 'follow-up-complete-1');
     await call('closeFollowUp', 'follow-up-1', {
       closedReason: 'customer_refused',
@@ -155,12 +162,21 @@ describe('agent console service contract', () => {
       '/ai-call/agent-console/follow-ups/follow-up-1/attempts',
       '/ai-call/agent-console/follow-ups/follow-up-1/claim',
       '/ai-call/agent-console/follow-ups/follow-up-1/call',
+      '/ai-call/agent-console/follow-ups/follow-up-1/call/call-1/end',
       '/ai-call/agent-console/follow-ups/follow-up-1/complete',
       '/ai-call/agent-console/follow-ups/follow-up-1/close',
     ]);
     expect(mockedRequest.mock.calls[2][1]).toMatchObject({
       headers: { 'Idempotency-Key': 'attempt-1' },
       data: { contact_channel: 'wechat', attempt_result: 'connected' },
+    });
+    expect(mockedRequest.mock.calls[4][1]).toMatchObject({
+      headers: { 'Idempotency-Key': 'follow-up-call-1' },
+      data: { console_session_id: 'session-1' },
+    });
+    expect(mockedRequest.mock.calls[5][1]).toMatchObject({
+      headers: { 'Idempotency-Key': 'follow-up-end-1' },
+      data: { console_session_id: 'session-1' },
     });
   });
 

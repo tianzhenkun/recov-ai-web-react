@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import CurrentCallPanel from './CurrentCallPanel';
 
@@ -20,5 +20,24 @@ describe('CurrentCallPanel', () => {
     );
 
     expect(screen.getByText('正在发布麦克风')).toBeTruthy();
+  });
+
+  it('uses callback-specific confirmation copy when supplied', () => {
+    render(
+      <CurrentCallPanel
+        phase="connected"
+        connectionStage="connected"
+        microphoneEnabled
+        remoteAudioReady={false}
+        networkQuality="good"
+        endConfirmDescription="结束后回到当前跟进任务。"
+        onToggleMicrophone={jest.fn()}
+        onSwitchAudioInput={jest.fn()}
+        onEndCall={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '结束客户通话' }));
+    expect(screen.getByText('结束后回到当前跟进任务。')).toBeTruthy();
   });
 });

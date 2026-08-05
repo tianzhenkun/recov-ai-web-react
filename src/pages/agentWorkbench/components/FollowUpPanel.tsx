@@ -22,7 +22,9 @@ import {
   closeFollowUp,
   completeFollowUp,
   createFollowUpAttempt,
+  type FollowUpCallbackCredentialDto,
   type FollowUpTaskDto,
+  type IdempotentSessionInput,
   listAgentFollowUps,
   startFollowUpCall,
 } from '@/services/ruoyi/agent-console';
@@ -33,7 +35,7 @@ const { Text } = Typography;
 type FollowUpServices = {
   list: (params?: Record<string, unknown>) => Promise<unknown>;
   claim: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
-  call: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
+  call: (followUpId: string, input: IdempotentSessionInput) => Promise<unknown>;
   complete: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
   attempt: (
     followUpId: string,
@@ -60,8 +62,12 @@ type FollowUpServices = {
 type FollowUpPanelProps = {
   agentStatus?: string;
   callbackEnabled?: boolean;
+  consoleSessionId?: string;
   services?: FollowUpServices;
-  onCallAccepted?: (callId: string, task: FollowUpTaskDto) => void;
+  onCallAccepted?: (
+    callback: FollowUpCallbackCredentialDto,
+    task: FollowUpTaskDto,
+  ) => void;
 };
 
 const defaultServices: FollowUpServices = {
@@ -105,6 +111,7 @@ const followUpStatusLabels: Record<FollowUpTaskDto['status'], string> = {
 const FollowUpPanel = ({
   agentStatus = 'available',
   callbackEnabled = false,
+  consoleSessionId,
   services = defaultServices,
   onCallAccepted,
 }: FollowUpPanelProps) => {
@@ -171,13 +178,18 @@ const FollowUpPanel = ({
 
   const callCustomer = (task: FollowUpTaskDto) =>
     runOnce(`call:${task.id}`, async () => {
+      if (!consoleSessionId) {
+        setNotice('请先在坐席工作台上线后再发起回拨');
+        return;
+      }
       const response = unwrapData(
-        await services.call(task.id, crypto.randomUUID()),
-      ) as {
-        call_id?: string;
-      };
+        await services.call(task.id, {
+          consoleSessionId,
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      ) as FollowUpCallbackCredentialDto;
       setNotice('回拨任务已受理，等待最终通话状态');
-      if (response?.call_id) onCallAccepted?.(response.call_id, task);
+      if (response?.call_id) onCallAccepted?.(response, task);
     });
 
   const terminal = (task: FollowUpTaskDto) =>

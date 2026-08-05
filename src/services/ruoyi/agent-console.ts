@@ -178,6 +178,15 @@ export type MediaCredentialDto = {
   participant_identity: string;
 };
 
+export type FollowUpCallbackCredentialDto = {
+  call_id: string;
+  status: 'accepted';
+  livekit_url: string;
+  participant_token: string;
+  participant_identity: string;
+  expires_in_seconds: number;
+};
+
 export type AfterCallWorkDto = {
   id: BigintString;
   work_id: BigintString;
@@ -516,12 +525,29 @@ export const claimFollowUp = (
 
 export const startFollowUpCall = (
   followUpId: BigintString,
-  idempotencyKey: string,
+  input: IdempotentSessionInput,
 ) =>
-  followUpAction<{ call_id: string; status: 'accepted' }>(
-    followUpId,
-    'call',
-    idempotencyKey,
+  agentConsoleRequest<FollowUpCallbackCredentialDto>(
+    `${AGENT_CONSOLE_API_PREFIX}/follow-ups/${encodeId(followUpId)}/call`,
+    {
+      method: 'post',
+      headers: idempotencyHeaders(input.idempotencyKey),
+      data: presenceData(input),
+    },
+  );
+
+export const endFollowUpCall = (
+  followUpId: BigintString,
+  callId: string,
+  input: IdempotentSessionInput,
+) =>
+  agentConsoleRequest<{ call_id: string; status: 'completed'; end_reason: string }>(
+    `${AGENT_CONSOLE_API_PREFIX}/follow-ups/${encodeId(followUpId)}/call/${encodeId(callId)}/end`,
+    {
+      method: 'post',
+      headers: idempotencyHeaders(input.idempotencyKey),
+      data: presenceData(input),
+    },
   );
 
 export const completeFollowUp = (
