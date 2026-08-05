@@ -361,7 +361,11 @@ const CreateAiCallTaskPage = () => {
   };
 
   return (
-    <RecovListPage breadcrumbRender={false} title="新建外呼任务">
+    <RecovListPage
+      breadcrumbRender={false}
+      className="recov-task-create-page"
+      title="新建外呼任务"
+    >
       {messageContextHolder}
       <RecovListStack className="pb-20">
         <div className="flex items-center justify-between gap-4">
@@ -371,7 +375,7 @@ const CreateAiCallTaskPage = () => {
           </Button>
         </div>
 
-        <RecovTableCard>
+        <RecovTableCard className="recov-task-create-form-card">
           <Form<TaskFormValues>
             form={form}
             layout="vertical"
@@ -503,7 +507,7 @@ const CreateAiCallTaskPage = () => {
               />
             </Form.Item>
             {selectedRule ? (
-              <div className="-mt-4 mb-6 text-sm text-gray-500">
+              <div className="-mt-4 mb-8 text-sm text-gray-500">
                 {formatRuleSummary(selectedRule)}
               </div>
             ) : null}
@@ -530,13 +534,8 @@ const CreateAiCallTaskPage = () => {
               </Form.Item>
             ) : null}
 
-            <div className="pointer-events-none sticky bottom-10 z-10 flex justify-end">
-              <Button
-                className="pointer-events-auto"
-                htmlType="submit"
-                loading={validating}
-                type="primary"
-              >
+            <div className="mt-2 flex justify-end">
+              <Button htmlType="submit" loading={validating} type="primary">
                 校验任务
               </Button>
             </div>
@@ -558,7 +557,7 @@ const CreateAiCallTaskPage = () => {
 
         {validatedTask ? (
           <>
-            <RecovTableCard>
+            <RecovTableCard className="recov-toolbar-card">
               <Space orientation="vertical" size={0}>
                 <strong>校验通过</strong>
                 <span className="text-gray-500">

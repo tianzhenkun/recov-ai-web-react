@@ -26,6 +26,7 @@ export type TableActionsProps = {
   actions: TableActionItem[];
   maxVisible?: number;
   moreLabel?: string;
+  showLabels?: boolean;
   tooltipPlacement?: TooltipProps['placement'];
 };
 
@@ -38,6 +39,7 @@ export const TableActions = ({
   actions,
   maxVisible = 2,
   moreLabel = '更多',
+  showLabels = false,
   tooltipPlacement = 'top',
 }: TableActionsProps) => {
   const { token } = theme.useToken();
@@ -83,13 +85,17 @@ export const TableActions = ({
             loading={action.loading}
             size="small"
             style={
-              action.danger || action.disabled || action.loading
-                ? iconButtonStyle
-                : primaryIconButtonStyle
+              showLabels
+                ? undefined
+                : action.danger || action.disabled || action.loading
+                  ? iconButtonStyle
+                  : primaryIconButtonStyle
             }
-            type="link"
+            type={showLabels ? 'text' : 'link'}
             onClick={action.onClick}
-          />
+          >
+            {showLabels ? action.label : null}
+          </Button>
         </Tooltip>
       ))}
       {overflowActions.length > 0 && (

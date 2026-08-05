@@ -85,6 +85,7 @@ const getTaskExecutionLabel = (task: AiCallTask) => {
   if (dialerTypes[0] === 'mock') return 'Mock 流程演练';
   if (dialerTypes[0] === 'sip') return 'SIP 外呼';
   if (dialerTypes[0]?.startsWith('linphone')) return 'Linphone 本地验证';
+  if (dialerTypes[0] === 'owner_runtime') return '平台运行时';
   return dialerTypes[0].toUpperCase();
 };
 
@@ -293,7 +294,7 @@ const AiCallTasksPage = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 132,
+      width: 180,
       fixed: 'right',
       search: false,
       render: (_value, task) => (

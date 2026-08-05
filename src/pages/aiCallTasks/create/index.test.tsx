@@ -188,7 +188,7 @@ describe('single target AI Call task creation', () => {
     expect(mockPush).toHaveBeenCalledWith('/ai-call/voices');
   });
 
-  it('reserves bottom space for the primary action at 1280x720', async () => {
+  it('keeps the rule summary and primary action in normal form flow', async () => {
     const originalWidth = window.innerWidth;
     const originalHeight = window.innerHeight;
     try {
@@ -203,7 +203,7 @@ describe('single target AI Call task creation', () => {
 
       const { container } = render(<AiCallTaskCreatePage />);
       await screen.findAllByText('客户回访 / intro_follow_up');
-      await screen.findByText('00:00–23:59，最多重试 1 次');
+      const ruleSummary = await screen.findByText('00:00–23:59，最多重试 1 次');
 
       const pageStack = container.querySelector('.recov-list-stack');
       const actionButton = screen.getByRole('button', {
@@ -211,10 +211,16 @@ describe('single target AI Call task creation', () => {
       });
       const actionArea = actionButton.parentElement;
       expect(pageStack?.classList.contains('pb-20')).toBe(true);
-      expect(actionArea?.classList.contains('sticky')).toBe(true);
-      expect(actionArea?.classList.contains('bottom-10')).toBe(true);
-      expect(actionArea?.classList.contains('pointer-events-none')).toBe(true);
-      expect(actionButton.classList.contains('pointer-events-auto')).toBe(true);
+      expect(ruleSummary.classList.contains('mb-8')).toBe(true);
+      expect(actionArea?.classList.contains('sticky')).toBe(false);
+      expect(actionArea?.classList.contains('mt-2')).toBe(true);
+      expect(actionButton.classList.contains('pointer-events-auto')).toBe(
+        false,
+      );
+      expect(container.querySelector('.recov-task-create-page')).toBeTruthy();
+      expect(
+        container.querySelector('.recov-task-create-form-card'),
+      ).toBeTruthy();
     } finally {
       Object.defineProperty(window, 'innerWidth', {
         configurable: true,
@@ -254,6 +260,10 @@ describe('single target AI Call task creation', () => {
       ),
     );
     expect(await screen.findByText('人工确认摘要')).toBeTruthy();
+    const validationCard = screen
+      .getByText('校验通过')
+      .closest('.ant-pro-card');
+    expect(validationCard?.classList.contains('recov-toolbar-card')).toBe(true);
     expect(
       screen.getAllByText('客户回访 / intro_follow_up').length,
     ).toBeGreaterThan(1);

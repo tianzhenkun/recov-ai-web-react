@@ -1,7 +1,7 @@
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import type { ProColumns } from '@ant-design/pro-components';
 import { ProTable } from '@ant-design/pro-components';
 import { Alert, Button, Space, Spin } from 'antd';
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import type { ValidationIssue } from '../domain';
 import {
   downloadValidationIssues,
@@ -20,7 +20,6 @@ const ValidationResult = ({
   retrying = false,
   onRetry,
 }: ValidationResultProps) => {
-  const actionRef = useRef<ActionType>(null);
   const [downloading, setDownloading] = useState(false);
 
   if (result.status === 'VALIDATING') {
@@ -126,7 +125,6 @@ const ValidationResult = ({
         </Button>
       </div>
       <ProTable<ValidationIssue>
-        actionRef={actionRef}
         columns={columns}
         options={false}
         pagination={{
@@ -138,8 +136,6 @@ const ValidationResult = ({
           const response = await listValidationIssues(result.validationId, {
             pageNum: params.current || 1,
             pageSize: params.pageSize || 20,
-            phoneNumber: params.phoneNumber,
-            reason: params.reason,
           });
           return {
             data: response.rows,
@@ -148,7 +144,7 @@ const ValidationResult = ({
           };
         }}
         rowKey="issueId"
-        search={{ labelWidth: 'auto' }}
+        search={false}
       />
     </Space>
   );

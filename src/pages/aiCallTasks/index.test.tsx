@@ -213,6 +213,29 @@ describe('AI Call task list page', () => {
     expect(getTaskRow('SIP 外呼任务').getByText('SIP 接通 15')).toBeTruthy();
   });
 
+  it('用中文展示 Owner Runtime 执行方式', async () => {
+    mockedListTasks.mockResolvedValue({
+      rows: [
+        buildTask({
+          taskId: 'owner-runtime',
+          taskName: 'Owner Runtime 任务',
+          attemptDialerTypes: ['owner_runtime'],
+        }),
+      ],
+      total: 1,
+    });
+
+    render(<AiCallTasksPage />);
+    await screen.findByText('Owner Runtime 任务');
+
+    expect(
+      getTaskRow('Owner Runtime 任务').getByText('平台运行时'),
+    ).toBeTruthy();
+    expect(
+      getTaskRow('Owner Runtime 任务').queryByText('OWNER_RUNTIME'),
+    ).toBeNull();
+  });
+
   it('renders actions strictly from the current task status', async () => {
     render(<AiCallTasksPage />);
     await screen.findByText('运行任务');

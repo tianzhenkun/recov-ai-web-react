@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import React from 'react';
+import * as React from 'react';
 import ValidationResult from './ValidationResult';
+
+jest.mock('../service', () => ({
+  downloadValidationIssues: jest.fn(),
+  listValidationIssues: jest.fn(),
+}));
 
 describe('batch validation system errors', () => {
   afterEach(cleanup);
@@ -66,5 +71,27 @@ describe('batch validation system errors', () => {
     expect(
       screen.getByRole('button').classList.contains('ant-btn-loading'),
     ).toBe(true);
+  });
+});
+
+describe('batch validation issue list', () => {
+  afterEach(cleanup);
+
+  it('does not render a redundant query form for the issue list', () => {
+    const { container } = render(
+      <ValidationResult
+        result={{
+          validationId: 'validation-issues',
+          status: 'FAILED',
+          validTargetCount: 0,
+          issueCount: 1,
+        }}
+        onRetry={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: '重置' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查询' })).toBeNull();
+    expect(container.querySelector('.ant-pro-query-filter')).toBeNull();
   });
 });
