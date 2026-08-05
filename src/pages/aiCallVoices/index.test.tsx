@@ -46,7 +46,13 @@ jest.mock('@ant-design/pro-components', () => {
       pageRef.current = currentPage;
       const currentProps = propsRef.current;
       const request = currentProps.request as CallableFunction;
-      const result = await request({ current: currentPage, pageSize: 20 });
+      const pagination = currentProps.pagination as {
+        defaultPageSize?: number;
+      };
+      const result = await request({
+        current: currentPage,
+        pageSize: pagination.defaultPageSize || 20,
+      });
       setRows(Array.isArray(result.data) ? result.data : []);
       setTotal(typeof result.total === 'number' ? result.total : 0);
     }, []);
@@ -328,7 +334,7 @@ describe('AI Call voice management page', () => {
     );
     expect(mockList).toHaveBeenLastCalledWith({
       pageNum: 1,
-      pageSize: 20,
+      pageSize: 10,
       includeDeleted: false,
     });
     expect(screen.getByRole('combobox', { name: '类型' })).toBeTruthy();
@@ -345,7 +351,7 @@ describe('AI Call voice management page', () => {
     await waitFor(() =>
       expect(mockList).toHaveBeenLastCalledWith({
         pageNum: 1,
-        pageSize: 20,
+        pageSize: 10,
         includeDeleted: false,
         voiceType: '自定义复刻',
       }),
@@ -356,7 +362,7 @@ describe('AI Call voice management page', () => {
       expect(mockList).toHaveBeenLastCalledWith(
         expect.objectContaining({
           pageNum: 2,
-          pageSize: 20,
+          pageSize: 10,
           voiceType: '自定义复刻',
         }),
       ),

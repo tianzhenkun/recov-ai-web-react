@@ -70,6 +70,8 @@ const DELETABLE_VOICE_STATUSES = new Set<VoiceStatus>([
   'DELETE_FAILED',
 ]);
 
+const DEFAULT_PAGE_SIZE = 10;
+
 export const createIdempotencyKey = (prefix: string) =>
   globalThis.crypto?.randomUUID?.() ||
   `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -586,7 +588,8 @@ const AiCallVoicesPage = () => {
             columns={columns}
             options={false}
             pagination={{
-              defaultPageSize: 20,
+              defaultPageSize: DEFAULT_PAGE_SIZE,
+              hideOnSinglePage: false,
               showSizeChanger: true,
               showTotal: (total) => `共 ${total} 条`,
             }}
@@ -594,7 +597,7 @@ const AiCallVoicesPage = () => {
               const filters = appliedFiltersRef.current;
               const query: VoiceProfileQuery = {
                 pageNum: params.current || 1,
-                pageSize: params.pageSize || 20,
+                pageSize: params.pageSize || DEFAULT_PAGE_SIZE,
                 includeDeleted: filters.status === 'DELETED',
                 ...filters,
               };
