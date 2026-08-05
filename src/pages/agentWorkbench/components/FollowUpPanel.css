@@ -3,22 +3,6 @@
   gap: 8px;
 }
 
-.agent-follow-up-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 16px;
-  padding: 8px 0;
-}
-
-.agent-follow-up-filter .ant-form-item {
-  margin-bottom: 8px;
-}
-
-.agent-follow-up-filter .ant-picker,
-.agent-follow-up-filter .ant-select {
-  min-width: 180px;
-}
-
 .agent-follow-up-close-form {
   display: grid;
   gap: 12px;

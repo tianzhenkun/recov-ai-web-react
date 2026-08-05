@@ -134,7 +134,13 @@ describe('agent console service contract', () => {
   });
 
   it('maps follow-up ownership and contact actions to their endpoints', async () => {
-    await call('listAgentFollowUps', { status: 'pending' });
+    await call('listAgentFollowUps', {
+      status: ['pending'],
+      sceneCode: 'intro_geo',
+      sourceType: 'handoff_unanswered',
+      createdAtBegin: '2026-08-05T00:00:00.000Z',
+      createdAtEnd: '2026-08-05T23:59:59.999Z',
+    });
     await call('getAgentFollowUp', 'follow-up-1');
     await call('createFollowUpAttempt', 'follow-up-1', {
       contactChannel: 'wechat',
@@ -166,6 +172,16 @@ describe('agent console service contract', () => {
       '/ai-call/agent-console/follow-ups/follow-up-1/complete',
       '/ai-call/agent-console/follow-ups/follow-up-1/close',
     ]);
+    expect(mockedRequest.mock.calls[0][1]).toMatchObject({
+      method: 'get',
+      params: {
+        status: 'pending',
+        sceneCode: 'intro_geo',
+        sourceType: 'handoff_unanswered',
+        createdAtBegin: '2026-08-05T00:00:00.000Z',
+        createdAtEnd: '2026-08-05T23:59:59.999Z',
+      },
+    });
     expect(mockedRequest.mock.calls[2][1]).toMatchObject({
       headers: { 'Idempotency-Key': 'attempt-1' },
       data: { contact_channel: 'wechat', attempt_result: 'connected' },

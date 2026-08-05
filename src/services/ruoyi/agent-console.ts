@@ -265,6 +265,7 @@ export type PageQuery = {
 export type FollowUpListQuery = {
   pageNum?: number;
   pageSize?: number;
+  ownership?: 'unassigned' | 'mine';
   status?: FollowUpStatus[];
   sceneCode?: SceneCode;
   sourceType?: FollowUpSourceType;
@@ -497,7 +498,13 @@ export const submitAfterCallWork = (
 export const listAgentFollowUps = (params: FollowUpListQuery = {}) =>
   agentConsoleRequest<PageResult<FollowUpTaskDto>>(
     `${AGENT_CONSOLE_API_PREFIX}/follow-ups`,
-    { method: 'get', params },
+    {
+      method: 'get',
+      params: {
+        ...params,
+        status: params.status?.join(','),
+      },
+    },
   );
 
 export const getAgentFollowUp = (followUpId: BigintString) =>

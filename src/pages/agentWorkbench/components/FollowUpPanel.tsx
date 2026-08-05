@@ -1,26 +1,26 @@
 import { PhoneOutlined } from '@ant-design/icons';
 import {
+  type ActionType,
+  type ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
+import {
   Alert,
   Button,
-  DatePicker,
   Descriptions,
   Drawer,
-  Empty,
   Flex,
-  Form,
   Input,
   Modal,
   message,
   Select,
-  Spin,
-  Table,
   Tabs,
   Tag,
   Typography,
 } from 'antd';
-import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import * as React from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   type AttemptResult,
   type ClosedReason,
@@ -84,13 +84,6 @@ type FollowUpPanelProps = {
   ) => void;
 };
 
-type FollowUpFilterValues = {
-  createdAt?: [Dayjs, Dayjs];
-  sceneCode?: FollowUpTaskDto['scene_code'];
-  status?: FollowUpTaskDto['status'];
-  sourceType?: FollowUpTaskDto['source_type'];
-};
-
 const defaultServices: FollowUpServices = {
   list: listAgentFollowUps,
   detail: getAgentFollowUp,
@@ -101,15 +94,21 @@ const defaultServices: FollowUpServices = {
   close: closeFollowUp,
 };
 
-const unwrapRows = (response: unknown): FollowUpTaskDto[] => {
-  if (!response || typeof response !== 'object') return [];
+const unwrapPage = (response: unknown) => {
+  if (!response || typeof response !== 'object') return { rows: [], total: 0 };
   const data = Reflect.get(response, 'data');
   if (data && typeof data === 'object') {
     const rows = Reflect.get(data, 'rows');
-    if (Array.isArray(rows)) return rows;
+    const total = Number(Reflect.get(data, 'total'));
+    if (Array.isArray(rows))
+      return { rows: rows as FollowUpTaskDto[], total: total || 0 };
   }
   const rows = Reflect.get(response, 'rows');
-  return Array.isArray(rows) ? rows : [];
+  const total = Number(Reflect.get(response, 'total'));
+  return {
+    rows: Array.isArray(rows) ? (rows as FollowUpTaskDto[]) : [],
+    total: total || 0,
+  };
 };
 
 const unwrapData = (response: unknown) =>
@@ -178,10 +177,6 @@ const FollowUpPanel = ({
   onCallAccepted,
 }: FollowUpPanelProps) => {
   const [scope, setScope] = useState<'unassigned' | 'mine'>('unassigned');
-  const [tasks, setTasks] = useState<FollowUpTaskDto[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState<FollowUpFilterValues>({});
-  const [filterForm] = Form.useForm<FollowUpFilterValues>();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [closeTask, setCloseTask] = useState<FollowUpTaskDto>();
   const [closeReason, setCloseReason] = useState<ClosedReason>();
@@ -197,36 +192,8 @@ const FollowUpPanel = ({
   const [callbackAt, setCallbackAt] = useState('');
   const [selectedTask, setSelectedTask] = useState<FollowUpTaskDto>();
   const [selectedCallId, setSelectedCallId] = useState<string>();
+  const actionRef = useRef<ActionType | undefined>(undefined);
   const inFlightRef = useRef(new Set<string>());
-
-  const loadTasks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const rows = unwrapRows(
-        await services.list({
-          status: filters.status ? [filters.status] : ['pending', 'processing'],
-          sceneCode: filters.sceneCode,
-          sourceType: filters.sourceType,
-          createdAtBegin: filters.createdAt?.[0]?.startOf('day').toISOString(),
-          createdAtEnd: filters.createdAt?.[1]?.endOf('day').toISOString(),
-          pageSize: 50,
-        }),
-      );
-      setTasks(
-        rows.filter((task) => {
-          return scope === 'unassigned'
-            ? task.status === 'pending' && !task.owner_agent_identity
-            : Boolean(task.owner_agent_identity);
-        }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, scope, services]);
-
-  useEffect(() => {
-    void loadTasks();
-  }, [loadTasks]);
 
   useEffect(() => {
     if (!attemptTaskToOpen) return;
@@ -249,7 +216,7 @@ const FollowUpPanel = ({
       try {
         await services.claim(task.id, createIdempotencyKey());
         messageApi.success('回访任务认领成功，负责人已固定为当前坐席');
-        setTasks((current) => current.filter((item) => item.id !== task.id));
+        await actionRef.current?.reload();
       } catch {
         messageApi.error('回访任务认领失败，请刷新后重试');
       }
@@ -280,7 +247,7 @@ const FollowUpPanel = ({
         messageApi.warning('当前坐席正在通话、话后处理或重连，暂不能回拨');
         return;
       }
-      if (agentStatus !== 'available' && !(await onPrepareCallback?.())) {
+      if (onPrepareCallback && !(await onPrepareCallback())) {
         messageApi.error('上线失败，请完成设备检查后重试');
         return;
       }
@@ -350,7 +317,7 @@ const FollowUpPanel = ({
             onClick={() =>
               void services
                 .complete(task.id, createIdempotencyKey())
-                .then(loadTasks)
+                .then(() => actionRef.current?.reload())
             }
           >
             完成任务
@@ -371,67 +338,100 @@ const FollowUpPanel = ({
     </Flex>
   );
 
+  const columns: ProColumns<FollowUpTaskDto>[] = [
+    {
+      title: '创建时间',
+      dataIndex: 'createdAtRange',
+      valueType: 'dateRange',
+      width: 180,
+      render: (_, task) => new Date(task.created_at).toLocaleString(),
+    },
+    {
+      title: '业务场景',
+      dataIndex: 'sceneCode',
+      valueType: 'select',
+      hideInTable: true,
+      valueEnum: {
+        intro_contract: { text: '合同审查产品介绍' },
+        intro_document: { text: '文书产品介绍' },
+        intro_overseas: { text: '涉外产品介绍' },
+        intro_geo: { text: 'GEO 产品介绍' },
+      },
+    },
+    {
+      title: '回访状态',
+      dataIndex: 'status',
+      valueType: 'select',
+      valueEnum: Object.fromEntries(
+        Object.entries(followUpStatusLabels).map(([value, text]) => [
+          value,
+          { text },
+        ]),
+      ),
+      width: 100,
+      render: (_, task) => (
+        <Tag color={terminal(task) ? 'default' : 'processing'}>
+          {followUpStatusLabels[task.status]}
+        </Tag>
+      ),
+    },
+    {
+      title: '回访来源',
+      dataIndex: 'sourceType',
+      valueType: 'select',
+      width: 150,
+      valueEnum: Object.fromEntries(
+        Object.entries(followUpSourceLabels).map(([value, text]) => [
+          value,
+          { text },
+        ]),
+      ),
+      render: (_, task) => followUpSourceLabels[task.source_type],
+    },
+    {
+      title: '客户',
+      dataIndex: 'masked_contact',
+      search: false,
+      width: 150,
+      renderText: (value) => value || '联系方式已脱敏',
+    },
+    {
+      title: '跟进原因',
+      dataIndex: 'follow_up_reason',
+      search: false,
+      ellipsis: true,
+    },
+    {
+      title: '应跟进时间',
+      dataIndex: 'customer_callback_at',
+      search: false,
+      width: 190,
+      renderText: (value) => formatCallbackAt(value),
+    },
+    {
+      title: '最近联系结果',
+      key: 'latest_attempt',
+      search: false,
+      width: 170,
+      render: (_, task) => {
+        const latest = latestAttemptOf(task);
+        return latest
+          ? `${attemptResultLabels[latest.attempt_result]} · ${new Date(latest.contacted_at).toLocaleString()}`
+          : '-';
+      },
+    },
+    {
+      title: '操作',
+      valueType: 'option',
+      fixed: 'right',
+      width: 260,
+      render: (_, task) => taskActions(task),
+    },
+  ];
+
   return (
     <div className="agent-follow-up-panel">
       {messageContextHolder}
-      <Form<FollowUpFilterValues>
-        className="agent-follow-up-filter"
-        form={filterForm}
-        layout="inline"
-        onFinish={setFilters}
-      >
-        <Form.Item label="创建时间" name="createdAt">
-          <DatePicker.RangePicker />
-        </Form.Item>
-        <Form.Item label="业务场景" name="sceneCode">
-          <Select
-            aria-label="业务场景"
-            allowClear
-            placeholder="全部业务场景"
-            options={[
-              { value: 'intro_contract', label: '合同审查产品介绍' },
-              { value: 'intro_document', label: '文书产品介绍' },
-              { value: 'intro_overseas', label: '涉外产品介绍' },
-              { value: 'intro_geo', label: 'GEO 产品介绍' },
-            ]}
-          />
-        </Form.Item>
-        <Form.Item label="回访状态" name="status">
-          <Select
-            aria-label="回访状态"
-            allowClear
-            placeholder="全部状态"
-            options={Object.entries(followUpStatusLabels).map(
-              ([value, label]) => ({ value, label }),
-            )}
-          />
-        </Form.Item>
-        <Form.Item label="回访来源" name="sourceType">
-          <Select
-            aria-label="回访来源"
-            allowClear
-            placeholder="全部来源"
-            options={Object.entries(followUpSourceLabels).map(
-              ([value, label]) => ({ value, label }),
-            )}
-          />
-        </Form.Item>
-        <Form.Item>
-          <Flex gap="small">
-            <Button type="primary" htmlType="submit">
-              查询
-            </Button>
-            <Button
-              onClick={() => {
-                filterForm.resetFields();
-                setFilters({});
-              }}
-            >
-              重置
-            </Button>
-          </Flex>
-        </Form.Item>
-      </Form>
       <Tabs
         activeKey={scope}
         items={[
@@ -440,84 +440,52 @@ const FollowUpPanel = ({
         ]}
         onChange={(key) => setScope(key as 'unassigned' | 'mine')}
       />
-      <Spin spinning={loading}>
-        {tasks.length ? (
-          <Table<FollowUpTaskDto>
-            rowKey="id"
-            size="middle"
-            pagination={false}
-            scroll={{ x: 1400 }}
-            dataSource={tasks}
-            columns={[
-              {
-                title: '客户',
-                dataIndex: 'masked_contact',
-                width: 150,
-                render: (value) => value || '联系方式已脱敏',
-              },
-              {
-                title: '回访来源',
-                dataIndex: 'source_type',
-                width: 150,
-                render: (value: FollowUpTaskDto['source_type']) =>
-                  followUpSourceLabels[value],
-              },
-              {
-                title: '跟进原因',
-                dataIndex: 'follow_up_reason',
-                ellipsis: true,
-              },
-              {
-                title: '创建时间',
-                dataIndex: 'created_at',
-                width: 180,
-                render: (value) => new Date(value).toLocaleString(),
-              },
-              {
-                title: '应跟进时间',
-                dataIndex: 'customer_callback_at',
-                width: 190,
-                render: (value) => formatCallbackAt(value),
-              },
-              {
-                title: '最近联系结果',
-                key: 'latest_attempt',
-                width: 170,
-                render: (_, task) => {
-                  const latest = latestAttemptOf(task);
-                  return latest
-                    ? `${attemptResultLabels[latest.attempt_result]} · ${new Date(latest.contacted_at).toLocaleString()}`
-                    : '-';
-                },
-              },
-              {
-                title: '状态',
-                dataIndex: 'status',
-                width: 100,
-                render: (_, task) => (
-                  <Tag color={terminal(task) ? 'default' : 'processing'}>
-                    {followUpStatusLabels[task.status]}
-                  </Tag>
-                ),
-              },
-              {
-                title: '操作',
-                key: 'actions',
-                fixed: 'right',
-                width: 260,
-                render: (_, task) => taskActions(task),
-              },
-            ]}
-          />
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={
-              scope === 'unassigned' ? '暂无待认领回访' : '暂无本人跟进'
-            }
-          />
-        )}
-      </Spin>
+      <ProTable<FollowUpTaskDto>
+        actionRef={actionRef}
+        rowKey="id"
+        columns={columns}
+        params={{ ownership: scope }}
+        search={{ labelWidth: 104 }}
+        scroll={{ x: 1400 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total) => `共 ${total} 条`,
+        }}
+        request={async ({
+          current,
+          pageSize,
+          ownership,
+          createdAtRange,
+          ...filters
+        }) => {
+          const createdRange = Array.isArray(createdAtRange)
+            ? createdAtRange
+            : undefined;
+          const page = unwrapPage(
+            await services.list({
+              pageNum: current,
+              pageSize,
+              ownership: ownership as 'unassigned' | 'mine',
+              status: filters.status
+                ? [filters.status as FollowUpTaskDto['status']]
+                : ['pending', 'processing'],
+              sceneCode: filters.sceneCode as
+                | FollowUpTaskDto['scene_code']
+                | undefined,
+              sourceType: filters.sourceType as
+                | FollowUpTaskDto['source_type']
+                | undefined,
+              createdAtBegin: createdRange?.[0]
+                ? dayjs(createdRange[0]).startOf('day').toISOString()
+                : undefined,
+              createdAtEnd: createdRange?.[1]
+                ? dayjs(createdRange[1]).endOf('day').toISOString()
+                : undefined,
+            }),
+          );
+          return { data: page.rows, total: page.total, success: true };
+        }}
+      />
 
       <Drawer
         title={selectedCallId ? '通话详情' : '跟进任务详情'}
@@ -692,7 +660,7 @@ const FollowUpPanel = ({
           setCloseReason(undefined);
           setCloseRemark('');
           setCloseError('');
-          await loadTasks();
+          await actionRef.current?.reload();
         }}
       >
         <div className="agent-follow-up-close-form">
@@ -758,7 +726,7 @@ const FollowUpPanel = ({
           setAttemptRemark('');
           setAttemptError('');
           setCallbackAt('');
-          await loadTasks();
+          await actionRef.current?.reload();
         }}
       >
         <div className="agent-follow-up-close-form">

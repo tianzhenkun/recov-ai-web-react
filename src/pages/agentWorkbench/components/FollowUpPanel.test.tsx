@@ -91,6 +91,13 @@ describe('FollowUpPanel', () => {
     expect(screen.getByLabelText('回访状态')).toBeTruthy();
     expect(screen.getByLabelText('回访来源')).toBeTruthy();
     expect(screen.getByRole('button', { name: /查\s*询/ })).toBeTruthy();
+    expect(services.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        ownership: 'unassigned',
+        pageNum: 1,
+        pageSize: 10,
+      }),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
     await waitFor(() => expect(services.list).toHaveBeenCalledTimes(2));
@@ -209,6 +216,35 @@ describe('FollowUpPanel', () => {
     );
   });
 
+  it('renews an available agent lease before calling the customer', async () => {
+    const services = createServices();
+    const onPrepareCallback = jest.fn().mockResolvedValue(true);
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [{ ...unanswered, owner_agent_identity: 'agent-1' }],
+        total: 1,
+      },
+    });
+    render(
+      <FollowUpPanel
+        agentStatus="available"
+        callbackEnabled
+        consoleSessionId="session-1"
+        onPrepareCallback={onPrepareCallback}
+        services={services}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    fireEvent.click(await screen.findByRole('button', { name: /呼叫客户/ }));
+
+    await waitFor(() => expect(onPrepareCallback).toHaveBeenCalledTimes(1));
+    expect(onPrepareCallback.mock.invocationCallOrder[0]).toBeLessThan(
+      services.call.mock.invocationCallOrder[0],
+    );
+  });
+
   it('opens contact result registration after a callback ends', async () => {
     const services = createServices();
     const task = {
@@ -250,22 +286,20 @@ describe('FollowUpPanel', () => {
 
   it('separates unassigned work from tasks owned by the current agent', async () => {
     const services = createServices();
-    services.list.mockResolvedValue({
+    const mine = {
+      ...unanswered,
+      id: '2',
+      masked_contact: '139****0000',
+      owner_agent_identity: 'agent-1',
+      status: 'processing' as const,
+    };
+    services.list.mockImplementation(async (params) => ({
       code: 200,
       data: {
-        rows: [
-          unanswered,
-          {
-            ...unanswered,
-            id: '2',
-            masked_contact: '139****0000',
-            owner_agent_identity: 'agent-1',
-            status: 'processing',
-          },
-        ],
-        total: 2,
+        rows: params?.ownership === 'mine' ? [mine] : [unanswered],
+        total: 1,
       },
-    });
+    }));
 
     render(<FollowUpPanel services={services} />);
     expect(await screen.findByText('138****0000')).toBeTruthy();
@@ -284,6 +318,7 @@ describe('FollowUpPanel', () => {
     expect(screen.getByRole('columnheader', { name: '客户' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: '操作' })).toBeTruthy();
 
+    expect(await screen.findByText('138****0000')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
     const drawer = await screen.findByRole('dialog', {
       name: '跟进任务详情',

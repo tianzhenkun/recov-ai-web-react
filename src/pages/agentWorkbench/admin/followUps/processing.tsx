@@ -24,9 +24,8 @@ const FollowUpProcessingPage = () => {
     refresh: agent.bootstrap,
   });
   const prepareCallback = useCallback(async () => {
-    if (agent.status === 'available') return true;
     return agent.goOnline();
-  }, [agent.goOnline, agent.status]);
+  }, [agent.goOnline]);
   const endCallbackCall = useCallback(async () => {
     const task = callbackTask;
     if (!(await callbackCall.endCall()) || !task) return;
