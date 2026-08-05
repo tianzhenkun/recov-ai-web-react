@@ -9,13 +9,13 @@ const RESULT_META: Record<
   CallResultGroup,
   { label: string; color: string; drillable: boolean }
 > = {
-  connected: { label: '已接通', color: '#52c41a', drillable: true },
-  no_answer: { label: '无人接听', color: '#faad14', drillable: true },
-  busy: { label: '占线', color: '#fa8c16', drillable: true },
-  invalid_number: { label: '空号', color: '#8c8c8c', drillable: true },
-  call_failed: { label: '呼叫失败', color: '#ff4d4f', drillable: true },
-  processing: { label: '处理中', color: '#1677ff', drillable: false },
-  other: { label: '其他', color: '#b37feb', drillable: false },
+  connected: { label: '已接通', color: '#5B8F8B', drillable: true },
+  no_answer: { label: '无人接听', color: '#C49A5A', drillable: true },
+  busy: { label: '占线', color: '#B9855B', drillable: true },
+  invalid_number: { label: '空号', color: '#8A93A3', drillable: true },
+  call_failed: { label: '呼叫失败', color: '#C56A7A', drillable: true },
+  processing: { label: '处理中', color: '#6487B8', drillable: false },
+  other: { label: '其他', color: '#8B7FB3', drillable: false },
 };
 
 type ResultItem = OutboundStatistics['results'][number];
@@ -97,6 +97,8 @@ const CallResultChart = ({ data, onResultClick }: CallResultChartProps) => {
                 <span
                   aria-hidden
                   style={{
+                    display: 'inline-block',
+                    flex: '0 0 auto',
                     width: 8,
                     height: 8,
                     borderRadius: '50%',

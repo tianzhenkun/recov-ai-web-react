@@ -59,14 +59,16 @@ describe('AI Call 外呼统计领域规则', () => {
     const followUps = new URL(buildFollowUpsUrl(range), 'http://localhost');
 
     expect(records.pathname).toBe('/ai-call/records');
+    expect(followUps.pathname).toBe('/ai-call/follow-up-overview');
     expect(Object.fromEntries(records.searchParams)).toEqual({
-      entryType: 'sip_outbound',
+      formalOutboundOnly: 'true',
       startedAtBegin: range.startedAtBegin,
       startedAtEnd: range.startedAtEnd,
       callResult: 'connected',
     });
     expect(Object.fromEntries(followUps.searchParams)).toEqual({
       status: 'pending',
+      formalOutboundOnly: 'true',
       sourceStartedAtBegin: range.startedAtBegin,
       sourceStartedAtEnd: range.startedAtEnd,
     });

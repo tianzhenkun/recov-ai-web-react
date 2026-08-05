@@ -8,13 +8,13 @@ import {
 import { PageContainer } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
 import {
-  Alert,
   Button,
   Card,
   Col,
   DatePicker,
   Flex,
   message,
+  Result,
   Row,
   Skeleton,
   Space,
@@ -208,16 +208,32 @@ const AiCallStatisticsPage = () => {
         </Card>
 
         {loadFailed ? (
-          <Alert
-            type="error"
-            showIcon
-            title="外呼统计加载失败，请重试"
-            action={
-              <Button size="small" onClick={() => void loadStatistics()}>
-                重试
-              </Button>
-            }
-          />
+          <Card
+            styles={{
+              body: {
+                alignItems: 'center',
+                display: 'flex',
+                justifyContent: 'center',
+                minHeight: 320,
+              },
+            }}
+          >
+            <Result
+              status="warning"
+              title="暂时无法获取外呼统计"
+              subTitle="请检查服务状态或稍后重试，当前筛选条件已保留。"
+              extra={
+                <Button
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  aria-label="重新加载"
+                  onClick={() => void loadStatistics()}
+                >
+                  重新加载
+                </Button>
+              }
+            />
+          </Card>
         ) : null}
 
         {loading && !statistics ? (
@@ -275,6 +291,7 @@ const AiCallStatisticsPage = () => {
                   comparison="当前筛选范围"
                   icon={<ScheduleOutlined />}
                   tone="error"
+                  emphasized
                   onClick={openFollowUps}
                 />
               </Col>

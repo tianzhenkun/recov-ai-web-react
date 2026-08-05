@@ -84,6 +84,9 @@ describe('AI Call 外呼统计页面', () => {
     expect(screen.getAllByText('712').length).toBeGreaterThan(0);
     expect(screen.getAllByText('56.2%').length).toBeGreaterThan(0);
     expect(screen.getByText('38')).toBeTruthy();
+    expect(screen.getByText('38').parentElement?.style.color).toBe(
+      'rgb(22, 119, 255)',
+    );
     expect(screen.getByText('较上期 ↑ 8.3%')).toBeTruthy();
     expect(screen.getByText('较上期 ↓ 1.68 个百分点')).toBeTruthy();
     expect(screen.getByTestId('outbound-trend-chart')).toBeTruthy();
@@ -103,7 +106,7 @@ describe('AI Call 外呼统计页面', () => {
     fireEvent.click(screen.getByRole('button', { name: /接通通话/ }));
     expect(history.push).toHaveBeenLastCalledWith(
       expect.stringContaining(
-        '/ai-call/records?entryType=sip_outbound&startedAtBegin=',
+        '/ai-call/records?formalOutboundOnly=true&startedAtBegin=',
       ),
     );
     expect(history.push).toHaveBeenLastCalledWith(
@@ -112,7 +115,9 @@ describe('AI Call 外呼统计页面', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /待跟进/ }));
     expect(history.push).toHaveBeenLastCalledWith(
-      expect.stringContaining('/ai-call/follow-ups?status=pending'),
+      expect.stringContaining(
+        '/ai-call/follow-up-overview?status=pending&formalOutboundOnly=true',
+      ),
     );
   });
 
@@ -130,16 +135,19 @@ describe('AI Call 外呼统计页面', () => {
     );
   });
 
-  it('请求失败时清空旧数据并允许重试', async () => {
+  it('请求失败时展示完整异常状态、清空旧数据并允许重新加载', async () => {
     (getOutboundStatistics as jest.Mock)
       .mockRejectedValueOnce(new Error('network'))
       .mockResolvedValueOnce(statistics);
 
     render(<AiCallStatisticsPage />);
 
-    expect(await screen.findByText('外呼统计加载失败，请重试')).toBeTruthy();
+    expect(await screen.findByText('暂时无法获取外呼统计')).toBeTruthy();
+    expect(
+      screen.getByText('请检查服务状态或稍后重试，当前筛选条件已保留。'),
+    ).toBeTruthy();
     expect(screen.queryByText('1,268')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
     expect(await screen.findByText('1,268')).toBeTruthy();
   });
 });

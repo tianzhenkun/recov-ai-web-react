@@ -90,7 +90,7 @@ export const buildRecordsUrl = (
   params: DrillDownRange & { callResult?: CallResultGroup },
 ) => {
   const search = new URLSearchParams({
-    entryType: 'sip_outbound',
+    formalOutboundOnly: 'true',
     startedAtBegin: params.startedAtBegin,
     startedAtEnd: params.startedAtEnd,
   });
@@ -103,8 +103,9 @@ export const buildRecordsUrl = (
 export const buildFollowUpsUrl = (params: DrillDownRange) => {
   const search = new URLSearchParams({
     status: 'pending',
+    formalOutboundOnly: 'true',
     sourceStartedAtBegin: params.startedAtBegin,
     sourceStartedAtEnd: params.startedAtEnd,
   });
-  return `/ai-call/follow-ups?${search.toString()}`;
+  return `/ai-call/follow-up-overview?${search.toString()}`;
 };

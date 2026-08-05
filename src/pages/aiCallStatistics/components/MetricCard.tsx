@@ -1,4 +1,4 @@
-import { Card, Flex, Space, Typography } from 'antd';
+import { Card, Flex, Space, Typography, theme } from 'antd';
 import React, { type KeyboardEvent, type ReactNode } from 'react';
 import MetricIcon, {
   type MetricTone,
@@ -13,6 +13,7 @@ type MetricCardProps = {
   comparison: string;
   icon: ReactNode;
   tone: MetricTone;
+  emphasized?: boolean;
   onClick: () => void;
 };
 
@@ -23,8 +24,11 @@ const MetricCard = ({
   comparison,
   icon,
   tone,
+  emphasized = false,
   onClick,
 }: MetricCardProps) => {
+  const { token } = theme.useToken();
+  const emphasizedColor = emphasized ? token.colorPrimary : undefined;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -56,11 +60,19 @@ const MetricCard = ({
               fontSize: 26,
               lineHeight: 1.2,
               fontVariantNumeric: 'tabular-nums',
+              color: emphasizedColor,
             }}
           >
             {value}
           </Text>
-          {unit ? <Text type="secondary">{unit}</Text> : null}
+          {unit ? (
+            <Text
+              type={emphasized ? undefined : 'secondary'}
+              style={{ color: emphasizedColor }}
+            >
+              {unit}
+            </Text>
+          ) : null}
         </Space>
         <Text type="secondary" style={{ fontSize: 12 }}>
           {comparison}

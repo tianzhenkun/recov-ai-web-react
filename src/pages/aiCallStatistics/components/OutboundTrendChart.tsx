@@ -12,6 +12,11 @@ type OutboundTrendChartProps = {
   onBucketClick: (bucketStart: string) => void;
 };
 
+const TREND_COLORS = {
+  dialAttempts: '#7C6BCB',
+  connectRate: '#5B8F8B',
+};
+
 const OutboundTrendChart = ({
   data,
   granularity,
@@ -33,21 +38,41 @@ const OutboundTrendChart = ({
       type: 'interval',
       data: chartData,
       yField: 'dialAttempts',
-      style: { fill: '#1677ff', fillOpacity: 0.82, maxWidth: 36 },
+      style: {
+        fill: TREND_COLORS.dialAttempts,
+        fillOpacity: 0.82,
+        maxWidth: 36,
+      },
       axis: { y: { title: '拨打次数' } },
+      tooltip: {
+        items: [
+          (datum: { dialAttempts: number }) => ({
+            name: '拨打次数',
+            value: `${datum.dialAttempts.toLocaleString()} 次`,
+          }),
+        ],
+      },
     },
     {
       type: 'line',
       data: chartData,
       yField: 'connectRatePercent',
       shapeField: 'smooth',
-      style: { stroke: '#52c41a', lineWidth: 2 },
+      style: { stroke: TREND_COLORS.connectRate, lineWidth: 2 },
       axis: {
         y: {
           position: 'right',
           title: '接通率',
           labelFormatter: (value: number) => `${value}%`,
         },
+      },
+      tooltip: {
+        items: [
+          (datum: { connectRatePercent: number }) => ({
+            name: '接通率',
+            value: `${datum.connectRatePercent.toFixed(1)}%`,
+          }),
+        ],
       },
     },
   ];
@@ -57,6 +82,11 @@ const OutboundTrendChart = ({
       height={300}
       xField="bucketLabel"
       {...{ children }}
+      scale={{
+        color: {
+          range: [TREND_COLORS.dialAttempts, TREND_COLORS.connectRate],
+        },
+      }}
       tooltip={{ title: 'bucketLabel' }}
       legend={{
         color: {
