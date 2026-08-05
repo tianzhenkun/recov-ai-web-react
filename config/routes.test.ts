@@ -42,7 +42,12 @@ describe('routes', () => {
     ],
     [
       '/ai-call/follow-ups',
-      './agentWorkbench/admin/followUps',
+      './agentWorkbench/admin/followUps/processing',
+      'ai_call:agent:console',
+    ],
+    [
+      '/ai-call/follow-up-overview',
+      './agentWorkbench/admin/followUps/overview',
       'ai_call:agent:manage',
     ],
   ])('maps %s to the independent agent workbench module', (path, component, requiredPermission) => {

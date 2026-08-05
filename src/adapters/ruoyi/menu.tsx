@@ -46,12 +46,21 @@ const aiCallTasksPath = '/ai-call/tasks';
 const aiCallRecordsPath = '/ai-call/records';
 const aiCallVoicesPath = '/ai-call/voices';
 const aiCallVoiceManagePermission = 'ai_call:voice:manage';
+const aiCallAgentConsolePermission = 'ai_call:agent:console';
+const aiCallAgentManagePermission = 'ai_call:agent:manage';
 const aiCallLinesPath = '/ai-call/lines';
 const aiCallRulesPath = '/ai-call/rules';
+const aiCallFollowUpsPath = '/ai-call/follow-ups';
+const aiCallFollowUpOverviewPath = '/ai-call/follow-up-overview';
 const aiCallManagementPaths = new Set([
   '/ai-call/agents',
   '/ai-call/handoffs',
-  '/ai-call/follow-ups',
+  aiCallFollowUpsPath,
+  aiCallFollowUpOverviewPath,
+]);
+const aiCallAgentConsolePaths = new Set([
+  '/agent-workbench',
+  '/ai-call/agent-workbench',
 ]);
 
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
@@ -126,6 +135,20 @@ const aiCallInjectedChildren: RuoyiMenuDataItem[] = [
     locale: false,
     icon: <FieldTimeOutlined />,
   },
+  {
+    key: aiCallFollowUpsPath,
+    path: aiCallFollowUpsPath,
+    name: '跟进处理',
+    locale: false,
+    icon: <FieldTimeOutlined />,
+  },
+  {
+    key: aiCallFollowUpOverviewPath,
+    path: aiCallFollowUpOverviewPath,
+    name: '跟进总览',
+    locale: false,
+    icon: <BarChartOutlined />,
+  },
 ];
 
 const isSalesAgentMenuItem = (item: MenuDataItem) => {
@@ -186,6 +209,12 @@ export const attachAiCallManagementMenu = (
     const canManageVoices =
       permissions === undefined ||
       hasPermission({ permissions }, aiCallVoiceManagePermission);
+    const canUseAgentConsole =
+      permissions === undefined ||
+      hasPermission({ permissions }, aiCallAgentConsolePermission);
+    const canManageAgents =
+      permissions === undefined ||
+      hasPermission({ permissions }, aiCallAgentManagePermission);
     const children = (
       item.children
         ? attachAiCallManagementMenu(
@@ -193,10 +222,14 @@ export const attachAiCallManagementMenu = (
             permissions,
           )
         : []
-    ).filter(
-      (child) =>
-        canManageVoices || normalizePath(child.path) !== aiCallVoicesPath,
-    );
+    ).filter((child) => {
+      const path = normalizePath(child.path);
+      return (
+        (canManageVoices || path !== aiCallVoicesPath) &&
+        (canUseAgentConsole || path !== aiCallFollowUpsPath) &&
+        (canManageAgents || path !== aiCallFollowUpOverviewPath)
+      );
+    });
     const isAiCallRoot =
       normalizePath(item.path) === '/ai-call' ||
       String(item.name || '')
@@ -205,11 +238,25 @@ export const attachAiCallManagementMenu = (
     const hasManagementChild = children.some((child) =>
       aiCallManagementPaths.has(normalizePath(child.path)),
     );
+    const hasAgentConsoleChild = children.some((child) =>
+      aiCallAgentConsolePaths.has(normalizePath(child.path)),
+    );
     const shouldInjectVoice =
       permissions === undefined ? hasManagementChild : canManageVoices;
+    const shouldInjectFollowUps =
+      permissions === undefined
+        ? hasManagementChild || hasAgentConsoleChild
+        : canUseAgentConsole;
+    const shouldInjectFollowUpOverview =
+      permissions === undefined ? hasManagementChild : canManageAgents;
     const injectedChildren = aiCallInjectedChildren.filter((child) => {
       const path = normalizePath(child.path);
-      return path === aiCallVoicesPath ? shouldInjectVoice : hasManagementChild;
+      if (path === aiCallVoicesPath) return shouldInjectVoice;
+      if (path === aiCallFollowUpsPath) return shouldInjectFollowUps;
+      if (path === aiCallFollowUpOverviewPath) {
+        return shouldInjectFollowUpOverview;
+      }
+      return hasManagementChild;
     });
     const injectedPaths = new Set(
       injectedChildren.map((child) => normalizePath(child.path)),

@@ -9,7 +9,6 @@ import {
   Button,
   Descriptions,
   Drawer,
-  Tabs,
   Tag,
   Timeline,
   Typography,
@@ -23,7 +22,6 @@ import {
   getAdminFollowUp,
   listAdminFollowUps,
 } from '@/services/ruoyi/agent-console';
-import FollowUpPanel from '../../components/FollowUpPanel';
 import {
   AdminMetricRow,
   formatDateTime,
@@ -97,25 +95,21 @@ const normalizeDetail = (response: unknown): FollowUpAdminDetail => {
   };
 };
 
-const FollowUpAdminPage = () => {
+export const FollowUpOverviewPage = () => {
   const [searchParams] = useSearchParams();
   const deepLinkFollowUpId = searchParams.get('followUpId')?.trim() || '';
   const presetStatus = searchParams.get('status')?.trim() || '';
+  const presetFormalOutboundOnly =
+    searchParams.get('formalOutboundOnly') === 'true';
   const presetSourceStartedAtBegin =
     searchParams.get('sourceStartedAtBegin')?.trim() || '';
   const presetSourceStartedAtEnd =
     searchParams.get('sourceStartedAtEnd')?.trim() || '';
-  const hasStatisticsPreset = Boolean(
-    presetStatus || presetSourceStartedAtBegin || presetSourceStartedAtEnd,
-  );
   const [metrics, setMetrics] = useState<Record<string, number>>({});
   const [detail, setDetail] = useState<FollowUpAdminDetail>();
   const [selectedFollowUpId, setSelectedFollowUpId] = useState<string>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string>();
-  const [activeView, setActiveView] = useState(
-    deepLinkFollowUpId || hasStatisticsPreset ? 'admin' : 'mine',
-  );
   const detailRequestIdRef = useRef(0);
 
   const openDetail = useCallback(async (followUpId: string) => {
@@ -149,7 +143,6 @@ const FollowUpAdminPage = () => {
 
   useEffect(() => {
     if (deepLinkFollowUpId) {
-      setActiveView('admin');
       void openDetail(deepLinkFollowUpId);
     }
   }, [deepLinkFollowUpId, openDetail]);
@@ -290,112 +283,90 @@ const FollowUpAdminPage = () => {
   const detailTask = detail?.task;
 
   return (
-    <PageContainer className="agent-admin-page" title="跟进任务管理">
-      <Tabs
-        activeKey={activeView}
-        onChange={setActiveView}
+    <PageContainer className="agent-admin-page" title="跟进总览">
+      <AdminMetricRow
         items={[
           {
-            key: 'mine',
-            label: '跟进处理',
-            children: <FollowUpPanel callbackEnabled={false} />,
+            key: 'pending',
+            label: '待处理',
+            value: metrics.pending ?? 0,
+            tone: 'blue',
           },
           {
-            key: 'admin',
-            label: '全量管理',
-            children: (
-              <>
-                <AdminMetricRow
-                  items={[
-                    {
-                      key: 'pending',
-                      label: '待处理',
-                      value: metrics.pending ?? 0,
-                      tone: 'blue',
-                    },
-                    {
-                      key: 'scheduled',
-                      label: '客户预约待回访',
-                      value: metrics.scheduled ?? 0,
-                      tone: 'purple',
-                    },
-                    {
-                      key: 'overdue',
-                      label: '预约已逾期',
-                      value: metrics.overdue ?? 0,
-                      tone: 'red',
-                    },
-                    {
-                      key: 'unanswered',
-                      label: '人工未接回访',
-                      value:
-                        metrics.handoff_unanswered ?? metrics.unanswered ?? 0,
-                      tone: 'orange',
-                    },
-                    {
-                      key: 'completed',
-                      label: '已完成',
-                      value: metrics.completed ?? 0,
-                      tone: 'green',
-                    },
-                    {
-                      key: 'closed',
-                      label: '已关闭',
-                      value: metrics.closed ?? 0,
-                      tone: 'blue',
-                    },
-                  ]}
-                />
-                <ProTable<FollowUpTaskDto>
-                  rowKey={(row) => String(row.id)}
-                  columns={columns}
-                  search={{ labelWidth: 112 }}
-                  scroll={{ x: 1300 }}
-                  pagination={{
-                    defaultPageSize: 10,
-                    showTotal: (total) => `共 ${total} 条`,
-                  }}
-                  request={async ({
-                    current,
-                    pageSize,
-                    source_started_at_range,
-                    ...filters
-                  }) => {
-                    const sourceRange = Array.isArray(source_started_at_range)
-                      ? source_started_at_range
-                      : undefined;
-                    const status =
-                      (filters.status as string | undefined) || presetStatus;
-                    const sourceStartedAtBegin = sourceRange?.[0]
-                      ? dayjs(sourceRange[0]).toISOString()
-                      : presetSourceStartedAtBegin;
-                    const sourceStartedAtEnd = sourceRange?.[1]
-                      ? dayjs(sourceRange[1]).toISOString()
-                      : presetSourceStartedAtEnd;
-                    const page = unwrapPage<FollowUpTaskDto>(
-                      await listAdminFollowUps({
-                        pageNum: current,
-                        pageSize,
-                        ...filters,
-                        ...(status ? { status } : {}),
-                        ...(sourceStartedAtBegin
-                          ? { sourceStartedAtBegin }
-                          : {}),
-                        ...(sourceStartedAtEnd ? { sourceStartedAtEnd } : {}),
-                      }),
-                    );
-                    setMetrics(page.metrics || {});
-                    return {
-                      data: page.rows,
-                      total: page.total,
-                      success: true,
-                    };
-                  }}
-                />
-              </>
-            ),
+            key: 'scheduled',
+            label: '客户预约待回访',
+            value: metrics.scheduled ?? 0,
+            tone: 'purple',
+          },
+          {
+            key: 'overdue',
+            label: '预约已逾期',
+            value: metrics.overdue ?? 0,
+            tone: 'red',
+          },
+          {
+            key: 'unanswered',
+            label: '人工未接回访',
+            value: metrics.handoff_unanswered ?? metrics.unanswered ?? 0,
+            tone: 'orange',
+          },
+          {
+            key: 'completed',
+            label: '已完成',
+            value: metrics.completed ?? 0,
+            tone: 'green',
+          },
+          {
+            key: 'closed',
+            label: '已关闭',
+            value: metrics.closed ?? 0,
+            tone: 'blue',
           },
         ]}
+      />
+      <ProTable<FollowUpTaskDto>
+        rowKey={(row) => String(row.id)}
+        columns={columns}
+        search={{ labelWidth: 112 }}
+        scroll={{ x: 1300 }}
+        pagination={{
+          defaultPageSize: 10,
+          showTotal: (total) => `共 ${total} 条`,
+        }}
+        request={async ({
+          current,
+          pageSize,
+          source_started_at_range,
+          ...filters
+        }) => {
+          const sourceRange = Array.isArray(source_started_at_range)
+            ? source_started_at_range
+            : undefined;
+          const status = (filters.status as string | undefined) || presetStatus;
+          const sourceStartedAtBegin = sourceRange?.[0]
+            ? dayjs(sourceRange[0]).toISOString()
+            : presetSourceStartedAtBegin;
+          const sourceStartedAtEnd = sourceRange?.[1]
+            ? dayjs(sourceRange[1]).toISOString()
+            : presetSourceStartedAtEnd;
+          const page = unwrapPage<FollowUpTaskDto>(
+            await listAdminFollowUps({
+              pageNum: current,
+              pageSize,
+              ...filters,
+              ...(status ? { status } : {}),
+              ...(presetFormalOutboundOnly ? { formalOutboundOnly: true } : {}),
+              ...(sourceStartedAtBegin ? { sourceStartedAtBegin } : {}),
+              ...(sourceStartedAtEnd ? { sourceStartedAtEnd } : {}),
+            }),
+          );
+          setMetrics(page.metrics || {});
+          return {
+            data: page.rows,
+            total: page.total,
+            success: true,
+          };
+        }}
       />
 
       <Drawer
@@ -552,5 +523,3 @@ const FollowUpAdminPage = () => {
     </PageContainer>
   );
 };
-
-export default FollowUpAdminPage;

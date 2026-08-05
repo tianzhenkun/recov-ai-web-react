@@ -4,7 +4,7 @@ import {
   getAdminFollowUp,
   listAdminFollowUps,
 } from '@/services/ruoyi/agent-console';
-import FollowUpAdminPage from '.';
+import FollowUpOverviewPage from './overview';
 
 let mockDeepLinkFollowUpId = 'follow-up-1';
 let mockStatisticsSearch = '';
@@ -71,7 +71,7 @@ const task = {
   created_at: '2026-07-30T10:00:00+08:00',
 };
 
-describe('跟进任务管理深链', () => {
+describe('跟进总览深链', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDeepLinkFollowUpId = 'follow-up-1';
@@ -84,7 +84,7 @@ describe('跟进任务管理深链', () => {
   });
 
   it('根据 followUpId 自动打开 AI 话后跟进详情', async () => {
-    render(<FollowUpAdminPage />);
+    render(<FollowUpOverviewPage />);
 
     expect(getAdminFollowUp).toHaveBeenCalledWith('follow-up-1');
     const drawer = await screen.findByRole('dialog', {
@@ -100,17 +100,19 @@ describe('跟进任务管理深链', () => {
     mockDeepLinkFollowUpId = '';
     mockStatisticsSearch = new URLSearchParams({
       status: 'pending',
+      formalOutboundOnly: 'true',
       sourceStartedAtBegin: '2026-07-25T00:00:00+08:00',
       sourceStartedAtEnd: '2026-07-31T16:20:00+08:00',
     }).toString();
 
-    render(<FollowUpAdminPage />);
+    render(<FollowUpOverviewPage />);
 
     await waitFor(() =>
       expect(listAdminFollowUps).toHaveBeenCalledWith({
         pageNum: 1,
         pageSize: 10,
         status: 'pending',
+        formalOutboundOnly: true,
         sourceStartedAtBegin: '2026-07-25T00:00:00+08:00',
         sourceStartedAtEnd: '2026-07-31T16:20:00+08:00',
       }),
@@ -133,7 +135,7 @@ describe('跟进任务管理深链', () => {
       },
     });
 
-    render(<FollowUpAdminPage />);
+    render(<FollowUpOverviewPage />);
 
     const drawer = await screen.findByRole('dialog', {
       name: '跟进任务详情',
@@ -146,7 +148,7 @@ describe('跟进任务管理深链', () => {
   it('深链任务不存在时在详情抽屉展示明确错误', async () => {
     (getAdminFollowUp as jest.Mock).mockRejectedValue(new Error('not found'));
 
-    render(<FollowUpAdminPage />);
+    render(<FollowUpOverviewPage />);
 
     expect(
       await screen.findByText('跟进任务详情加载失败，请确认任务是否存在或重试'),
@@ -170,9 +172,9 @@ describe('跟进任务管理深链', () => {
           }),
       );
 
-    const view = render(<FollowUpAdminPage />);
+    const view = render(<FollowUpOverviewPage />);
     mockDeepLinkFollowUpId = 'follow-up-2';
-    view.rerender(<FollowUpAdminPage />);
+    view.rerender(<FollowUpOverviewPage />);
 
     await act(async () => {
       resolveSecond({

@@ -170,11 +170,15 @@ describe('RuoYi menu transform', () => {
       },
     ];
 
-    const permissions = ['ai_call:voice:manage'];
+    const permissions = [
+      'ai_call:voice:manage',
+      'ai_call:agent:console',
+      'ai_call:agent:manage',
+    ];
     const once = attachAiCallManagementMenu(source, permissions);
     const twice = attachAiCallManagementMenu(once, permissions);
 
-    expect(once[0].children?.slice(0, 5)).toEqual([
+    expect(once[0].children?.slice(0, 7)).toEqual([
       expect.objectContaining({
         path: '/ai-call/tasks',
         name: '外呼任务',
@@ -194,6 +198,14 @@ describe('RuoYi menu transform', () => {
       expect.objectContaining({
         path: '/ai-call/rules',
         name: '呼叫规则',
+      }),
+      expect.objectContaining({
+        path: '/ai-call/follow-ups',
+        name: '跟进处理',
+      }),
+      expect.objectContaining({
+        path: '/ai-call/follow-up-overview',
+        name: '跟进总览',
       }),
     ]);
     expect(twice).toEqual(once);
@@ -244,6 +256,30 @@ describe('RuoYi menu transform', () => {
     expect(menuData[0].children?.map((item) => item.path)).toEqual([
       '/ai-call/voices',
       '/ai-call-lab/customer',
+    ]);
+  });
+
+  it('only exposes the follow-up entry allowed by the current permission', () => {
+    const source = [
+      {
+        path: '/ai-call',
+        name: 'AI Call',
+        children: [
+          {
+            path: '/agent-workbench',
+            name: '坐席工作台',
+          },
+        ],
+      },
+    ];
+
+    const menuData = attachAiCallManagementMenu(source, [
+      'ai_call:agent:console',
+    ]);
+
+    expect(menuData[0].children?.map((item) => item.path)).toEqual([
+      '/ai-call/follow-ups',
+      '/agent-workbench',
     ]);
   });
 

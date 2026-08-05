@@ -566,7 +566,14 @@ export default [
   },
   {
     path: '/ai-call/follow-ups',
-    component: './agentWorkbench/admin/followUps',
+    component: './agentWorkbench/admin/followUps/processing',
+    hideInMenu: true,
+    access: 'hasRoutePermission',
+    requiredPermission: 'ai_call:agent:console',
+  },
+  {
+    path: '/ai-call/follow-up-overview',
+    component: './agentWorkbench/admin/followUps/overview',
     hideInMenu: true,
     access: 'hasRoutePermission',
     requiredPermission: 'ai_call:agent:manage',
