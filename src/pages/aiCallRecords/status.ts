@@ -76,13 +76,61 @@ const followUpPresentations = {
   },
 } as const satisfies Record<string, StatusPresentation>;
 
-const isFormalSipRecord = (record: Pick<AiCallRecord, 'entryType'>) =>
-  record.entryType === 'sip_outbound' || record.entryType === 'sip_inbound';
+const qualityScorePresentations = {
+  pending: {
+    text: '待评分',
+    color: 'default',
+    tooltip: '录音和转写准备好后，系统会自动评分',
+    target: null,
+  },
+  processing: {
+    text: '评分中',
+    color: 'processing',
+    tooltip: 'AI 正在生成本次外呼评分',
+    target: null,
+  },
+  failed: {
+    text: '评分失败',
+    color: 'error',
+    tooltip: 'AI 评分失败，系统会自动重试',
+    target: null,
+  },
+} as const satisfies Record<string, StatusPresentation>;
+
+const qualityReviewPresentations = {
+  excellent: {
+    text: '优秀',
+    color: 'purple',
+    tooltip: '质检员认为 AI 评分非常准确',
+    target: null,
+  },
+  good: {
+    text: '良好',
+    color: 'blue',
+    tooltip: '质检员认为 AI 评分基本准确',
+    target: null,
+  },
+  pass: {
+    text: '合格',
+    color: 'success',
+    tooltip: '质检员认为 AI 评分可接受',
+    target: null,
+  },
+  fail: {
+    text: '不合格',
+    color: 'error',
+    tooltip: '质检员认为 AI 评分存在明显问题',
+    target: null,
+  },
+} as const satisfies Record<string, StatusPresentation>;
+
+const isFormalOutboundRecord = (record: Pick<AiCallRecord, 'entryType'>) =>
+  record.entryType === 'outbound' || record.entryType === 'sip_outbound';
 
 export const getCustomerIntentPresentation = (
   record: Pick<AiCallRecord, 'entryType' | 'analysisStatus' | 'customerIntent'>,
 ): StatusPresentation | null => {
-  if (!isFormalSipRecord(record) || record.analysisStatus === '4') {
+  if (!isFormalOutboundRecord(record) || record.analysisStatus === '4') {
     return null;
   }
   if (record.analysisStatus && record.analysisStatus in analysisPresentations) {
@@ -106,7 +154,7 @@ export const getFollowUpPresentation = (
     'entryType' | 'followUpId' | 'followUpStatus' | 'followUpSuggested'
   >,
 ): StatusPresentation | null => {
-  if (!isFormalSipRecord(record)) {
+  if (!isFormalOutboundRecord(record)) {
     return null;
   }
   if (record.followUpId) {
@@ -142,11 +190,58 @@ export const getFollowUpPresentation = (
   return null;
 };
 
+export const getQualityScorePresentation = (
+  record: Pick<
+    AiCallRecord,
+    'entryType' | 'qualityScoreStatus' | 'qualityScore'
+  >,
+): StatusPresentation | null => {
+  if (!isFormalOutboundRecord(record)) {
+    return null;
+  }
+  if (record.qualityScoreStatus === 'completed') {
+    return {
+      text:
+        typeof record.qualityScore === 'number'
+          ? `${record.qualityScore}分`
+          : '已评分',
+      color: 'success',
+      tooltip: 'AI 自动评分结果',
+      target: null,
+    };
+  }
+  if (
+    record.qualityScoreStatus &&
+    record.qualityScoreStatus in qualityScorePresentations
+  ) {
+    return qualityScorePresentations[
+      record.qualityScoreStatus as keyof typeof qualityScorePresentations
+    ];
+  }
+  return null;
+};
+
+export const getQualityReviewPresentation = (
+  result: AiCallRecord['qualityReviewResult'],
+): StatusPresentation | null => {
+  if (!result || !(result in qualityReviewPresentations)) {
+    return null;
+  }
+  return qualityReviewPresentations[
+    result as keyof typeof qualityReviewPresentations
+  ];
+};
+
 export const hasUnstablePostCallData = (
-  records: Array<Pick<AiCallRecord, 'entryType' | 'status' | 'analysisStatus'>>,
+  records: Array<
+    Pick<
+      AiCallRecord,
+      'entryType' | 'status' | 'analysisStatus' | 'qualityScoreStatus'
+    >
+  >,
 ) =>
   records.some((record) => {
-    if (!isFormalSipRecord(record)) {
+    if (!isFormalOutboundRecord(record)) {
       return false;
     }
     if (record.status !== 'completed' && record.status !== 'failed') {
@@ -155,6 +250,9 @@ export const hasUnstablePostCallData = (
     return (
       record.analysisStatus == null ||
       record.analysisStatus === '0' ||
-      record.analysisStatus === '1'
+      record.analysisStatus === '1' ||
+      record.qualityScoreStatus === 'pending' ||
+      record.qualityScoreStatus === 'processing' ||
+      record.qualityScoreStatus === 'failed'
     );
   });

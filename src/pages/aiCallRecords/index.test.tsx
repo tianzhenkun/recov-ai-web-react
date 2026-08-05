@@ -14,21 +14,29 @@ import {
   getAiCallRecordDialogue,
   getAiCallRecordEvents,
   getAiCallRecordHandoffs,
+  getAiCallRecordQuality,
   getAiCallRecordRecording,
   getAiCallRecordSemanticAnalysis,
   listAiCallRecords,
+  saveAiCallRecordQualityReview,
+  scoreAiCallRecordQuality,
 } from './service';
 
 let mockSearchParams = 'taskId=task-1&targetId=target-1';
+
+void React.createElement;
 
 jest.mock('./service', () => ({
   getAiCallRecordDetail: jest.fn(),
   getAiCallRecordDialogue: jest.fn(),
   getAiCallRecordEvents: jest.fn(),
   getAiCallRecordHandoffs: jest.fn(),
+  getAiCallRecordQuality: jest.fn(),
   getAiCallRecordRecording: jest.fn(),
   getAiCallRecordSemanticAnalysis: jest.fn(),
   listAiCallRecords: jest.fn(),
+  saveAiCallRecordQualityReview: jest.fn(),
+  scoreAiCallRecordQuality: jest.fn(),
 }));
 
 jest.mock('@/pages/aiCallTasks/service', () => ({
@@ -210,6 +218,30 @@ describe('AI Call 通话记录页面', () => {
       rows: [],
       total: 0,
     });
+    (getAiCallRecordQuality as jest.Mock).mockResolvedValue({
+      score: null,
+      review: null,
+    });
+    (saveAiCallRecordQualityReview as jest.Mock).mockResolvedValue({
+      id: 'review-1',
+      callId: 'call-1',
+      qualityResult: 'fail',
+      qualityReason: 'AI 评分漏掉客户投诉',
+      reviewedBy: '1',
+      reviewedAt: '2026-08-05T12:00:00+08:00',
+    });
+    (scoreAiCallRecordQuality as jest.Mock).mockResolvedValue({
+      score: {
+        id: 'score-1',
+        callId: 'call-1',
+        status: 'completed',
+        score: 86,
+        reason: '客户问题回应完整，转人工时机合理。',
+        modelVersion: 'quality-v1',
+        retryCount: 0,
+      },
+      review: null,
+    });
   });
 
   it('提供业务筛选、复合列，并继承任务与外呼对象上下文', async () => {
@@ -276,6 +308,142 @@ describe('AI Call 通话记录页面', () => {
     expect(within(tableColumns).queryByText('录音')).toBeNull();
   });
 
+  it('在列表展示 AI 评分和人工质检，并提供复核入口', async () => {
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          ...mockRecord,
+          entryType: 'sip_outbound',
+          qualityScoreStatus: 'completed',
+          qualityScore: 86,
+          qualityReviewResult: null,
+        },
+      ],
+      total: 1,
+    });
+    (getAiCallRecordQuality as jest.Mock).mockResolvedValue({
+      score: {
+        id: 'score-1',
+        callId: 'call-1',
+        status: 'completed',
+        score: 86,
+        reason: '客户问题回应完整，转人工时机合理。',
+        modelVersion: 'quality-v1',
+        retryCount: 0,
+      },
+      review: null,
+    });
+    (getAiCallRecordDialogue as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          id: 'segment-1',
+          callId: 'call-1',
+          segmentNo: 1,
+          speakerType: 'customer',
+          text: '价格怎么收费？',
+          segmentStatus: 'final',
+        },
+      ],
+      total: 1,
+    });
+    (getAiCallRecordRecording as jest.Mock).mockResolvedValue({
+      id: 'recording-1',
+      callId: 'call-1',
+      status: 'completed',
+      playUrl: 'https://example.com/call-1.mp3',
+    });
+
+    render(<AiCallRecordsPage />);
+
+    expect(await screen.findByText('86分')).toBeTruthy();
+    expect(screen.getByText('未复核')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '复核' }));
+
+    const drawer = await screen.findByRole('dialog', {
+      name: '外呼质检复核',
+    });
+    expect(
+      await within(drawer).findByText('客户问题回应完整，转人工时机合理。'),
+    ).toBeTruthy();
+    expect(within(drawer).getByText(/价格怎么收费/)).toBeTruthy();
+    expect(within(drawer).getByTestId('dialogue-scroll-region')).toBeTruthy();
+    expect(
+      (
+        within(drawer).getByRole('button', {
+          name: /保\s*存/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    const qualityScoreValue = within(drawer).getByTestId('quality-score-value');
+    expect(qualityScoreValue.textContent).toBe('86分');
+    fireEvent.click(within(drawer).getByText('不合格'));
+    expect(
+      (
+        within(drawer).getByRole('button', {
+          name: /保\s*存/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.change(
+      await within(drawer).findByPlaceholderText('请输入不合格原因'),
+      {
+        target: { value: 'AI 评分漏掉客户投诉' },
+      },
+    );
+    const saveButton = within(drawer).getByRole('button', {
+      name: /保\s*存/,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(saveButton.disabled).toBe(false));
+    fireEvent.click(saveButton);
+
+    await waitFor(() =>
+      expect(saveAiCallRecordQualityReview).toHaveBeenCalledWith('call-1', {
+        qualityResult: 'fail',
+        qualityReason: 'AI 评分漏掉客户投诉',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '外呼质检复核' })).toBeNull(),
+    );
+  });
+
+  it('AI 评分未完成时不拉评分详情，可手动触发评分', async () => {
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          ...mockRecord,
+          entryType: 'sip_outbound',
+          qualityScoreStatus: 'pending',
+          qualityScore: null,
+          qualityReviewResult: null,
+        },
+      ],
+      total: 1,
+    });
+    (getAiCallRecordQuality as jest.Mock).mockRejectedValue(
+      new Error('quality api unavailable'),
+    );
+
+    render(<AiCallRecordsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '复核' }));
+
+    const drawer = await screen.findByRole('dialog', {
+      name: '外呼质检复核',
+    });
+    expect(
+      await within(drawer).findByText('AI 评分完成后才能复核'),
+    ).toBeTruthy();
+    expect(within(drawer).queryByText('质检评分加载失败')).toBeNull();
+    expect(within(drawer).queryByText('优秀')).toBeNull();
+    expect(getAiCallRecordQuality).not.toHaveBeenCalled();
+    fireEvent.click(within(drawer).getByRole('button', { name: '立即评分' }));
+
+    expect(await within(drawer).findByText('86分')).toBeTruthy();
+    expect(within(drawer).getByText('优秀')).toBeTruthy();
+    expect(scoreAiCallRecordQuality).toHaveBeenCalledWith('call-1');
+  });
+
   it('未明确同意时不把跟进线索展示为明确需求', async () => {
     (getAiCallRecordSemanticAnalysis as jest.Mock).mockResolvedValue({
       callId: 'call-1',
@@ -306,9 +474,34 @@ describe('AI Call 通话记录页面', () => {
     ).toBeNull();
   });
 
+  it('正式外呼列表展示话后状态并为摘要提供完整内容悬浮提示', async () => {
+    const summary =
+      '客户对智能外呼服务感兴趣，主动提出转人工，并在人工环节询问试用、收费和联系方式，最后同意后续联系。';
+    const outboundRecord = {
+      ...mockRecord,
+      entryType: 'outbound',
+      summary,
+      analysisStatus: '2',
+      customerIntent: 'positive',
+      followUpSuggested: true,
+    };
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [outboundRecord],
+      total: 1,
+    });
+
+    render(<AiCallRecordsPage />);
+
+    const summaryNode = await screen.findByText(summary);
+    expect(summaryNode.getAttribute('title')).toBe(summary);
+    expect(screen.getByText('正向')).toBeTruthy();
+    expect(screen.getByText('建议跟进')).toBeTruthy();
+  });
+
   it('继承外呼统计下钻的正式来源、结果和右开时间范围', async () => {
     mockSearchParams = new URLSearchParams({
       entryType: 'sip_outbound',
+      formalOutboundOnly: 'true',
       callResult: 'connected',
       startedAtBegin: '2026-07-25T00:00:00+08:00',
       startedAtEnd: '2026-07-31T16:20:00+08:00',
@@ -321,6 +514,7 @@ describe('AI Call 通话记录页面', () => {
         pageNum: 1,
         pageSize: 10,
         entryType: 'sip_outbound',
+        formalOutboundOnly: true,
         callResult: 'connected',
         startedAtBegin: '2026-07-25T00:00:00+08:00',
         startedAtEnd: '2026-07-31T16:20:00+08:00',
@@ -378,7 +572,7 @@ describe('AI Call 通话记录页面', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /待跟进/ }));
     expect(history.push).toHaveBeenCalledWith(
-      '/ai-call/follow-ups?followUpId=follow-up-1',
+      '/ai-call/follow-up-overview?followUpId=follow-up-1',
     );
     expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
   });
@@ -611,6 +805,174 @@ describe('AI Call 通话记录页面', () => {
 
     expect(await screen.findByText('未保存执行配置快照')).toBeTruthy();
     expect(screen.queryByText('暂无执行配置快照')).toBeNull();
+  });
+
+  it('详情保留转人工后的客户对话并说明跟进判断', async () => {
+    (getAiCallRecordDialogue as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          id: 'human-1',
+          callId: 'call-1',
+          segmentNo: 1,
+          speakerType: 'human_agent',
+          text: '我们可以安排试用。',
+          segmentStatus: 'final',
+        },
+        {
+          id: 'customer-1',
+          callId: 'call-1',
+          segmentNo: 2,
+          speakerType: 'customer',
+          text: '好的，可以。',
+          segmentStatus: 'final',
+        },
+      ],
+      total: 2,
+    });
+    (getAiCallRecordSemanticAnalysis as jest.Mock).mockResolvedValue({
+      callId: 'call-1',
+      analysisSceneCode: 'intro_geo',
+      analysisStatus: '2',
+      analysisResult: {
+        follow_up: {
+          required: false,
+          consent: 'missing',
+          reason: '客户未主动提出后续联系需求，未明确同意回访',
+          confidence: 'low',
+        },
+      },
+      analysisRetryCount: 0,
+    });
+    (getAiCallRecordHandoffs as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          handoffId: 'handoff-1',
+          status: 'expired',
+          requestReason: 'customer_request',
+          humanAgentIdentity: 'agent-admin',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<AiCallRecordsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    expect(within(detailDrawer).getByText('我们可以安排试用。')).toBeTruthy();
+    expect(within(detailDrawer).getByText('好的，可以。')).toBeTruthy();
+    expect(
+      within(detailDrawer).getByTestId('handoff-details').style.marginTop,
+    ).toBe('16px');
+    expect(within(detailDrawer).getByText('跟进判断')).toBeTruthy();
+    expect(
+      within(detailDrawer).getByText('未识别到明确的后续联系需求'),
+    ).toBeTruthy();
+    expect(within(detailDrawer).getByText('客户要求转人工')).toBeTruthy();
+    expect(within(detailDrawer).getByText('等待超时')).toBeTruthy();
+    expect(within(detailDrawer).queryByText('customer_request')).toBeNull();
+  });
+
+  it('详情将外呼记录关键枚举和分区间距展示为业务化中文', async () => {
+    const outboundRecord = {
+      ...mockRecord,
+      entryType: 'outbound',
+      businessType: 'outbound_attempt',
+      endReason: 'handoff_timeout',
+    };
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [outboundRecord],
+      total: 1,
+    });
+    (getAiCallRecordDetail as jest.Mock).mockResolvedValue({
+      record: outboundRecord,
+      executionConfig: null,
+    });
+
+    render(<AiCallRecordsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    expect(within(detailDrawer).getByText('外呼')).toBeTruthy();
+    expect(within(detailDrawer).getByText('外呼通话')).toBeTruthy();
+    expect(within(detailDrawer).getByText('转人工等待超时')).toBeTruthy();
+    expect(
+      within(detailDrawer).getByTestId('call-detail-sections').style.gap,
+    ).toBe('32px');
+    expect(within(detailDrawer).queryByText('outbound')).toBeNull();
+    expect(within(detailDrawer).queryByText('outbound_attempt')).toBeNull();
+    expect(within(detailDrawer).queryByText('handoff_timeout')).toBeNull();
+  });
+
+  it('将 SIP 参与方离开转换为中文结束结果', async () => {
+    const record = {
+      ...mockRecord,
+      endReason: 'sip_participant_left',
+    };
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [record],
+      total: 1,
+    });
+    (getAiCallRecordDetail as jest.Mock).mockResolvedValue({
+      record,
+      executionConfig: null,
+    });
+
+    render(<AiCallRecordsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    expect(within(detailDrawer).getByText('对方挂断')).toBeTruthy();
+    expect(within(detailDrawer).queryByText('sip_participant_left')).toBeNull();
+  });
+
+  it('详情完整展示摘要和关键要点并突出跟进建议', async () => {
+    (getAiCallRecordSemanticAnalysis as jest.Mock).mockResolvedValue({
+      callId: 'call-1',
+      analysisSceneCode: 'intro_geo',
+      analysisStatus: '2',
+      analysisResult: {
+        summary:
+          '客户对智能客服方案表示感兴趣，并在人工环节询问了产品能力和收费方式，最后接受了试用安排并留下联系方式。',
+        key_points: [
+          '询问 CU 能力',
+          '关注收费方式',
+          '接受试用安排',
+          '留下联系方式',
+        ],
+        follow_up: {
+          required: true,
+          consent: 'explicit',
+          reason: '客户接受试用安排并同意后续联系',
+          confidence: 'medium',
+        },
+      },
+      analysisRetryCount: 0,
+    });
+
+    render(<AiCallRecordsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    const summary = within(detailDrawer).getByTestId('analysis-summary');
+    expect(summary).toBeTruthy();
+    expect(summary.textContent).toContain('留下联系方式');
+    expect(within(detailDrawer).getByText('询问 CU 能力')).toBeTruthy();
+    expect(within(detailDrawer).getByText('关注收费方式')).toBeTruthy();
+    expect(within(detailDrawer).getByText('接受试用安排')).toBeTruthy();
+    expect(within(detailDrawer).getByText('留下联系方式')).toBeTruthy();
+    expect(within(detailDrawer).queryByText('其余 1 条')).toBeNull();
+    expect(
+      within(detailDrawer).getByText('建议跟进').closest('.ant-tag'),
+    ).toBeTruthy();
   });
 
   it('坐席话后处置覆盖 AI 跟进建议', async () => {

@@ -4,9 +4,11 @@ import {
   getAiCallRecordDialogue,
   getAiCallRecordEvents,
   getAiCallRecordHandoffs,
+  getAiCallRecordQuality,
   getAiCallRecordRecording,
   getAiCallRecordSemanticAnalysis,
   listAiCallRecords,
+  scoreAiCallRecordQuality,
 } from './service';
 
 const mockedRuoyiRequest = ruoyiRequest as jest.Mock;
@@ -32,9 +34,11 @@ describe('AI Call 通话记录服务', () => {
       pageSize: 10,
       taskId: 'task-1',
       targetId: 'target-1',
+      phoneNumber: '',
       entryType: 'web',
       customerIntent: 'positive',
       followUpStatus: 'pending',
+      startedAtBegin: undefined,
     } as const;
     const result = await listAiCallRecords(query);
 
@@ -68,6 +72,12 @@ describe('AI Call 通话记录服务', () => {
       })
       .mockResolvedValueOnce({
         data: { rows: [{ eventId: 'event-1' }], total: 1 },
+      })
+      .mockResolvedValueOnce({
+        data: { score: { status: 'completed', score: 86 }, review: null },
+      })
+      .mockResolvedValueOnce({
+        data: { score: { status: 'completed', score: 88 }, review: null },
       });
 
     await getAiCallRecordDetail('call/1');
@@ -76,6 +86,8 @@ describe('AI Call 通话记录服务', () => {
     await getAiCallRecordSemanticAnalysis('call/1');
     await getAiCallRecordHandoffs('call/1');
     await getAiCallRecordEvents('call/1');
+    await getAiCallRecordQuality('call/1');
+    await scoreAiCallRecordQuality('call/1');
 
     expect(mockedRuoyiRequest.mock.calls.map(([path]) => path)).toEqual([
       '/ai-call/records/call%2F1',
@@ -84,6 +96,8 @@ describe('AI Call 通话记录服务', () => {
       '/ai-call/records/call%2F1/semantic-analysis',
       '/ai-call/records/call%2F1/handoffs',
       '/ai-call/records/call%2F1/events',
+      '/ai-call/records/call%2F1/quality',
+      '/ai-call/records/call%2F1/quality/score',
     ]);
     expect(mockedRuoyiRequest).toHaveBeenNthCalledWith(
       3,
@@ -101,6 +115,14 @@ describe('AI Call 通话记录服务', () => {
         baseApi: '/ai-call-agent-api',
         method: 'get',
         params: { limit: 200 },
+      },
+    );
+    expect(mockedRuoyiRequest).toHaveBeenNthCalledWith(
+      8,
+      '/ai-call/records/call%2F1/quality/score',
+      {
+        baseApi: '/ai-call-agent-api',
+        method: 'post',
       },
     );
   });

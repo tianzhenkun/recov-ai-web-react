@@ -29,6 +29,15 @@ export type AiCallRecord = {
   followUpSuggested?: boolean;
   followUpId?: string | null;
   followUpStatus?: 'pending' | 'processing' | 'completed' | 'closed' | null;
+  qualityScoreStatus?:
+    | 'pending'
+    | 'processing'
+    | 'completed'
+    | 'failed'
+    | 'not_applicable'
+    | null;
+  qualityScore?: number | null;
+  qualityReviewResult?: QualityReviewResult | null;
   recordingPlayUrl?: string | null;
   businessType?: string | null;
   businessId?: string | null;
@@ -132,6 +141,41 @@ export type AiCallSemanticAnalysis = {
   analysisFinishedAt?: string | null;
 };
 
+export type QualityReviewResult = 'excellent' | 'good' | 'pass' | 'fail';
+
+export type AiCallQualityScore = {
+  id: string;
+  callId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  score?: number | null;
+  reason?: string | null;
+  errorMessage?: string | null;
+  modelVersion: string;
+  retryCount: number;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+};
+
+export type AiCallQualityReview = {
+  id: string;
+  callId: string;
+  qualityResult: QualityReviewResult;
+  qualityReason?: string | null;
+  reviewedBy: string;
+  reviewedByName?: string | null;
+  reviewedAt: string;
+};
+
+export type AiCallQualityDetail = {
+  score?: AiCallQualityScore | null;
+  review?: AiCallQualityReview | null;
+};
+
+export type AiCallQualityReviewRequest = {
+  qualityResult: QualityReviewResult;
+  qualityReason?: string | null;
+};
+
 export type AiCallHandoff = {
   id: string;
   handoffId: string;
@@ -172,6 +216,7 @@ export type AiCallRecordQuery = {
   businessId?: string;
   status?: string;
   entryType?: string;
+  formalOutboundOnly?: boolean;
   startedAtBegin?: string;
   startedAtEnd?: string;
   pageNum?: number;
@@ -206,11 +251,18 @@ const unwrapPage = <T>(
 const recordPath = (callId: string, suffix = '') =>
   `${AI_CALL_RECORDS_PREFIX}/${encodeURIComponent(callId)}${suffix}`;
 
+const compactQuery = (params: AiCallRecordQuery) =>
+  Object.fromEntries(
+    Object.entries(params).filter(
+      ([, value]) => value !== undefined && value !== null && value !== '',
+    ),
+  );
+
 export const listAiCallRecords = async (params: AiCallRecordQuery) => {
   const response = await ruoyiRequest<AiCallRecord>(AI_CALL_RECORDS_PREFIX, {
     ...requestOptions,
     method: 'get',
-    params,
+    params: compactQuery(params),
   });
   return unwrapPage(response);
 };
@@ -249,6 +301,43 @@ export const getAiCallRecordSemanticAnalysis = async (callId: string) => {
     {
       ...requestOptions,
       method: 'get',
+    },
+  );
+  return unwrapData(response);
+};
+
+export const getAiCallRecordQuality = async (callId: string) => {
+  const response = await ruoyiRequest<AiCallQualityDetail>(
+    recordPath(callId, '/quality'),
+    {
+      ...requestOptions,
+      method: 'get',
+    },
+  );
+  return unwrapData(response);
+};
+
+export const scoreAiCallRecordQuality = async (callId: string) => {
+  const response = await ruoyiRequest<AiCallQualityDetail>(
+    recordPath(callId, '/quality/score'),
+    {
+      ...requestOptions,
+      method: 'post',
+    },
+  );
+  return unwrapData(response);
+};
+
+export const saveAiCallRecordQualityReview = async (
+  callId: string,
+  body: AiCallQualityReviewRequest,
+) => {
+  const response = await ruoyiRequest<AiCallQualityReview>(
+    recordPath(callId, '/quality-review'),
+    {
+      ...requestOptions,
+      data: body,
+      method: 'post',
     },
   );
   return unwrapData(response);

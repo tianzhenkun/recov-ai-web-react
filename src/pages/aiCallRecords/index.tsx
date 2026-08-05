@@ -12,6 +12,9 @@ import {
   Drawer,
   Empty,
   Flex,
+  Form,
+  Input,
+  Radio,
   Spin,
   Tag,
   Tooltip,
@@ -20,10 +23,15 @@ import {
 import dayjs from 'dayjs';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  getHandoffReasonLabel,
+  statusLabels as handoffStatusLabels,
+} from '@/pages/agentWorkbench/admin/_shared';
 import { listAiCallTasks } from '@/pages/aiCallTasks/service';
 import {
   type AiCallDialogueSegment,
   type AiCallHandoff,
+  type AiCallQualityDetail,
   type AiCallRecord,
   type AiCallRecordDetail,
   type AiCallRecording,
@@ -31,21 +39,30 @@ import {
   getAiCallRecordDetail,
   getAiCallRecordDialogue,
   getAiCallRecordHandoffs,
+  getAiCallRecordQuality,
   getAiCallRecordRecording,
   getAiCallRecordSemanticAnalysis,
   listAiCallRecords,
+  type QualityReviewResult,
+  saveAiCallRecordQualityReview,
+  scoreAiCallRecordQuality,
 } from './service';
 import {
   getCustomerIntentPresentation,
   getFollowUpPresentation,
+  getQualityReviewPresentation,
+  getQualityScorePresentation,
   hasUnstablePostCallData,
   type StatusPresentation,
 } from './status';
 
 const { Text, Title } = Typography;
 
+void React.createElement;
+
 const entryTypeLabels: Record<string, string> = {
   web: '浏览器测试',
+  outbound: '外呼',
   sip_outbound: 'SIP 外呼',
   sip_inbound: 'SIP 呼入',
   outbound_mock: '模拟执行',
@@ -102,6 +119,13 @@ const analysisStatusLabels: Record<string, string> = {
   '4': '无有效客户话术',
 };
 
+const qualityScoreStatusLabels: Record<string, string> = {
+  pending: '待评分',
+  processing: '评分中',
+  completed: '评分完成',
+  failed: '评分失败',
+};
+
 const endReasonLabels: Record<string, string> = {
   agent_completed: '人工坐席结束',
   web_user_end: '浏览器用户结束',
@@ -110,6 +134,8 @@ const endReasonLabels: Record<string, string> = {
   ai_completed: 'AI 完成',
   runtime_failed: '运行异常',
   reconnect_timeout: '重连超时',
+  handoff_timeout: '转人工等待超时',
+  sip_participant_left: '对方挂断',
   unknown: '未知原因',
 };
 
@@ -122,6 +148,7 @@ const speakerLabels: Record<string, string> = {
 
 const businessTypeLabels: Record<string, string> = {
   outbound_task: '正式外呼任务',
+  outbound_attempt: '外呼通话',
   lead: '销售线索',
   debt_collection: '物业催收',
 };
@@ -178,15 +205,70 @@ const dispositionLabels: Record<string, string> = {
   other: '其他',
 };
 
+const qualityReviewOptions: Array<{
+  label: string;
+  style: React.CSSProperties;
+  value: QualityReviewResult;
+}> = [
+  {
+    label: '优秀',
+    value: 'excellent',
+    style: { flex: 1, textAlign: 'center' },
+  },
+  { label: '良好', value: 'good', style: { flex: 1, textAlign: 'center' } },
+  { label: '合格', value: 'pass', style: { flex: 1, textAlign: 'center' } },
+  { label: '不合格', value: 'fail', style: { flex: 1, textAlign: 'center' } },
+];
+
+const canOpenQualityReview = (row: AiCallRecord) =>
+  row.entryType === 'outbound' || row.entryType === 'sip_outbound';
+
+const buildQualityFallback = (row: AiCallRecord): AiCallQualityDetail => {
+  if (
+    row.qualityScoreStatus !== 'pending' &&
+    row.qualityScoreStatus !== 'processing' &&
+    row.qualityScoreStatus !== 'completed' &&
+    row.qualityScoreStatus !== 'failed'
+  ) {
+    return { score: null, review: null };
+  }
+  return {
+    score: {
+      id: '',
+      callId: row.callId,
+      status: row.qualityScoreStatus,
+      score: row.qualityScore,
+      reason: null,
+      modelVersion: '',
+      retryCount: 0,
+    },
+    review: null,
+  };
+};
+
 const renderAnalysisValue = (key: string, value: unknown) => {
+  if (key === 'summary') {
+    const text = String(value || '').trim();
+    return text ? (
+      <Typography.Paragraph
+        data-testid="analysis-summary"
+        style={{ marginBottom: 0 }}
+      >
+        {text}
+      </Typography.Paragraph>
+    ) : (
+      '-'
+    );
+  }
   if (key === 'feedback_type') {
     const text = String(value || '-');
     return <Tag color={feedbackTagColors[text] || 'default'}>{text}</Tag>;
   }
   if (key === 'key_points' && Array.isArray(value)) {
-    return value.length ? (
+    const points = Array.from(new Set(value.map(String)));
+    return points.length ? (
       <Flex vertical gap={4}>
-        {Array.from(new Set(value.map(String))).map((item) => (
+        {points.map((item) => (
           <Text key={item}>{item}</Text>
         ))}
       </Flex>
@@ -248,7 +330,11 @@ const renderAnalysisValue = (key: string, value: unknown) => {
           {
             key: 'suggested',
             label: '处理建议',
-            children: followUp.required ? '建议跟进' : '无需跟进',
+            children: (
+              <Tag color={followUp.required ? 'warning' : 'default'}>
+                {followUp.required ? '建议跟进' : '无需跟进'}
+              </Tag>
+            ),
           },
           {
             key: 'decision',
@@ -361,6 +447,79 @@ const renderPostCallStatus = (
   );
 };
 
+const getQualityScoreTextColor = (score?: number | null) => {
+  if (typeof score !== 'number') return undefined;
+  if (score >= 85) return '#52c41a';
+  if (score >= 60) return '#faad14';
+  return '#ff4d4f';
+};
+
+const renderDialogueSegments = (segments: AiCallDialogueSegment[]) => (
+  <Flex
+    data-testid="dialogue-scroll-region"
+    vertical
+    gap={12}
+    className="ai-call-dialogue-region"
+    style={{
+      maxHeight: 420,
+      overflowY: 'auto',
+      padding: 12,
+      border: '1px solid #eef0f4',
+      borderRadius: 10,
+      background: '#f8f9fb',
+    }}
+  >
+    {segments.map((segment, index) => {
+      const isCustomer = segment.speakerType === 'customer';
+      const isHuman =
+        segment.speakerType === 'human_agent' ||
+        segment.speakerType === 'agent';
+      const speaker = speakerLabels[segment.speakerType] || segment.speakerType;
+      return (
+        <div
+          className={`ai-call-dialogue-row ai-call-dialogue-row--${
+            isCustomer ? 'right' : 'left'
+          }`}
+          style={{
+            display: 'flex',
+            width: '100%',
+            justifyContent: isCustomer ? 'flex-end' : 'flex-start',
+          }}
+          key={
+            segment.id || `${segment.segmentNo}-${segment.speakerType}-${index}`
+          }
+        >
+          <div
+            className={`ai-call-dialogue-bubble ai-call-dialogue-bubble--${
+              isCustomer ? 'customer' : segment.speakerType
+            }`}
+            style={{
+              maxWidth: '82%',
+              padding: '10px 12px',
+              border: `1px solid ${
+                isCustomer ? '#dfd4fa' : isHuman ? '#d4eadf' : '#e6ebf2'
+              }`,
+              borderRadius: isCustomer
+                ? '10px 10px 2px 10px'
+                : '10px 10px 10px 2px',
+              background: isCustomer
+                ? '#f1edfb'
+                : isHuman
+                  ? '#edf8f2'
+                  : '#f1f5fb',
+              lineHeight: 1.6,
+              overflowWrap: 'anywhere',
+            }}
+          >
+            <Text strong>{speaker}：</Text>
+            <Text>{segment.text}</Text>
+          </div>
+        </div>
+      );
+    })}
+  </Flex>
+);
+
 const MAX_POST_CALL_POLLS = 12;
 const POST_CALL_POLL_INTERVAL_MS = 5000;
 
@@ -368,14 +527,28 @@ type DetailErrors = Partial<
   Record<'recording' | 'dialogue' | 'analysis' | 'handoffs' | 'detail', string>
 >;
 
+type QualityReviewErrors = Partial<
+  Record<'recording' | 'dialogue' | 'quality', string>
+>;
+
+type QualityReviewFormValues = {
+  qualityResult?: QualityReviewResult;
+  qualityReason?: string | null;
+};
+
 const AiCallRecordsPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);
+  const [qualityForm] = Form.useForm<QualityReviewFormValues>();
+  const selectedQualityResult = Form.useWatch('qualityResult', qualityForm);
+  const selectedQualityReason = Form.useWatch('qualityReason', qualityForm);
   const [searchParams] = useSearchParams();
   const presetCallId = searchParams.get('callId')?.trim() || undefined;
   const presetListOnly = searchParams.get('view') === 'list';
   const presetTaskId = searchParams.get('taskId') || undefined;
   const presetTargetId = searchParams.get('targetId') || undefined;
   const presetEntryType = searchParams.get('entryType') || undefined;
+  const presetFormalOutboundOnly =
+    searchParams.get('formalOutboundOnly') === 'true';
   const presetCallResult = searchParams.get('callResult') || undefined;
   const presetStartedAtBegin = searchParams.get('startedAtBegin') || undefined;
   const presetStartedAtEnd = searchParams.get('startedAtEnd') || undefined;
@@ -390,6 +563,17 @@ const AiCallRecordsPage = () => {
   const [handoffs, setHandoffs] = useState<AiCallHandoff[]>([]);
   const [detailErrors, setDetailErrors] = useState<DetailErrors>({});
   const [detailLoading, setDetailLoading] = useState(false);
+  const [qualityRecord, setQualityRecord] = useState<AiCallRecord>();
+  const [qualityDetail, setQualityDetail] = useState<AiCallQualityDetail>();
+  const [qualityRecording, setQualityRecording] =
+    useState<AiCallRecording | null>();
+  const [qualityDialogue, setQualityDialogue] = useState<
+    AiCallDialogueSegment[]
+  >([]);
+  const [qualityErrors, setQualityErrors] = useState<QualityReviewErrors>({});
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [qualitySaving, setQualitySaving] = useState(false);
+  const [qualityScoring, setQualityScoring] = useState(false);
   const [hasUnstableRecords, setHasUnstableRecords] = useState(false);
   const postCallPollCountRef = useRef(0);
   const postCallRefreshInFlightRef = useRef(false);
@@ -434,6 +618,16 @@ const AiCallRecordsPage = () => {
     setAnalysis(undefined);
     setHandoffs([]);
     setDetailErrors({});
+  };
+
+  const closeQualityReview = () => {
+    setQualityRecord(undefined);
+    setQualityDetail(undefined);
+    setQualityRecording(undefined);
+    setQualityDialogue([]);
+    setQualityErrors({});
+    setQualityScoring(false);
+    qualityForm.resetFields();
   };
 
   const openDetail = useCallback(async (callId: string) => {
@@ -484,6 +678,111 @@ const AiCallRecordsPage = () => {
       setDetailLoading(false);
     }
   }, []);
+
+  const openQualityReview = useCallback(
+    async (row: AiCallRecord) => {
+      setQualityRecord(row);
+      setQualityDetail(undefined);
+      setQualityRecording(undefined);
+      setQualityDialogue([]);
+      setQualityErrors({});
+      qualityForm.resetFields();
+      setQualityLoading(true);
+      const shouldLoadQualityDetail =
+        row.qualityScoreStatus === 'completed' ||
+        Boolean(row.qualityReviewResult);
+      const qualityDetailRequest = shouldLoadQualityDetail
+        ? getAiCallRecordQuality(row.callId)
+        : Promise.resolve(buildQualityFallback(row));
+      const results = await Promise.allSettled([
+        getAiCallRecordRecording(row.callId),
+        getAiCallRecordDialogue(row.callId),
+        qualityDetailRequest,
+      ]);
+      const nextErrors: QualityReviewErrors = {};
+
+      if (results[0].status === 'fulfilled') {
+        setQualityRecording(results[0].value);
+      } else {
+        nextErrors.recording = '录音信息加载失败';
+      }
+      if (results[1].status === 'fulfilled') {
+        setQualityDialogue(results[1].value.rows);
+      } else {
+        nextErrors.dialogue = '对话记录加载失败';
+      }
+      if (results[2].status === 'fulfilled') {
+        setQualityDetail(results[2].value);
+        qualityForm.setFieldsValue({
+          qualityResult: results[2].value.review?.qualityResult,
+          qualityReason: results[2].value.review?.qualityReason || undefined,
+        });
+      } else {
+        setQualityDetail(buildQualityFallback(row));
+      }
+      setQualityErrors(nextErrors);
+      setQualityLoading(false);
+    },
+    [qualityForm],
+  );
+
+  const saveQualityReview = async () => {
+    if (!qualityRecord) return;
+    const values = await qualityForm.validateFields();
+    if (!values.qualityResult) return;
+    setQualitySaving(true);
+    try {
+      const review = await saveAiCallRecordQualityReview(qualityRecord.callId, {
+        qualityResult: values.qualityResult,
+        qualityReason:
+          values.qualityResult === 'fail' ? values.qualityReason?.trim() : null,
+      });
+      setQualityDetail((current) => ({ ...(current || {}), review }));
+      setQualityRecord((current) =>
+        current
+          ? { ...current, qualityReviewResult: review.qualityResult }
+          : current,
+      );
+      await Promise.resolve(actionRef.current?.reload?.());
+      closeQualityReview();
+    } finally {
+      setQualitySaving(false);
+    }
+  };
+
+  const scoreQuality = async () => {
+    if (!qualityRecord) return;
+    setQualityScoring(true);
+    setQualityErrors((current) => ({ ...current, quality: undefined }));
+    try {
+      const nextDetail = await scoreAiCallRecordQuality(qualityRecord.callId);
+      setQualityDetail(nextDetail);
+      setQualityRecord((current) =>
+        current
+          ? {
+              ...current,
+              qualityScore: nextDetail.score?.score ?? current.qualityScore,
+              qualityScoreStatus:
+                nextDetail.score?.status ?? current.qualityScoreStatus,
+              qualityReviewResult:
+                nextDetail.review?.qualityResult ?? current.qualityReviewResult,
+            }
+          : current,
+      );
+      qualityForm.setFieldsValue({
+        qualityResult: nextDetail.review?.qualityResult,
+        qualityReason: nextDetail.review?.qualityReason || undefined,
+      });
+      await Promise.resolve(actionRef.current?.reload?.());
+    } catch {
+      setQualityErrors((current) => ({
+        ...current,
+        quality: 'AI 评分执行失败',
+      }));
+    } finally {
+      setQualityScoring(false);
+    }
+  };
 
   useEffect(() => {
     if (presetCallId && !presetListOnly) void openDetail(presetCallId);
@@ -553,6 +852,7 @@ const AiCallRecordsPage = () => {
         valueType: 'select',
         valueEnum: {
           web: { text: entryTypeLabels.web },
+          outbound: { text: entryTypeLabels.outbound },
           sip_outbound: { text: entryTypeLabels.sip_outbound },
           sip_inbound: { text: entryTypeLabels.sip_inbound },
         },
@@ -677,6 +977,7 @@ const AiCallRecordsPage = () => {
         render: (_, row) => (
           <Text
             type={row.summary ? undefined : 'secondary'}
+            title={row.summary || undefined}
             style={{
               display: '-webkit-box',
               WebkitBoxOrient: 'vertical',
@@ -708,7 +1009,7 @@ const AiCallRecordsPage = () => {
           return renderPostCallStatus(presentation, () => {
             if (presentation?.target === 'follow_up' && row.followUpId) {
               history.push(
-                `/ai-call/follow-ups?followUpId=${encodeURIComponent(
+                `/ai-call/follow-up-overview?followUpId=${encodeURIComponent(
                   row.followUpId,
                 )}`,
               );
@@ -719,25 +1020,71 @@ const AiCallRecordsPage = () => {
         },
       },
       {
+        title: 'AI 评分',
+        key: 'qualityScoreDisplay',
+        search: false,
+        width: 104,
+        render: (_, row) =>
+          renderPostCallStatus(getQualityScorePresentation(row)),
+      },
+      {
+        title: '人工质检',
+        key: 'qualityReviewDisplay',
+        search: false,
+        fixed: 'right',
+        width: 120,
+        render: (_, row) => {
+          if (!canOpenQualityReview(row)) {
+            return <Text type="secondary">-</Text>;
+          }
+          const presentation = getQualityReviewPresentation(
+            row.qualityReviewResult,
+          );
+          const content = presentation ? (
+            renderPostCallStatus(presentation)
+          ) : (
+            <Text type="secondary">未复核</Text>
+          );
+          return (
+            <Flex vertical align="flex-start" gap={2}>
+              {content}
+              <Button
+                size="small"
+                type="link"
+                style={{ height: 'auto', padding: 0 }}
+                onClick={() => void openQualityReview(row)}
+              >
+                复核
+              </Button>
+            </Flex>
+          );
+        },
+      },
+      {
         title: '操作',
         key: 'option',
         valueType: 'option',
         fixed: 'right',
-        width: 100,
-        render: (_, row) => (
-          <Button
-            size="small"
-            type="link"
-            onClick={() => void openDetail(row.callId)}
-          >
-            查看详情
-          </Button>
-        ),
+        width: 92,
+        render: (_, row) => {
+          return (
+            <Flex gap={4}>
+              <Button
+                size="small"
+                type="link"
+                onClick={() => void openDetail(row.callId)}
+              >
+                查看详情
+              </Button>
+            </Flex>
+          );
+        },
       },
     ],
     [
       loadTaskOptions,
       openDetail,
+      openQualityReview,
       presetCallResult,
       presetEntryType,
       presetStartedAtBegin,
@@ -752,6 +1099,17 @@ const AiCallRecordsPage = () => {
     record?.recordingPlayUrl ||
     recording?.playUrl ||
     recording?.tracks?.find((track) => track.playUrl)?.playUrl;
+  const qualityRecordingUrl =
+    qualityRecord?.recordingPlayUrl ||
+    qualityRecording?.playUrl ||
+    qualityRecording?.tracks?.find((track) => track.playUrl)?.playUrl;
+  const qualityScore = qualityDetail?.score;
+  const canSaveQualityReview = qualityScore?.status === 'completed';
+  const canSubmitQualityReview = Boolean(
+    selectedQualityResult &&
+      (selectedQualityResult !== 'fail' ||
+        String(selectedQualityReason || '').trim()),
+  );
   const executionConfig = detail?.executionConfig;
   const afterCallWork = detail?.afterCallWork;
   const followUp = detail?.followUp;
@@ -773,7 +1131,7 @@ const AiCallRecordsPage = () => {
         rowKey="callId"
         columns={columns}
         search={{ labelWidth: 104 }}
-        scroll={{ x: 1240 }}
+        scroll={{ x: 1450 }}
         pagination={{
           defaultPageSize: 10,
           showTotal: (total) => `共 ${total} 条`,
@@ -805,6 +1163,7 @@ const AiCallRecordsPage = () => {
               : {}),
             ...(presetTargetId ? { targetId: presetTargetId } : {}),
             ...(entryType ? { entryType } : {}),
+            ...(presetFormalOutboundOnly ? { formalOutboundOnly: true } : {}),
             ...(callResult ? { callResult } : {}),
             ...(startedAtBegin ? { startedAtBegin } : {}),
             ...(startedAtEnd ? { startedAtEnd } : {}),
@@ -820,7 +1179,7 @@ const AiCallRecordsPage = () => {
       <Drawer
         title="通话记录详情"
         open={Boolean(selectedCallId)}
-        size={800}
+        size="large"
         onClose={closeDetail}
       >
         {detailLoading ? (
@@ -828,7 +1187,7 @@ const AiCallRecordsPage = () => {
             <Spin />
           </Flex>
         ) : record ? (
-          <Flex vertical gap={24}>
+          <Flex data-testid="call-detail-sections" vertical gap={32}>
             <section>
               <Title level={5}>基本信息</Title>
               <Descriptions
@@ -952,7 +1311,9 @@ const AiCallRecordsPage = () => {
                             <Button
                               size="small"
                               type="link"
-                              href={`/ai-call/records?callId=${encodeURIComponent(followUp.sourceCallId)}`}
+                              href={`/ai-call/records?callId=${encodeURIComponent(
+                                followUp.sourceCallId,
+                              )}`}
                             >
                               查看原始通话
                             </Button>
@@ -983,7 +1344,9 @@ const AiCallRecordsPage = () => {
                                 <Button
                                   size="small"
                                   type="link"
-                                  href={`/ai-call/records?callId=${encodeURIComponent(callbackRecord.callId)}`}
+                                  href={`/ai-call/records?callId=${encodeURIComponent(
+                                    callbackRecord.callId,
+                                  )}`}
                                 >
                                   查看本次通话
                                 </Button>
@@ -1058,76 +1421,7 @@ const AiCallRecordsPage = () => {
               {detailErrors.dialogue ? (
                 <Alert showIcon title={detailErrors.dialogue} type="error" />
               ) : dialogue.length ? (
-                <Flex
-                  data-testid="dialogue-scroll-region"
-                  vertical
-                  gap={12}
-                  className="ai-call-dialogue-region"
-                  style={{
-                    maxHeight: 420,
-                    overflowY: 'auto',
-                    padding: 12,
-                    border: '1px solid #eef0f4',
-                    borderRadius: 10,
-                    background: '#f8f9fb',
-                  }}
-                >
-                  {dialogue.map((segment, index) => {
-                    const isCustomer = segment.speakerType === 'customer';
-                    const speaker =
-                      speakerLabels[segment.speakerType] || segment.speakerType;
-                    return (
-                      <div
-                        className={`ai-call-dialogue-row ai-call-dialogue-row--${
-                          isCustomer ? 'right' : 'left'
-                        }`}
-                        style={{
-                          display: 'flex',
-                          width: '100%',
-                          justifyContent: isCustomer
-                            ? 'flex-end'
-                            : 'flex-start',
-                        }}
-                        key={
-                          segment.id ||
-                          `${segment.segmentNo}-${segment.speakerType}-${index}`
-                        }
-                      >
-                        <div
-                          className={`ai-call-dialogue-bubble ai-call-dialogue-bubble--${
-                            isCustomer ? 'customer' : segment.speakerType
-                          }`}
-                          style={{
-                            maxWidth: '82%',
-                            padding: '10px 12px',
-                            border: `1px solid ${
-                              isCustomer
-                                ? '#dfd4fa'
-                                : segment.speakerType === 'human_agent' ||
-                                    segment.speakerType === 'agent'
-                                  ? '#d4eadf'
-                                  : '#e6ebf2'
-                            }`,
-                            borderRadius: isCustomer
-                              ? '10px 10px 2px 10px'
-                              : '10px 10px 10px 2px',
-                            background: isCustomer
-                              ? '#f1edfb'
-                              : segment.speakerType === 'human_agent' ||
-                                  segment.speakerType === 'agent'
-                                ? '#edf8f2'
-                                : '#f1f5fb',
-                            lineHeight: 1.6,
-                            overflowWrap: 'anywhere',
-                          }}
-                        >
-                          <Text strong>{speaker}：</Text>
-                          <Text>{segment.text}</Text>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </Flex>
+                renderDialogueSegments(dialogue)
               ) : (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1225,7 +1519,12 @@ const AiCallRecordsPage = () => {
               {detailErrors.handoffs ? (
                 <Alert showIcon title={detailErrors.handoffs} type="error" />
               ) : handoffs.length ? (
-                <Flex vertical gap={8}>
+                <Flex
+                  data-testid="handoff-details"
+                  vertical
+                  gap={8}
+                  style={{ marginTop: 16 }}
+                >
                   {handoffs.map((handoff) => (
                     <Descriptions
                       key={handoff.handoffId}
@@ -1236,7 +1535,8 @@ const AiCallRecordsPage = () => {
                           key: 'status',
                           label: '转人工状态',
                           children:
-                            statusLabels[handoff.status] || handoff.status,
+                            handoffStatusLabels[handoff.status] ||
+                            handoff.status,
                         },
                         {
                           key: 'agent',
@@ -1246,7 +1546,9 @@ const AiCallRecordsPage = () => {
                         {
                           key: 'reason',
                           label: '转人工原因',
-                          children: handoff.requestReason || '-',
+                          children: getHandoffReasonLabel(
+                            handoff.requestReason,
+                          ),
                           span: 2,
                         },
                       ]}
@@ -1268,6 +1570,180 @@ const AiCallRecordsPage = () => {
             type="error"
           />
         )}
+      </Drawer>
+
+      <Drawer
+        title="外呼质检复核"
+        open={Boolean(qualityRecord)}
+        size="large"
+        onClose={closeQualityReview}
+      >
+        {qualityLoading ? (
+          <Flex justify="center">
+            <Spin />
+          </Flex>
+        ) : qualityRecord ? (
+          <Flex vertical gap={24}>
+            <section>
+              <Title level={5}>AI 评分</Title>
+              {qualityErrors.quality ? (
+                <Alert showIcon title={qualityErrors.quality} type="error" />
+              ) : qualityScore ? (
+                <Descriptions
+                  column={1}
+                  styles={detailDescriptionStyles}
+                  items={[
+                    {
+                      key: 'score',
+                      label: '评分',
+                      children:
+                        typeof qualityScore.score === 'number' ? (
+                          <Text
+                            data-testid="quality-score-value"
+                            strong
+                            style={{
+                              color: getQualityScoreTextColor(
+                                qualityScore.score,
+                              ),
+                            }}
+                          >
+                            {qualityScore.score}分
+                          </Text>
+                        ) : (
+                          '-'
+                        ),
+                    },
+                    {
+                      key: 'status',
+                      label: '评分状态',
+                      children:
+                        qualityScoreStatusLabels[qualityScore.status] ||
+                        qualityScore.status,
+                    },
+                    {
+                      key: 'reason',
+                      label: '评分理由',
+                      children: qualityScore.reason || '-',
+                    },
+                  ]}
+                />
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="暂无 AI 评分"
+                />
+              )}
+            </section>
+
+            <section>
+              <Title level={5}>录音</Title>
+              {qualityErrors.recording ? (
+                <Alert showIcon title={qualityErrors.recording} type="error" />
+              ) : qualityRecordingUrl ? (
+                <audio controls preload="metadata" src={qualityRecordingUrl}>
+                  <track kind="captions" />
+                </audio>
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="暂无录音"
+                />
+              )}
+            </section>
+
+            <section>
+              <Title level={5}>对话文本</Title>
+              {qualityErrors.dialogue ? (
+                <Alert showIcon title={qualityErrors.dialogue} type="error" />
+              ) : qualityDialogue.length ? (
+                renderDialogueSegments(qualityDialogue)
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="暂无对话文本"
+                />
+              )}
+            </section>
+
+            <section>
+              <Title level={5}>人工质检</Title>
+              {!canSaveQualityReview ? (
+                <Alert
+                  action={
+                    <Button
+                      loading={qualityScoring}
+                      size="small"
+                      type="primary"
+                      onClick={() => void scoreQuality()}
+                    >
+                      立即评分
+                    </Button>
+                  }
+                  showIcon
+                  title="AI 评分完成后才能复核"
+                  type="info"
+                  style={{ marginBottom: 12 }}
+                />
+              ) : null}
+              {canSaveQualityReview ? (
+                <Form form={qualityForm} layout="vertical">
+                  <Form.Item
+                    label="质检结果"
+                    name="qualityResult"
+                    rules={[{ required: true, message: '请选择质检结果' }]}
+                  >
+                    <Radio.Group
+                      block
+                      buttonStyle="solid"
+                      options={qualityReviewOptions}
+                      optionType="button"
+                      size="large"
+                      style={{ display: 'flex', width: '100%' }}
+                    />
+                  </Form.Item>
+                  {selectedQualityResult === 'fail' ? (
+                    <Form.Item
+                      label="不合格原因"
+                      name="qualityReason"
+                      rules={[
+                        {
+                          validator: (_, value) =>
+                            String(value || '').trim()
+                              ? Promise.resolve()
+                              : Promise.reject(new Error('请输入不合格原因')),
+                        },
+                      ]}
+                    >
+                      <Input.TextArea
+                        maxLength={500}
+                        placeholder="请输入不合格原因"
+                        rows={3}
+                        showCount
+                      />
+                    </Form.Item>
+                  ) : null}
+                  <Flex justify="end" gap={8}>
+                    <Button
+                      autoInsertSpace={false}
+                      onClick={closeQualityReview}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      autoInsertSpace={false}
+                      disabled={!canSubmitQualityReview}
+                      loading={qualitySaving}
+                      type="primary"
+                      onClick={() => void saveQualityReview()}
+                    >
+                      保存
+                    </Button>
+                  </Flex>
+                </Form>
+              ) : null}
+            </section>
+          </Flex>
+        ) : null}
       </Drawer>
     </PageContainer>
   );
