@@ -72,8 +72,10 @@ type FollowUpServices = {
 
 type FollowUpPanelProps = {
   agentStatus?: string;
+  attemptTaskToOpen?: FollowUpTaskDto;
   callbackEnabled?: boolean;
   consoleSessionId?: string;
+  onAttemptTaskOpened?: () => void;
   onPrepareCallback?: () => Promise<boolean>;
   services?: FollowUpServices;
   onCallAccepted?: (
@@ -167,8 +169,10 @@ const latestAttemptOf = (task: FollowUpTaskDto) =>
 
 const FollowUpPanel = ({
   agentStatus = 'available',
+  attemptTaskToOpen,
   callbackEnabled = false,
   consoleSessionId,
+  onAttemptTaskOpened,
   onPrepareCallback,
   services = defaultServices,
   onCallAccepted,
@@ -223,6 +227,12 @@ const FollowUpPanel = ({
   useEffect(() => {
     void loadTasks();
   }, [loadTasks]);
+
+  useEffect(() => {
+    if (!attemptTaskToOpen) return;
+    setAttemptTask(attemptTaskToOpen);
+    onAttemptTaskOpened?.();
+  }, [attemptTaskToOpen, onAttemptTaskOpened]);
 
   const runOnce = async (key: string, operation: () => Promise<void>) => {
     if (inFlightRef.current.has(key)) return;

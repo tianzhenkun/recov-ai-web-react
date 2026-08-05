@@ -38,3 +38,40 @@
   min-width: 170px;
   flex: 1;
 }
+
+.agent-follow-up-current-call {
+  position: sticky;
+  z-index: 2;
+  top: 8px;
+  margin-bottom: 12px;
+}
+
+.agent-follow-up-current-call .agent-current-call {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-follow-up-current-call .agent-current-call-status {
+  min-width: 360px;
+  flex: 1;
+  padding: 8px 12px;
+}
+
+.agent-follow-up-current-call .agent-current-call-controls {
+  min-width: 360px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+@media (max-width: 960px) {
+  .agent-follow-up-current-call .agent-current-call {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .agent-follow-up-current-call .agent-current-call-status,
+  .agent-follow-up-current-call .agent-current-call-controls {
+    min-width: 0;
+  }
+}

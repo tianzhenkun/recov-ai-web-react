@@ -139,7 +139,7 @@ export const useFollowUpCallback = ({
 
   const endCall = useCallback(async () => {
     if (!credential || !followUpId || !consoleSessionId || endingRef.current)
-      return;
+      return false;
     endingRef.current = true;
     setPhase('ending');
     setErrorMessage('');
@@ -152,9 +152,11 @@ export const useFollowUpCallback = ({
       await disconnectRoom();
       setPhase('ended');
       void refresh?.();
+      return true;
     } catch {
       setPhase('connected');
       setErrorMessage('结束通话失败，请重试');
+      return false;
     } finally {
       endingRef.current = false;
     }

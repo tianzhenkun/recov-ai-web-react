@@ -49,13 +49,20 @@ const createRoom = () => {
 
 const Harness = ({ options }: { options: any }) => {
   const call = useFollowUpCallback(options);
+  const [endResult, setEndResult] = React.useState('');
   return (
     <div>
       <span data-testid="phase">{call.phase}</span>
       <span data-testid="remote-audio">
         {call.remoteAudioReady ? 'yes' : 'no'}
       </span>
-      <button type="button" onClick={() => void call.endCall()}>
+      <span data-testid="end-result">{endResult}</span>
+      <button
+        type="button"
+        onClick={() =>
+          void call.endCall().then((result) => setEndResult(String(result)))
+        }
+      >
         结束
       </button>
     </div>
@@ -94,6 +101,7 @@ describe('useFollowUpCallback', () => {
     await waitFor(() =>
       expect(screen.getByTestId('phase').textContent).toBe('ended'),
     );
+    expect(screen.getByTestId('end-result').textContent).toBe('true');
     expect(end).toHaveBeenCalledWith(
       'follow-up-1',
       credential.call_id,

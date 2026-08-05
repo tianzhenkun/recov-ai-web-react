@@ -209,6 +209,29 @@ describe('FollowUpPanel', () => {
     );
   });
 
+  it('opens contact result registration after a callback ends', async () => {
+    const services = createServices();
+    const task = {
+      ...unanswered,
+      owner_agent_identity: 'agent-1',
+      status: 'processing' as const,
+    };
+    const onAttemptTaskOpened = jest.fn();
+
+    render(
+      <FollowUpPanel
+        attemptTaskToOpen={task}
+        onAttemptTaskOpened={onAttemptTaskOpened}
+        services={services}
+      />,
+    );
+
+    expect(
+      await screen.findByRole('dialog', { name: '登记联系结果' }),
+    ).toBeTruthy();
+    expect(onAttemptTaskOpened).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps system callback hidden until the real callback capability is enabled', async () => {
     const services = createServices();
     services.list.mockResolvedValue({

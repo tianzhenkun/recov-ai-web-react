@@ -1,7 +1,7 @@
 import { PageContainer } from '@ant-design/pro-components';
-import { Alert, Card } from 'antd';
+import { Card, message } from 'antd';
 import * as React from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type {
   FollowUpCallbackCredentialDto,
   FollowUpTaskDto,
@@ -13,11 +13,13 @@ import { useFollowUpCallback } from '../../hooks/useFollowUpCallback';
 
 const FollowUpProcessingPage = () => {
   const agent = useAgentPresence();
+  const [messageApi, messageContextHolder] = message.useMessage();
   const [callback, setCallback] = useState<FollowUpCallbackCredentialDto>();
-  const [callbackFollowUpId, setCallbackFollowUpId] = useState<string>();
+  const [callbackTask, setCallbackTask] = useState<FollowUpTaskDto>();
+  const [attemptTaskToOpen, setAttemptTaskToOpen] = useState<FollowUpTaskDto>();
   const callbackCall = useFollowUpCallback({
     credential: callback,
-    followUpId: callbackFollowUpId,
+    followUpId: callbackTask?.id,
     consoleSessionId: agent.consoleSessionId,
     refresh: agent.bootstrap,
   });
@@ -25,20 +27,34 @@ const FollowUpProcessingPage = () => {
     if (agent.status === 'available') return true;
     return agent.goOnline();
   }, [agent.goOnline, agent.status]);
+  const endCallbackCall = useCallback(async () => {
+    const task = callbackTask;
+    if (!(await callbackCall.endCall()) || !task) return;
+    setCallback(undefined);
+    setCallbackTask(undefined);
+    setAttemptTaskToOpen(task);
+    messageApi.success('通话已结束，请登记联系结果');
+  }, [callbackCall.endCall, callbackTask, messageApi]);
+  const clearAttemptTask = useCallback(
+    () => setAttemptTaskToOpen(undefined),
+    [],
+  );
+
+  useEffect(() => {
+    if (agent.errorMessage) messageApi.error(agent.errorMessage);
+  }, [agent.errorMessage, messageApi]);
 
   return (
     <PageContainer className="agent-admin-page" title="跟进处理">
-      {agent.errorMessage ? (
-        <Alert message={agent.errorMessage} showIcon type="error" />
-      ) : null}
+      {messageContextHolder}
       {callback ? (
-        <Card title="当前回拨通话" variant="borderless">
+        <Card className="agent-follow-up-current-call" size="small">
           <CurrentCallPanel
             {...callbackCall}
-            endConfirmDescription="结束后客户将退出本次回拨，当前跟进任务保持处理中，可继续登记联系结果。"
+            endConfirmDescription="结束后客户将退出本次回拨，并自动进入联系结果登记。"
             onToggleMicrophone={callbackCall.toggleMicrophone}
             onSwitchAudioInput={callbackCall.switchAudioInput}
-            onEndCall={callbackCall.endCall}
+            onEndCall={endCallbackCall}
           />
         </Card>
       ) : null}
@@ -46,9 +62,11 @@ const FollowUpProcessingPage = () => {
         agentStatus={agent.status}
         callbackEnabled
         consoleSessionId={agent.consoleSessionId}
+        attemptTaskToOpen={attemptTaskToOpen}
+        onAttemptTaskOpened={clearAttemptTask}
         onPrepareCallback={prepareCallback}
         onCallAccepted={(nextCallback, task: FollowUpTaskDto) => {
-          setCallbackFollowUpId(task.id);
+          setCallbackTask(task);
           setCallback(nextCallback);
         }}
       />
