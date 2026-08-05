@@ -74,6 +74,39 @@ const handoffReasonLabels: Record<string, string> = {
 export const getHandoffReasonLabel = (value?: string | null) =>
   (value && handoffReasonLabels[value]) || '其他原因';
 
+const dialogueSpeakerLabels: Record<string, string> = {
+  ai: 'AI',
+  customer: '客户',
+  human_agent: '人工坐席',
+};
+
+export const getDialogueSpeakerLabel = (value?: string | null) =>
+  (value && dialogueSpeakerLabels[value]) || '未知说话方';
+
+const afterCallWorkLabels: Record<string, string> = {
+  follow_up_required: '需要后续跟进',
+  resolved: '已解决',
+  customer_refused: '客户拒绝',
+  invalid_contact: '联系方式无效',
+  other: '其他',
+};
+
+export const getAfterCallWorkLabel = (value?: string | null) =>
+  (value && afterCallWorkLabels[value]) || '尚未提交';
+
+const recordingStatusLabels: Record<string, string> = {
+  starting: '录音启动中',
+  recording: '录音中',
+  stopping: '录音处理中',
+  verifying: '录音生成校验中',
+  completed: '录音已生成',
+  failed: '录音生成失败',
+  not_generated: '未生成录音',
+};
+
+export const getRecordingStatusLabel = (value?: string | null) =>
+  value ? recordingStatusLabels[value] || '录音状态未知' : '未生成录音';
+
 export const getHandoffCustomerIdentity = (row: {
   masked_customer_name?: string | null;
   masked_contact?: string | null;
@@ -83,26 +116,18 @@ export const getHandoffCustomerIdentity = (row: {
   if (row.masked_customer_name) {
     return {
       primary: row.masked_customer_name,
-      secondary: row.masked_contact || `通话 ${row.call_id}`,
+      secondary: row.masked_contact || '联系方式未提供',
     };
   }
   if (row.masked_contact) {
     return {
       primary: row.masked_contact,
-      secondary: row.business_id
-        ? `业务编号 ${row.business_id}`
-        : `通话 ${row.call_id}`,
-    };
-  }
-  if (row.business_id) {
-    return {
-      primary: `业务编号 ${row.business_id}`,
-      secondary: `通话 ${row.call_id}`,
+      secondary: '客户姓名未提供',
     };
   }
   return {
-    primary: `通话 ${row.call_id}`,
-    secondary: '客户姓名未提供',
+    primary: '客户信息未提供',
+    secondary: '-',
   };
 };
 
@@ -187,8 +212,11 @@ export type MetricItem = {
 export const AdminMetricRow = ({ items }: { items: MetricItem[] }) => (
   <div className="agent-admin-metrics">
     {items.map((item) => (
-      <ProCard key={item.key} size="small" className="agent-admin-metric-card">
-        <span className="agent-admin-metric-icon" data-tone={item.tone} />
+      <ProCard
+        key={item.key}
+        size="small"
+        className={`agent-admin-metric-card agent-admin-metric-card--${item.tone}`}
+      >
         <div>
           <Text type="secondary">{item.label}</Text>
           <div className="agent-admin-metric-value">{item.value}</div>

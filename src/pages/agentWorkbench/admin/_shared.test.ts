@@ -1,12 +1,27 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
+  getAfterCallWorkLabel,
+  getDialogueSpeakerLabel,
   getHandoffCustomerIdentity,
   getHandoffReasonLabel,
+  getRecordingStatusLabel,
   normalizeHandoffDetail,
   normalizeHandoffMetrics,
   statusColors,
 } from './_shared';
 
 describe('agent administration presentation', () => {
+  it('does not render empty decorative blocks in metric cards', () => {
+    const source = fs.readFileSync(path.join(__dirname, '_shared.tsx'), 'utf8');
+    const styles = fs.readFileSync(path.join(__dirname, 'admin.css'), 'utf8');
+
+    expect(source).not.toContain('agent-admin-metric-icon');
+    expect(styles).not.toContain('.agent-admin-metric-icon');
+    expect(source).toContain('agent-admin-metric-card--');
+    expect(styles).toContain('.agent-admin-metric-card--red');
+  });
+
   it('uses clear Chinese labels and semantic colors', () => {
     expect(getHandoffReasonLabel('customer_request')).toBe('客户要求转人工');
     expect(getHandoffReasonLabel('business_escalation')).toBe('业务升级转人工');
@@ -16,7 +31,16 @@ describe('agent administration presentation', () => {
     expect(statusColors.expired).toBe('orange');
   });
 
-  it('falls back from masked customer data to a stable business or call identity', () => {
+  it('translates detail enums and missing recording state for operators', () => {
+    expect(getDialogueSpeakerLabel('ai')).toBe('AI');
+    expect(getDialogueSpeakerLabel('customer')).toBe('客户');
+    expect(getAfterCallWorkLabel('follow_up_required')).toBe('需要后续跟进');
+    expect(getRecordingStatusLabel('completed')).toBe('录音已生成');
+    expect(getRecordingStatusLabel('not_generated')).toBe('未生成录音');
+    expect(getRecordingStatusLabel()).toBe('未生成录音');
+  });
+
+  it('does not expose raw business or call identifiers as customer identity', () => {
     expect(
       getHandoffCustomerIdentity({
         masked_customer_name: '张**',
@@ -34,12 +58,12 @@ describe('agent administration presentation', () => {
         call_id: 'call-2',
       }),
     ).toEqual({
-      primary: '业务编号 lead-2',
-      secondary: '通话 call-2',
+      primary: '客户信息未提供',
+      secondary: '-',
     });
     expect(getHandoffCustomerIdentity({ call_id: 'call-3' })).toEqual({
-      primary: '通话 call-3',
-      secondary: '客户姓名未提供',
+      primary: '客户信息未提供',
+      secondary: '-',
     });
   });
 

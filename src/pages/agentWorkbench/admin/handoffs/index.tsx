@@ -26,8 +26,11 @@ import {
 import {
   AdminMetricRow,
   formatDateTime,
+  getAfterCallWorkLabel,
+  getDialogueSpeakerLabel,
   getHandoffCustomerIdentity,
   getHandoffReasonLabel,
+  getRecordingStatusLabel,
   type HandoffAdminDetail,
   normalizeHandoffDetail,
   normalizeHandoffMetrics,
@@ -54,6 +57,14 @@ const waitSeconds = (row: HandoffDto) => {
   );
 };
 
+const createIdempotencyKey = () => {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid === 'function')
+    return randomUuid.call(globalThis.crypto);
+  // ponytail: HTTP fallback only; HTTPS restores Web Crypto UUIDs.
+  return `handoff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
 const HandoffAdminPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);
   const [metrics, setMetrics] = useState<Record<string, number>>({});
@@ -63,6 +74,7 @@ const HandoffAdminPage = () => {
     () => [
       {
         title: '时间范围',
+        key: 'requested_at_filter',
         dataIndex: 'requested_at_range',
         valueType: 'dateTimeRange',
         hideInTable: true,
@@ -77,6 +89,7 @@ const HandoffAdminPage = () => {
       },
       {
         title: '转人工状态',
+        key: 'status_filter',
         dataIndex: 'status',
         valueType: 'select',
         valueEnum: Object.fromEntries(
@@ -90,37 +103,19 @@ const HandoffAdminPage = () => {
             'failed',
           ].map((value) => [value, { text: statusLabels[value] }]),
         ),
-        render: (_, row) => (
-          <Tag color={statusColors[row.status]}>
-            {statusLabels[row.status] || '未知状态'}
-          </Tag>
-        ),
-      },
-      {
-        title: '接听坐席',
-        key: 'human_agent_identity_filter',
-        dataIndex: 'human_agent_identity',
-        hideInTable: true,
-      },
-      { title: '客户关键字', dataIndex: 'customer_keyword', hideInTable: true },
-      { title: 'call_id', dataIndex: 'call_id', hideInTable: true },
-      {
-        title: '是否生成未接回访',
-        dataIndex: 'has_unanswered_follow_up',
-        valueType: 'select',
-        valueEnum: { true: { text: '是' }, false: { text: '否' } },
         hideInTable: true,
       },
       {
-        title: '请求时间',
-        dataIndex: 'requested_at',
-        hideInSearch: true,
-        renderText: (value) => formatDateTime(value),
+        title: '客户姓名',
+        key: 'customer_name_filter',
+        dataIndex: 'customer_name',
+        hideInTable: true,
       },
       {
         title: '客户标识',
+        key: 'customer_identity',
         dataIndex: 'masked_customer_name',
-        hideInSearch: true,
+        search: false,
         render: (_, row) => {
           const customer = getHandoffCustomerIdentity(row);
           return (
@@ -135,38 +130,49 @@ const HandoffAdminPage = () => {
       },
       {
         title: '业务场景',
+        key: 'scene_code_display',
         dataIndex: 'scene_code',
-        hideInSearch: true,
+        search: false,
         renderText: (value) => sceneLabels[value] || value,
       },
       {
         title: '转人工原因',
+        key: 'request_reason_display',
         dataIndex: 'request_reason',
-        hideInSearch: true,
+        search: false,
         ellipsis: true,
         renderText: (value) => getHandoffReasonLabel(value),
       },
       {
         title: '等待时长',
         key: 'wait_seconds',
-        hideInSearch: true,
+        search: false,
         render: (_, row) => `${waitSeconds(row)} 秒`,
       },
       {
         title: '接听坐席',
+        key: 'human_agent_identity_display',
         dataIndex: 'human_agent_identity',
-        hideInSearch: true,
+        search: false,
         renderText: (value) => value || '-',
       },
       {
         title: '最终结果',
+        key: 'status_display',
         dataIndex: 'status',
-        hideInSearch: true,
+        search: false,
         render: (_, row) => (
           <Tag color={statusColors[row.status]}>
             {statusLabels[row.status] || '未知状态'}
           </Tag>
         ),
+      },
+      {
+        title: '请求时间',
+        key: 'requested_at_display',
+        dataIndex: 'requested_at',
+        search: false,
+        renderText: (value) => formatDateTime(value),
       },
       {
         title: '操作',
@@ -193,21 +199,22 @@ const HandoffAdminPage = () => {
                 size="small"
                 onClick={() =>
                   Modal.confirm({
-                    title: '确认重新执行状态补偿',
-                    content: `仅对异常记录 ${row.handoff_id} 执行幂等补偿，不会改写正常通话结果。`,
-                    okText: '确认补偿',
+                    title: '确认修复异常状态',
+                    content:
+                      '系统会重新核对该异常转人工记录的状态，不会重新外呼或修改正常通话结果。',
+                    okText: '确认修复',
                     cancelText: '取消',
                     onOk: async () => {
                       await reconcileAdminHandoff(
                         row.handoff_id,
-                        crypto.randomUUID(),
+                        createIdempotencyKey(),
                       );
                       actionRef.current?.reload();
                     },
                   })
                 }
               >
-                重新补偿
+                修复异常状态
               </Button>
             ) : null}
           </Space>
@@ -219,6 +226,7 @@ const HandoffAdminPage = () => {
 
   const detailHandoff = detail?.handoff;
   const detailRecord = detail?.record;
+  const recentDialogue = detailHandoff?.recent_dialogue || [];
   const detailCustomer = detailHandoff
     ? getHandoffCustomerIdentity({
         ...detailHandoff,
@@ -239,6 +247,42 @@ const HandoffAdminPage = () => {
       ].filter((item) => item.value)
     : [];
   const normalizedMetrics = normalizeHandoffMetrics(metrics);
+  const executionConfig = detailRecord?.execution_config;
+  const executionConfigItems =
+    executionConfig && typeof executionConfig === 'object'
+      ? [
+          {
+            label: '提示词',
+            value: Reflect.get(executionConfig, 'promptName'),
+          },
+          {
+            label: '音色',
+            value:
+              Reflect.get(executionConfig, 'voiceName') ||
+              Reflect.get(executionConfig, 'voice'),
+          },
+          {
+            label: '外呼规则',
+            value: Reflect.get(executionConfig, 'ruleName'),
+          },
+        ].filter(
+          (item): item is { label: string; value: string } =>
+            typeof item.value === 'string' && Boolean(item.value.trim()),
+        )
+      : [];
+  const afterCallWorkSummary = detail?.afterCallWork
+    ? Reflect.get(detail.afterCallWork, 'summary')
+    : undefined;
+  const followUpReason = detail?.followUp
+    ? Reflect.get(detail.followUp, 'follow_up_reason')
+    : undefined;
+  const followUpSummary = detail?.followUp
+    ? Reflect.get(detail.followUp, 'summary')
+    : undefined;
+  const followUpTaskName =
+    (typeof followUpReason === 'string' && followUpReason.trim()) ||
+    (typeof followUpSummary === 'string' && followUpSummary.trim()) ||
+    '无';
 
   return (
     <PageContainer className="agent-admin-page" title="转人工记录">
@@ -272,7 +316,7 @@ const HandoffAdminPage = () => {
             key: 'media_failed',
             label: '媒体接入失败数',
             value: normalizedMetrics.mediaFailureCount,
-            tone: 'purple',
+            tone: 'red',
           },
         ]}
       />
@@ -280,15 +324,59 @@ const HandoffAdminPage = () => {
         actionRef={actionRef}
         rowKey={(row) => String(row.handoff_id)}
         columns={columns}
-        search={{ labelWidth: 112 }}
+        search={{ labelWidth: 112, defaultCollapsed: false }}
         scroll={{ x: 1280 }}
         pagination={{
           defaultPageSize: 10,
           showTotal: (total) => `共 ${total} 条`,
         }}
-        request={async ({ current, pageSize, ...filters }) => {
+        beforeSearchSubmit={(values) => {
+          const requestedAtRange =
+            values.requested_at_filter ?? values.requested_at_range;
+          const sceneCode = values.scene_code_filter ?? values.scene_code;
+          const status = values.status_filter ?? values.status;
+          const customerName =
+            values.customer_name_filter ?? values.customer_name;
+
+          return {
+            ...(sceneCode ? { sceneCode } : {}),
+            ...(status ? { status } : {}),
+            ...(customerName ? { customerName } : {}),
+            ...(Array.isArray(requestedAtRange) && requestedAtRange[0]
+              ? {
+                  requestedAtBegin: new Date(requestedAtRange[0]).toISOString(),
+                }
+              : {}),
+            ...(Array.isArray(requestedAtRange) && requestedAtRange[1]
+              ? { requestedAtEnd: new Date(requestedAtRange[1]).toISOString() }
+              : {}),
+          };
+        }}
+        request={async (params) => {
+          const { current, pageSize } = params;
+          const filters = params as typeof params & {
+            sceneCode?: string;
+            status?: string;
+            customerName?: string;
+            requestedAtBegin?: string;
+            requestedAtEnd?: string;
+          };
           const page = unwrapPage<HandoffDto>(
-            await listAdminHandoffs({ pageNum: current, pageSize, ...filters }),
+            await listAdminHandoffs({
+              pageNum: current,
+              pageSize,
+              ...(filters.sceneCode ? { sceneCode: filters.sceneCode } : {}),
+              ...(filters.status ? { status: filters.status } : {}),
+              ...(filters.customerName
+                ? { customerName: filters.customerName }
+                : {}),
+              ...(filters.requestedAtBegin
+                ? { requestedAtBegin: filters.requestedAtBegin }
+                : {}),
+              ...(filters.requestedAtEnd
+                ? { requestedAtEnd: filters.requestedAtEnd }
+                : {}),
+            }),
           );
           setMetrics(page.metrics || {});
           return { data: page.rows, total: page.total, success: true };
@@ -310,13 +398,8 @@ const HandoffAdminPage = () => {
                 styles={detailDescriptionStyles}
                 items={[
                   {
-                    key: 'handoff',
-                    label: 'handoff_id',
-                    children: detailHandoff.handoff_id,
-                  },
-                  {
                     key: 'call',
-                    label: 'call_id',
+                    label: '通话编号',
                     children: detailHandoff.call_id,
                   },
                   {
@@ -380,12 +463,64 @@ const HandoffAdminPage = () => {
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>转接前对话摘录</Title>
-              {detailHandoff.recent_dialogue?.length ? (
-                <div>
-                  {detailHandoff.recent_dialogue.map((item, index) => (
-                    <Paragraph key={item.id || `${item.speaker_type}-${index}`}>
-                      {item.speaker_type}：{item.text}
-                    </Paragraph>
+              {recentDialogue.length ? (
+                <div
+                  className="ai-call-dialogue-region"
+                  style={{
+                    maxHeight: 360,
+                    overflowY: 'auto',
+                    padding: 12,
+                    border: '1px solid #eef0f4',
+                    borderRadius: 10,
+                    background: '#f8f9fb',
+                  }}
+                >
+                  {recentDialogue.map((item, index) => (
+                    <div
+                      className={`ai-call-dialogue-row ai-call-dialogue-row--${
+                        item.speaker_type === 'customer' ? 'right' : 'left'
+                      }`}
+                      key={item.id || `${item.speaker_type}-${index}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent:
+                          item.speaker_type === 'customer'
+                            ? 'flex-end'
+                            : 'flex-start',
+                        marginBottom:
+                          index === recentDialogue.length - 1 ? 0 : 12,
+                      }}
+                    >
+                      <div
+                        className={`ai-call-dialogue-bubble ai-call-dialogue-bubble--${
+                          item.speaker_type === 'customer' ? 'customer' : 'ai'
+                        }`}
+                        style={{
+                          maxWidth: '82%',
+                          padding: '10px 12px',
+                          border: `1px solid ${
+                            item.speaker_type === 'customer'
+                              ? '#dfd4fa'
+                              : '#e6ebf2'
+                          }`,
+                          borderRadius:
+                            item.speaker_type === 'customer'
+                              ? '10px 10px 2px 10px'
+                              : '10px 10px 10px 2px',
+                          background:
+                            item.speaker_type === 'customer'
+                              ? '#f1edfb'
+                              : '#f1f5fb',
+                          lineHeight: 1.6,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        <Text strong>
+                          {getDialogueSpeakerLabel(item.speaker_type)}：
+                        </Text>
+                        <Text>{item.text}</Text>
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -395,41 +530,49 @@ const HandoffAdminPage = () => {
             <section className="agent-admin-detail-section">
               <Title level={5}>录音状态</Title>
               <Text>
-                {String(detailRecord?.recording_status || '当前记录未提供')}
+                {getRecordingStatusLabel(
+                  detailRecord?.recording_status as string | undefined,
+                )}
               </Text>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>快速话后结果</Title>
               <Text>
-                {String(
-                  detail.afterCallWork?.summary ||
-                    detail.afterCallWork?.disposition_code ||
-                    '尚未提交',
-                )}
+                {typeof afterCallWorkSummary === 'string' &&
+                afterCallWorkSummary.trim()
+                  ? afterCallWorkSummary
+                  : getAfterCallWorkLabel(
+                      detail?.afterCallWork
+                        ? (Reflect.get(
+                            detail.afterCallWork,
+                            'disposition_code',
+                          ) as string | undefined)
+                        : undefined,
+                    )}
               </Text>
             </section>
             <section className="agent-admin-detail-section">
               <Title level={5}>关联跟进任务</Title>
-              <Text>
-                {String(
-                  (detail.followUp && Reflect.get(detail.followUp, 'id')) ||
-                    (detail.followUp &&
-                      Reflect.get(detail.followUp, 'follow_up_id')) ||
-                    '无',
-                )}
-              </Text>
+              <Text>{followUpTaskName}</Text>
             </section>
             <Collapse
               items={[
                 {
                   key: 'model-prompt',
                   label: '通话配置快照（排查用）',
-                  children: (
+                  children: executionConfigItems.length ? (
+                    <Descriptions
+                      column={1}
+                      size="small"
+                      items={executionConfigItems.map((item) => ({
+                        key: item.label,
+                        label: item.label,
+                        children: item.value,
+                      }))}
+                    />
+                  ) : (
                     <Text type="secondary">
-                      {String(
-                        detailRecord?.model_prompt_snapshot ||
-                          '本次通话未保存配置快照',
-                      )}
+                      本次通话未保存配置快照，无法事后还原
                     </Text>
                   ),
                 },
