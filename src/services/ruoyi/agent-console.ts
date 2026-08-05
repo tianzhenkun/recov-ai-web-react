@@ -262,6 +262,16 @@ export type PageQuery = {
   [key: string]: unknown;
 };
 
+export type FollowUpListQuery = {
+  pageNum?: number;
+  pageSize?: number;
+  status?: FollowUpStatus[];
+  sceneCode?: SceneCode;
+  sourceType?: FollowUpSourceType;
+  createdAtBegin?: string;
+  createdAtEnd?: string;
+};
+
 export type PendingHandoffsQuery = {
   consoleSessionId: string;
   limit?: number;
@@ -484,7 +494,7 @@ export const submitAfterCallWork = (
     },
   );
 
-export const listAgentFollowUps = (params: PageQuery = {}) =>
+export const listAgentFollowUps = (params: FollowUpListQuery = {}) =>
   agentConsoleRequest<PageResult<FollowUpTaskDto>>(
     `${AGENT_CONSOLE_API_PREFIX}/follow-ups`,
     { method: 'get', params },

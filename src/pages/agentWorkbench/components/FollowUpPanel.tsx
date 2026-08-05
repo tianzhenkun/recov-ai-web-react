@@ -2,12 +2,15 @@ import { PhoneOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
+  DatePicker,
   Descriptions,
   Drawer,
   Empty,
   Flex,
+  Form,
   Input,
   Modal,
+  message,
   Select,
   Spin,
   Table,
@@ -15,6 +18,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import type { Dayjs } from 'dayjs';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -26,6 +30,7 @@ import {
   completeFollowUp,
   createFollowUpAttempt,
   type FollowUpCallbackCredentialDto,
+  type FollowUpListQuery,
   type FollowUpTaskDto,
   getAgentFollowUp,
   type IdempotentSessionInput,
@@ -38,7 +43,7 @@ import FollowUpCallDetail from './FollowUpCallDetail';
 const { Text, Title } = Typography;
 
 type FollowUpServices = {
-  list: (params?: Record<string, unknown>) => Promise<unknown>;
+  list: (params?: FollowUpListQuery) => Promise<unknown>;
   detail: (followUpId: string) => Promise<unknown>;
   claim: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
   call: (followUpId: string, input: IdempotentSessionInput) => Promise<unknown>;
@@ -75,6 +80,13 @@ type FollowUpPanelProps = {
     callback: FollowUpCallbackCredentialDto,
     task: FollowUpTaskDto,
   ) => void;
+};
+
+type FollowUpFilterValues = {
+  createdAt?: [Dayjs, Dayjs];
+  sceneCode?: FollowUpTaskDto['scene_code'];
+  status?: FollowUpTaskDto['status'];
+  sourceType?: FollowUpTaskDto['source_type'];
 };
 
 const defaultServices: FollowUpServices = {
@@ -164,7 +176,9 @@ const FollowUpPanel = ({
   const [scope, setScope] = useState<'unassigned' | 'mine'>('unassigned');
   const [tasks, setTasks] = useState<FollowUpTaskDto[]>([]);
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [filters, setFilters] = useState<FollowUpFilterValues>({});
+  const [filterForm] = Form.useForm<FollowUpFilterValues>();
+  const [messageApi, messageContextHolder] = message.useMessage();
   const [closeTask, setCloseTask] = useState<FollowUpTaskDto>();
   const [closeReason, setCloseReason] = useState<ClosedReason>();
   const [closeRemark, setCloseRemark] = useState('');
@@ -186,8 +200,11 @@ const FollowUpPanel = ({
     try {
       const rows = unwrapRows(
         await services.list({
-          ownership: scope,
-          status: ['pending', 'processing'],
+          status: filters.status ? [filters.status] : ['pending', 'processing'],
+          sceneCode: filters.sceneCode,
+          sourceType: filters.sourceType,
+          createdAtBegin: filters.createdAt?.[0]?.startOf('day').toISOString(),
+          createdAtEnd: filters.createdAt?.[1]?.endOf('day').toISOString(),
           pageSize: 50,
         }),
       );
@@ -201,7 +218,7 @@ const FollowUpPanel = ({
     } finally {
       setLoading(false);
     }
-  }, [scope, services]);
+  }, [filters, scope, services]);
 
   useEffect(() => {
     void loadTasks();
@@ -221,10 +238,10 @@ const FollowUpPanel = ({
     runOnce(`claim:${task.id}`, async () => {
       try {
         await services.claim(task.id, createIdempotencyKey());
-        setNotice('回访任务认领成功，负责人已固定为当前坐席');
+        messageApi.success('回访任务认领成功，负责人已固定为当前坐席');
         setTasks((current) => current.filter((item) => item.id !== task.id));
       } catch {
-        setNotice('回访任务认领失败，请刷新后重试');
+        messageApi.error('回访任务认领失败，请刷新后重试');
       }
     });
 
@@ -239,22 +256,22 @@ const FollowUpPanel = ({
           current?.id === task.id ? detail : current,
         );
       } catch {
-        setNotice('跟进任务详情加载失败，请重试');
+        messageApi.error('跟进任务详情加载失败，请重试');
       }
     });
 
   const callCustomer = (task: FollowUpTaskDto) =>
     runOnce(`call:${task.id}`, async () => {
       if (!consoleSessionId) {
-        setNotice('请先在坐席工作台上线后再发起回拨');
+        messageApi.warning('请先在坐席工作台上线后再发起回拨');
         return;
       }
       if (!['available', 'offline', 'paused'].includes(agentStatus)) {
-        setNotice('当前坐席正在通话、话后处理或重连，暂不能回拨');
+        messageApi.warning('当前坐席正在通话、话后处理或重连，暂不能回拨');
         return;
       }
       if (agentStatus !== 'available' && !(await onPrepareCallback?.())) {
-        setNotice('上线失败，请完成设备检查后重试');
+        messageApi.error('上线失败，请完成设备检查后重试');
         return;
       }
       const response = unwrapData(
@@ -263,7 +280,7 @@ const FollowUpPanel = ({
           idempotencyKey: createIdempotencyKey(),
         }),
       ) as FollowUpCallbackCredentialDto;
-      setNotice('回拨任务已受理，等待最终通话状态');
+      messageApi.success('回拨任务已受理，等待最终通话状态');
       if (response?.call_id) onCallAccepted?.(response, task);
     });
 
@@ -346,14 +363,65 @@ const FollowUpPanel = ({
 
   return (
     <div className="agent-follow-up-panel">
-      {notice ? (
-        <Alert
-          type="info"
-          showIcon
-          title={notice}
-          closable={{ onClose: () => setNotice('') }}
-        />
-      ) : null}
+      {messageContextHolder}
+      <Form<FollowUpFilterValues>
+        className="agent-follow-up-filter"
+        form={filterForm}
+        layout="inline"
+        onFinish={setFilters}
+      >
+        <Form.Item label="创建时间" name="createdAt">
+          <DatePicker.RangePicker />
+        </Form.Item>
+        <Form.Item label="业务场景" name="sceneCode">
+          <Select
+            aria-label="业务场景"
+            allowClear
+            placeholder="全部业务场景"
+            options={[
+              { value: 'intro_contract', label: '合同审查产品介绍' },
+              { value: 'intro_document', label: '文书产品介绍' },
+              { value: 'intro_overseas', label: '涉外产品介绍' },
+              { value: 'intro_geo', label: 'GEO 产品介绍' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item label="回访状态" name="status">
+          <Select
+            aria-label="回访状态"
+            allowClear
+            placeholder="全部状态"
+            options={Object.entries(followUpStatusLabels).map(
+              ([value, label]) => ({ value, label }),
+            )}
+          />
+        </Form.Item>
+        <Form.Item label="回访来源" name="sourceType">
+          <Select
+            aria-label="回访来源"
+            allowClear
+            placeholder="全部来源"
+            options={Object.entries(followUpSourceLabels).map(
+              ([value, label]) => ({ value, label }),
+            )}
+          />
+        </Form.Item>
+        <Form.Item>
+          <Flex gap="small">
+            <Button type="primary" htmlType="submit">
+              查询
+            </Button>
+            <Button
+              onClick={() => {
+                filterForm.resetFields();
+                setFilters({});
+              }}
+            >
+              重置
+            </Button>
+          </Flex>
+        </Form.Item>
+      </Form>
       <Tabs
         activeKey={scope}
         items={[
@@ -368,7 +436,7 @@ const FollowUpPanel = ({
             rowKey="id"
             size="middle"
             pagination={false}
-            scroll={{ x: 920 }}
+            scroll={{ x: 1400 }}
             dataSource={tasks}
             columns={[
               {
@@ -378,9 +446,22 @@ const FollowUpPanel = ({
                 render: (value) => value || '联系方式已脱敏',
               },
               {
+                title: '回访来源',
+                dataIndex: 'source_type',
+                width: 150,
+                render: (value: FollowUpTaskDto['source_type']) =>
+                  followUpSourceLabels[value],
+              },
+              {
                 title: '跟进原因',
                 dataIndex: 'follow_up_reason',
                 ellipsis: true,
+              },
+              {
+                title: '创建时间',
+                dataIndex: 'created_at',
+                width: 180,
+                render: (value) => new Date(value).toLocaleString(),
               },
               {
                 title: '应跟进时间',
@@ -658,7 +739,7 @@ const FollowUpPanel = ({
               : undefined,
             idempotencyKey: createIdempotencyKey(),
           });
-          setNotice(
+          messageApi.success(
             attemptResult === 'connected'
               ? '联系结果已记录'
               : '联系结果已记录，任务保持待处理',

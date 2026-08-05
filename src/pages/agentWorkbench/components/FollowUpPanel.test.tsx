@@ -79,6 +79,34 @@ describe('FollowUpPanel', () => {
     await waitFor(() => expect(services.claim).toHaveBeenCalledTimes(1));
   });
 
+  it('uses a toast and shows filters plus identifying task context', async () => {
+    const services = createServices();
+    render(<FollowUpPanel services={services} />);
+
+    expect(await screen.findByText('138****0000')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '回访来源' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '创建时间' })).toBeTruthy();
+    expect(screen.getByText('人工未接回访')).toBeTruthy();
+    expect(screen.getByLabelText('业务场景')).toBeTruthy();
+    expect(screen.getByLabelText('回访状态')).toBeTruthy();
+    expect(screen.getByLabelText('回访来源')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /查\s*询/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+    await waitFor(() => expect(services.list).toHaveBeenCalledTimes(2));
+    expect(services.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: ['pending', 'processing'] }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '认领回访' }));
+    expect(
+      await screen.findByText('回访任务认领成功，负责人已固定为当前坐席'),
+    ).toBeTruthy();
+    expect(
+      document.querySelector('.agent-follow-up-panel > .ant-alert'),
+    ).toBeNull();
+  });
+
   it('claims a callback when HTTP does not provide randomUUID', async () => {
     const services = createServices();
     const originalRandomUUID = globalThis.crypto.randomUUID;
