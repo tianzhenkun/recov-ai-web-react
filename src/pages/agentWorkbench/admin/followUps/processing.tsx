@@ -1,7 +1,7 @@
 import { PageContainer } from '@ant-design/pro-components';
-import { Card } from 'antd';
+import { Alert, Card } from 'antd';
 import * as React from 'react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type {
   FollowUpCallbackCredentialDto,
   FollowUpTaskDto,
@@ -21,9 +21,16 @@ const FollowUpProcessingPage = () => {
     consoleSessionId: agent.consoleSessionId,
     refresh: agent.bootstrap,
   });
+  const prepareCallback = useCallback(async () => {
+    if (agent.status === 'available') return true;
+    return agent.goOnline();
+  }, [agent.goOnline, agent.status]);
 
   return (
     <PageContainer className="agent-admin-page" title="跟进处理">
+      {agent.errorMessage ? (
+        <Alert message={agent.errorMessage} showIcon type="error" />
+      ) : null}
       {callback ? (
         <Card title="当前回拨通话" variant="borderless">
           <CurrentCallPanel
@@ -39,6 +46,7 @@ const FollowUpProcessingPage = () => {
         agentStatus={agent.status}
         callbackEnabled
         consoleSessionId={agent.consoleSessionId}
+        onPrepareCallback={prepareCallback}
         onCallAccepted={(nextCallback, task: FollowUpTaskDto) => {
           setCallbackFollowUpId(task.id);
           setCallback(nextCallback);

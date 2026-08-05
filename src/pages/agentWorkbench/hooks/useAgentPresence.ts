@@ -351,7 +351,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
   }, [bootstrap, consoleSessionId, heartbeatIntervalMs, services, status]);
 
   const goOnline = useCallback(async () => {
-    if (!profile?.enabled) return;
+    if (!profile?.enabled) return false;
     setErrorMessage('');
     setPhase('checking');
     const result = await devicePreflight();
@@ -359,7 +359,7 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
     if (!result.ok) {
       setErrorMessage(result.message || '设备预检未通过，请修复后重试');
       setPhase('ready');
-      return;
+      return false;
     }
     setPhase('updating');
     try {
@@ -372,10 +372,12 @@ export const useAgentPresence = (options: UseAgentPresenceOptions = {}) => {
         ),
       );
       setPhase('ready');
+      return true;
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
       setPhase('error');
       await bootstrap();
+      return false;
     }
   }, [bootstrap, consoleSessionId, devicePreflight, profile, services]);
 

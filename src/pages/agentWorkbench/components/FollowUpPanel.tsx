@@ -69,6 +69,7 @@ type FollowUpPanelProps = {
   agentStatus?: string;
   callbackEnabled?: boolean;
   consoleSessionId?: string;
+  onPrepareCallback?: () => Promise<boolean>;
   services?: FollowUpServices;
   onCallAccepted?: (
     callback: FollowUpCallbackCredentialDto,
@@ -156,6 +157,7 @@ const FollowUpPanel = ({
   agentStatus = 'available',
   callbackEnabled = false,
   consoleSessionId,
+  onPrepareCallback,
   services = defaultServices,
   onCallAccepted,
 }: FollowUpPanelProps) => {
@@ -247,6 +249,14 @@ const FollowUpPanel = ({
         setNotice('请先在坐席工作台上线后再发起回拨');
         return;
       }
+      if (!['available', 'offline', 'paused'].includes(agentStatus)) {
+        setNotice('当前坐席正在通话、话后处理或重连，暂不能回拨');
+        return;
+      }
+      if (agentStatus !== 'available' && !(await onPrepareCallback?.())) {
+        setNotice('上线失败，请完成设备检查后重试');
+        return;
+      }
       const response = unwrapData(
         await services.call(task.id, {
           consoleSessionId,
@@ -259,6 +269,9 @@ const FollowUpPanel = ({
 
   const terminal = (task: FollowUpTaskDto) =>
     ['completed', 'closed'].includes(task.status);
+  const canStartCallback =
+    Boolean(consoleSessionId) &&
+    ['available', 'offline', 'paused'].includes(agentStatus);
   const selectedTaskLatestAttempt = selectedTask
     ? latestAttemptOf(selectedTask)
     : undefined;
@@ -287,10 +300,15 @@ const FollowUpPanel = ({
               type="link"
               size="small"
               icon={<PhoneOutlined />}
-              disabled={agentStatus !== 'available' || !consoleSessionId}
+              disabled={!canStartCallback}
+              title={
+                canStartCallback
+                  ? undefined
+                  : '当前坐席正在通话、话后处理或重连，暂不能回拨'
+              }
               onClick={() => void callCustomer(task)}
             >
-              呼叫客户
+              {agentStatus === 'available' ? '呼叫客户' : '上线并呼叫'}
             </Button>
           ) : null}
           <Button

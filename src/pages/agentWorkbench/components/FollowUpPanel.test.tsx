@@ -151,6 +151,36 @@ describe('FollowUpPanel', () => {
     );
   });
 
+  it('brings an offline agent online before calling the customer', async () => {
+    const services = createServices();
+    const onPrepareCallback = jest.fn().mockResolvedValue(true);
+    services.list.mockResolvedValue({
+      code: 200,
+      data: {
+        rows: [{ ...unanswered, owner_agent_identity: 'agent-1' }],
+        total: 1,
+      },
+    });
+    render(
+      <FollowUpPanel
+        agentStatus="offline"
+        callbackEnabled
+        consoleSessionId="session-1"
+        onPrepareCallback={onPrepareCallback}
+        services={services}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '我的跟进' }));
+    fireEvent.click(await screen.findByRole('button', { name: /上线并呼叫/ }));
+
+    await waitFor(() => expect(onPrepareCallback).toHaveBeenCalledTimes(1));
+    expect(services.call).toHaveBeenCalledWith(
+      unanswered.id,
+      expect.objectContaining({ consoleSessionId: 'session-1' }),
+    );
+  });
+
   it('keeps system callback hidden until the real callback capability is enabled', async () => {
     const services = createServices();
     services.list.mockResolvedValue({
