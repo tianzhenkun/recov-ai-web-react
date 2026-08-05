@@ -371,6 +371,7 @@ type DetailErrors = Partial<
 const AiCallRecordsPage = () => {
   const actionRef = useRef<ActionType | undefined>(undefined);
   const [searchParams] = useSearchParams();
+  const presetCallId = searchParams.get('callId')?.trim() || undefined;
   const presetTaskId = searchParams.get('taskId') || undefined;
   const presetTargetId = searchParams.get('targetId') || undefined;
   const presetEntryType = searchParams.get('entryType') || undefined;
@@ -482,6 +483,10 @@ const AiCallRecordsPage = () => {
       setDetailLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (presetCallId) void openDetail(presetCallId);
+  }, [openDetail, presetCallId]);
 
   useEffect(() => {
     if (!hasUnstableRecords) {
@@ -749,6 +754,8 @@ const AiCallRecordsPage = () => {
   const executionConfig = detail?.executionConfig;
   const afterCallWork = detail?.afterCallWork;
   const followUp = detail?.followUp;
+  const sourceRecord = followUp?.sourceRecord;
+  const callbackRecords = followUp?.callbackRecords || [];
   const analysisResult = analysis?.analysisResult || {};
   const analysisItems = analysisFieldOrder
     .filter((key) => Object.hasOwn(analysisResult, key))
@@ -892,6 +899,104 @@ const AiCallRecordsPage = () => {
                 ]}
               />
             </section>
+
+            {followUp ? (
+              <section>
+                <Title level={5}>关联跟进</Title>
+                <Descriptions
+                  column={1}
+                  styles={detailDescriptionStyles}
+                  items={[
+                    {
+                      key: 'followUpTask',
+                      label: '所属跟进任务',
+                      children: (
+                        <Flex align="center" gap={8} wrap>
+                          <Tag>
+                            {statusLabels[followUp.status] || followUp.status}
+                          </Tag>
+                          <Text>{followUp.reason}</Text>
+                          <Button
+                            size="small"
+                            type="link"
+                            onClick={() =>
+                              history.push(
+                                `/ai-call/follow-ups?followUpId=${encodeURIComponent(
+                                  followUp.id,
+                                )}`,
+                              )
+                            }
+                          >
+                            查看跟进任务
+                          </Button>
+                        </Flex>
+                      ),
+                    },
+                    {
+                      key: 'sourceCall',
+                      label: '原始通话',
+                      children: (
+                        <Flex align="center" gap={8} wrap>
+                          <Text>{followUp.sourceCallId}</Text>
+                          {sourceRecord ? (
+                            <Text type="secondary">
+                              {formatDateTime(sourceRecord.startedAt)} ·{' '}
+                              {describeRecordStatus(sourceRecord)}
+                            </Text>
+                          ) : null}
+                          {record.callId === followUp.sourceCallId ? (
+                            <Tag>当前通话</Tag>
+                          ) : (
+                            <Button
+                              size="small"
+                              type="link"
+                              href={`/ai-call/records?callId=${encodeURIComponent(followUp.sourceCallId)}`}
+                            >
+                              查看原始通话
+                            </Button>
+                          )}
+                        </Flex>
+                      ),
+                    },
+                    {
+                      key: 'callbackCalls',
+                      label: '历次回拨',
+                      children: callbackRecords.length ? (
+                        <Flex vertical gap={8}>
+                          {callbackRecords.map((callbackRecord, index) => (
+                            <Flex
+                              key={callbackRecord.callId}
+                              align="center"
+                              gap={8}
+                              wrap
+                            >
+                              <Text>{`第${index + 1}次人工回拨`}</Text>
+                              <Text type="secondary">
+                                {formatDateTime(callbackRecord.startedAt)} ·{' '}
+                                {describeRecordStatus(callbackRecord)}
+                              </Text>
+                              {callbackRecord.callId === record.callId ? (
+                                <Tag>当前通话</Tag>
+                              ) : (
+                                <Button
+                                  size="small"
+                                  type="link"
+                                  href={`/ai-call/records?callId=${encodeURIComponent(callbackRecord.callId)}`}
+                                >
+                                  查看本次通话
+                                </Button>
+                              )}
+                            </Flex>
+                          ))}
+                        </Flex>
+                      ) : (
+                        <Text type="secondary">暂无回拨记录</Text>
+                      ),
+                    },
+                  ]}
+                />
+              </section>
+            ) : null}
 
             <section>
               <Title level={5}>执行配置</Title>
@@ -1068,36 +1173,6 @@ const AiCallRecordsPage = () => {
                         label: '提交时间',
                         children: formatDateTime(afterCallWork.submittedAt),
                       },
-                      ...(followUp
-                        ? [
-                            {
-                              key: 'followUp',
-                              label: '跟进任务',
-                              children: (
-                                <Flex align="center" gap={8} wrap>
-                                  <Tag>
-                                    {statusLabels[followUp.status] ||
-                                      followUp.status}
-                                  </Tag>
-                                  <Text>{followUp.reason}</Text>
-                                  <Button
-                                    size="small"
-                                    type="link"
-                                    onClick={() =>
-                                      history.push(
-                                        `/ai-call/follow-ups?followUpId=${encodeURIComponent(
-                                          followUp.id,
-                                        )}`,
-                                      )
-                                    }
-                                  >
-                                    查看跟进任务
-                                  </Button>
-                                </Flex>
-                              ),
-                            },
-                          ]
-                        : []),
                     ]}
                   />
                 </>

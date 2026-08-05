@@ -661,4 +661,52 @@ describe('AI Call 通话记录页面', () => {
       '/ai-call/follow-ups?followUpId=342941293734035456',
     );
   });
+
+  it('从关联链接打开通话详情并展示原始通话与历次回拨', async () => {
+    mockSearchParams = 'callId=call-callback-1';
+    (getAiCallRecordDetail as jest.Mock).mockResolvedValue({
+      record: {
+        ...mockRecord,
+        callId: 'call-callback-1',
+        entryType: 'sip_callback',
+      },
+      executionConfig: null,
+      followUp: {
+        id: 'follow-up-1',
+        status: 'processing',
+        reason: '客户要求人工进一步介绍',
+        sourceCallId: 'call-original-1',
+        sourceRecord: {
+          ...mockRecord,
+          callId: 'call-original-1',
+          entryType: 'owner_runtime',
+        },
+        callbackRecords: [
+          {
+            ...mockRecord,
+            id: '2',
+            callId: 'call-callback-1',
+            entryType: 'sip_callback',
+          },
+        ],
+      },
+    });
+
+    render(<AiCallRecordsPage />);
+
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    expect(getAiCallRecordDetail).toHaveBeenCalledWith('call-callback-1');
+    expect(within(detailDrawer).getByText('关联跟进')).toBeTruthy();
+    expect(
+      within(detailDrawer).getByText('客户要求人工进一步介绍'),
+    ).toBeTruthy();
+    expect(
+      within(detailDrawer)
+        .getByRole('link', { name: '查看原始通话' })
+        .getAttribute('href'),
+    ).toBe('/ai-call/records?callId=call-original-1');
+    expect(within(detailDrawer).getByText('历次回拨')).toBeTruthy();
+  });
 });

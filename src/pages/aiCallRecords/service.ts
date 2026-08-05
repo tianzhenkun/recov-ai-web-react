@@ -71,6 +71,9 @@ export type AiCallRecordDetail = {
     id: string;
     status: string;
     reason: string;
+    sourceCallId: string;
+    sourceRecord?: AiCallRecord | null;
+    callbackRecords?: AiCallRecord[];
   } | null;
   executionConfig?: {
     promptProfileId?: string | null;
