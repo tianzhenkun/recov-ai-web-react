@@ -156,7 +156,14 @@ describe('single target AI Call task creation', () => {
       (screen.getByRole('radio', { name: '单号码' }) as HTMLInputElement)
         .checked,
     ).toBe(true);
-    expect(screen.getByText('手机号')).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Web（浏览器）',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(screen.queryByText('手机号')).toBeNull();
     expect(screen.getByText('客户名称')).toBeTruthy();
     expect(screen.queryByText('公司名称')).toBeNull();
     expect(screen.queryByText('产品名称')).toBeNull();
@@ -237,6 +244,8 @@ describe('single target AI Call task creation', () => {
     render(<AiCallTaskCreatePage />);
     await screen.findAllByText('客户回访 / intro_follow_up');
 
+    fireEvent.click(screen.getByRole('radio', { name: 'Linphone（SIP）' }));
+    await screen.findByPlaceholderText('请输入手机号');
     fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
       target: { value: '重点客户回访' },
     });
@@ -252,6 +261,7 @@ describe('single target AI Call task creation', () => {
       expect(mockedValidateSingle).toHaveBeenCalledWith(
         expect.objectContaining({
           taskMode: 'single',
+          answerMode: 'linphone',
           phoneNumber: '19900001001',
           customerName: '张先生',
           promptProfileId: 'prompt-1',
@@ -275,6 +285,31 @@ describe('single target AI Call task creation', () => {
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith('/ai-call/tasks/task-created'),
     );
+  });
+
+  it('defaults to Web reception and validates without a phone number', async () => {
+    render(<AiCallTaskCreatePage />);
+    await screen.findAllByText('客户回访 / intro_follow_up');
+
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Web（浏览器）',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(screen.queryByPlaceholderText('请输入手机号')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('请输入任务名称'), {
+      target: { value: 'Web 接听测试' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '校验任务' }));
+
+    await waitFor(() => expect(mockedValidateSingle).toHaveBeenCalledTimes(1));
+    const [request] = mockedValidateSingle.mock.calls[0];
+    expect(request).toEqual(
+      expect.objectContaining({ taskMode: 'single', answerMode: 'web' }),
+    );
+    expect(request).not.toHaveProperty('phoneNumber');
   });
 
   it('downloads the template and directly uploads one xlsx list for validation', async () => {

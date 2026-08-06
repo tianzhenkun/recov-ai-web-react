@@ -12,6 +12,7 @@ import AiCallTaskDetailPage from './index';
 
 const mockPush = jest.fn();
 const mockLinphoneTaskTest = jest.fn();
+const mockWebTaskCallModal = jest.fn();
 
 jest.mock('@umijs/max', () => ({
   history: { push: (...args: unknown[]) => mockPush(...args) },
@@ -53,6 +54,16 @@ jest.mock('../components/LinphoneTaskTest', () => ({
   },
 }));
 
+jest.mock('../components/WebTaskCallModal', () => ({
+  __esModule: true,
+  default: (props: { callId: string; open: boolean }) => {
+    mockWebTaskCallModal(props);
+    return props.open ? (
+      <div data-testid="web-task-call-modal">Web 来电</div>
+    ) : null;
+  },
+}));
+
 const mockedGetTask = getAiCallTask as jest.Mock;
 const mockedListTargets = listAiCallTaskTargets as jest.Mock;
 
@@ -60,6 +71,7 @@ describe('AI Call task detail page', () => {
   beforeEach(() => {
     mockPush.mockReset();
     mockLinphoneTaskTest.mockReset();
+    mockWebTaskCallModal.mockReset();
     mockedGetTask.mockReset();
     mockedListTargets.mockReset();
     mockedGetTask.mockResolvedValue({
@@ -173,6 +185,36 @@ describe('AI Call task detail page', () => {
     expect(mockLinphoneTaskTest).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: '测试拨打入口' })).toBeNull();
     expect(screen.queryByTestId('linphone-active-status')).toBeNull();
+  });
+
+  it('opens the Web reception dialog only when the formal call is ready', async () => {
+    const task = await mockedGetTask();
+    mockedGetTask.mockResolvedValue({
+      ...task,
+      taskMode: 'single',
+      answerMode: 'web',
+    });
+    mockedListTargets.mockResolvedValue({
+      rows: [
+        {
+          targetId: 'target-web',
+          taskId: 'task-1',
+          status: 'DIALING',
+          attemptCount: 1,
+          activeCallId: 'call-web-1',
+          activeCallStatus: 'ready',
+          updatedAt: '2026-07-27 09:30:00',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<AiCallTaskDetailPage />);
+
+    expect(await screen.findByTestId('web-task-call-modal')).toBeTruthy();
+    expect(mockWebTaskCallModal).toHaveBeenCalledWith(
+      expect.objectContaining({ callId: 'call-web-1', open: true }),
+    );
   });
 
   it('refreshes an immediate task while it is still scheduled', async () => {

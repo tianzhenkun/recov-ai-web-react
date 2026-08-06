@@ -61,6 +61,7 @@ export type ValidationStatus =
 export type ValidationRetryAction = 'REUPLOAD' | 'RETRY_VALIDATION';
 
 export type TaskMode = 'single' | 'batch';
+export type AnswerMode = 'linphone' | 'web';
 export type ExecutionMode = 'immediate' | 'scheduled';
 
 export type TaskActionKey =
@@ -81,6 +82,7 @@ export type AiCallTask = {
   taskId: string;
   taskName: string;
   taskMode: TaskMode;
+  answerMode?: AnswerMode;
   status: TaskStatus;
   totalTargets: number;
   completedTargets: number;
@@ -112,11 +114,13 @@ export type AiCallTaskTarget = {
   targetId: string;
   taskId: string;
   customerName?: string | null;
-  phoneNumber: string;
+  phoneNumber?: string | null;
   status: TargetStatus;
   attemptCount: number;
   latestResult?: string | null;
   latestDialerType?: string | null;
+  activeCallId?: string | null;
+  activeCallStatus?: string | null;
   updatedAt: string;
 };
 

@@ -530,7 +530,7 @@ const listTargets = (req: Request, res: Response) => {
   const status = String(req.query.status || '').trim();
   const filtered = source.filter(
     (item) =>
-      (!phoneNumber || item.phoneNumber.includes(phoneNumber)) &&
+      (!phoneNumber || item.phoneNumber?.includes(phoneNumber)) &&
       (!customerName || item.customerName?.includes(customerName)) &&
       (!status || item.status === status),
   );

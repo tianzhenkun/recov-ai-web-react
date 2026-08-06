@@ -6,6 +6,7 @@ import type {
   AiCallTaskTarget,
   AiCallTaskTestCapability,
   AiCallTaskTestStatus,
+  AnswerMode,
   ExecutionMode,
   LinphoneTestScenario,
   TargetStatus,
@@ -21,6 +22,8 @@ const AI_CALL_LAB_BASE_API = '/ai-call-lab-api';
 
 const OUTBOUND_PREFIX = '/ai-call';
 const TASKS_PATH = `${OUTBOUND_PREFIX}/outbound-tasks`;
+const RUNTIME_CALLS_PATH = `${OUTBOUND_PREFIX}/runtime/calls`;
+const SESSIONS_PATH = `${OUTBOUND_PREFIX}/sessions`;
 const TASK_TESTS_PATH = `${OUTBOUND_PREFIX}/lab/outbound-task-tests`;
 const VALIDATIONS_PATH = `${OUTBOUND_PREFIX}/outbound-validations`;
 
@@ -56,6 +59,7 @@ export type ValidationIssueQuery = {
 export type ValidationRequest = {
   taskName: string;
   taskMode: TaskMode;
+  answerMode?: AnswerMode;
   promptProfileId?: string;
   sceneCode: string;
   voice: string;
@@ -66,7 +70,7 @@ export type ValidationRequest = {
 
 export type SingleTargetValidationRequest = ValidationRequest & {
   taskMode: 'single';
-  phoneNumber: string;
+  phoneNumber?: string;
   customerName?: string;
 };
 
@@ -102,6 +106,15 @@ export type CreateAiCallTaskPayload = ValidationRequest;
 
 export type AcceptedCommand = {
   accepted: true;
+};
+
+export type AiCallRuntimeBrowserToken = {
+  callId: string;
+  roomName: string;
+  livekitUrl: string;
+  participantToken: string;
+  participantIdentity: string;
+  expiresInSeconds: number;
 };
 
 export type AiCallTaskTestAccepted = AcceptedCommand & {
@@ -297,6 +310,32 @@ export const listAiCallTaskTargets = async (
       params,
     }),
   );
+
+export const getAiCallRuntimeBrowserToken = async (
+  callId: string,
+): Promise<AiCallRuntimeBrowserToken> =>
+  unwrapData(
+    await ruoyiRequest<AiCallRuntimeBrowserToken>(
+      `${RUNTIME_CALLS_PATH}/${encodeURIComponent(callId)}/token`,
+      { ...requestOptions, method: 'post' },
+    ),
+  );
+
+export const reportAiCallTaskBrowserEvent = async (
+  callId: string,
+  type: string,
+): Promise<void> => {
+  await unwrapData(
+    await ruoyiRequest(
+      `${SESSIONS_PATH}/${encodeURIComponent(callId)}/browser-events`,
+      {
+        ...requestOptions,
+        method: 'post',
+        data: { type },
+      },
+    ),
+  );
+};
 
 export const downloadOutboundTargetTemplate = (): Promise<void> =>
   ruoyiDownload(

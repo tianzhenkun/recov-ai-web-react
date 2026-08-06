@@ -24,6 +24,7 @@ import {
   RecovTableCard,
 } from '@/pages/recov/components/RecovListLayout';
 import TaskStatusTag from '../components/TaskStatusTag';
+import WebTaskCallModal from '../components/WebTaskCallModal';
 import {
   type AiCallTask,
   type AiCallTaskTarget,
@@ -129,6 +130,8 @@ const AiCallTaskDetailPage = () => {
   const [task, setTask] = useState<AiCallTask>();
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [webCallId, setWebCallId] = useState<string>();
+  const dismissedWebCallIdsRef = useRef(new Set<string>());
 
   const loadTask = async () => {
     if (!taskId) {
@@ -354,6 +357,14 @@ const AiCallTaskDetailPage = () => {
                 label: '执行类型',
                 children: getTaskExecutionLabel(task),
               },
+              {
+                key: 'answerMode',
+                label: '接听方式',
+                children:
+                  task.answerMode === 'web'
+                    ? 'Web（浏览器）'
+                    : 'Linphone（SIP）',
+              },
             ]}
             styles={{
               content: { minWidth: 0, overflowWrap: 'anywhere' },
@@ -385,6 +396,16 @@ const AiCallTaskDetailPage = () => {
                 customerName: params.customerName,
                 status: params.status,
               });
+              const readyWebCall = response.rows.find(
+                (target) =>
+                  task.answerMode === 'web' &&
+                  target.activeCallStatus === 'ready' &&
+                  target.activeCallId &&
+                  !dismissedWebCallIdsRef.current.has(target.activeCallId),
+              );
+              if (readyWebCall?.activeCallId) {
+                setWebCallId(readyWebCall.activeCallId);
+              }
               return {
                 data: response.rows,
                 total: response.total,
@@ -396,6 +417,16 @@ const AiCallTaskDetailPage = () => {
             search={{ labelWidth: 'auto' }}
           />
         </RecovTableCard>
+        {webCallId ? (
+          <WebTaskCallModal
+            callId={webCallId}
+            open
+            onClosed={(callId) => {
+              dismissedWebCallIdsRef.current.add(callId);
+              setWebCallId(undefined);
+            }}
+          />
+        ) : null}
       </RecovListStack>
     </RecovListPage>
   );

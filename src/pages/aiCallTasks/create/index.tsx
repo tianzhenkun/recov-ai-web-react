@@ -24,7 +24,7 @@ import {
   getAiCallLabPromptProfiles,
   getAiCallLabVoiceProfiles,
 } from '@/services/ruoyi/ai-call-lab';
-import type { ExecutionMode } from '../domain';
+import type { AnswerMode, ExecutionMode } from '../domain';
 import { useVisiblePolling } from '../hooks/useVisiblePolling';
 import {
   createAiCallTask,
@@ -45,6 +45,7 @@ import { validateBatchTargetFile, validateExecutionPlan } from './validation';
 type TaskFormValues = {
   taskName: string;
   taskMode: 'single' | 'batch';
+  answerMode: AnswerMode;
   phoneNumber?: string;
   customerName?: string;
   promptKey: string;
@@ -110,6 +111,7 @@ const CreateAiCallTaskPage = () => {
   const activeValidationIdRef = useRef<string | undefined>(undefined);
   const pollOwnerRef = useRef<symbol | null>(null);
   const taskMode = Form.useWatch('taskMode', form);
+  const answerMode = Form.useWatch('answerMode', form);
   const executionMode = Form.useWatch('executionMode', form);
   const ruleId = Form.useWatch('ruleId', form);
 
@@ -136,6 +138,7 @@ const CreateAiCallTaskPage = () => {
         setRules(ruleResult.rows);
         form.setFieldsValue({
           taskMode: 'single',
+          answerMode: 'web',
           executionMode: 'immediate',
           promptKey: promptResult.rows[0]
             ? getPromptKey(promptResult.rows[0])
@@ -218,6 +221,7 @@ const CreateAiCallTaskPage = () => {
     const request: ValidationRequest = {
       taskName: values.taskName.trim(),
       taskMode: values.taskMode,
+      answerMode: values.taskMode === 'batch' ? 'linphone' : values.answerMode,
       promptProfileId: prompt.id === undefined ? undefined : String(prompt.id),
       sceneCode: prompt.sceneCode,
       voice: voice.voice,
@@ -236,7 +240,9 @@ const CreateAiCallTaskPage = () => {
         const singleRequest: SingleTargetValidationRequest = {
           ...request,
           taskMode: 'single',
-          phoneNumber: values.phoneNumber?.trim() || '',
+          ...(values.answerMode === 'linphone'
+            ? { phoneNumber: values.phoneNumber?.trim() || '' }
+            : {}),
           customerName: values.customerName?.trim() || undefined,
         };
         const validation = await validateSingleTarget(singleRequest);
@@ -380,7 +386,10 @@ const CreateAiCallTaskPage = () => {
             form={form}
             layout="vertical"
             onFinish={validateTask}
-            onValuesChange={() => {
+            onValuesChange={(changedValues) => {
+              if (changedValues.taskMode === 'batch') {
+                form.setFieldValue('answerMode', 'linphone');
+              }
               invalidateValidation();
             }}
           >
@@ -402,6 +411,17 @@ const CreateAiCallTaskPage = () => {
                 ]}
               />
             </Form.Item>
+
+            {taskMode === 'single' ? (
+              <Form.Item label="接听方式" name="answerMode">
+                <Radio.Group
+                  options={[
+                    { label: 'Web（浏览器）', value: 'web' },
+                    { label: 'Linphone（SIP）', value: 'linphone' },
+                  ]}
+                />
+              </Form.Item>
+            ) : null}
 
             {taskMode === 'batch' ? (
               <Form.Item label="外呼名单" required>
@@ -427,7 +447,7 @@ const CreateAiCallTaskPage = () => {
                   }}
                 />
               </Form.Item>
-            ) : (
+            ) : answerMode === 'linphone' ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <Form.Item
                   label="手机号"
@@ -446,6 +466,10 @@ const CreateAiCallTaskPage = () => {
                   <Input maxLength={50} placeholder="请输入客户名称（选填）" />
                 </Form.Item>
               </div>
+            ) : (
+              <Form.Item label="客户名称" name="customerName">
+                <Input maxLength={50} placeholder="请输入客户名称（选填）" />
+              </Form.Item>
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
