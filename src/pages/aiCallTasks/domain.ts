@@ -88,9 +88,11 @@ export type AiCallTask = {
   completedTargets: number;
   connectedTargets: number;
   failedTargets: number;
+  failedAttempts?: number;
   attemptDialerTypes?: string[];
   executionMode: ExecutionMode;
   scheduledAt?: string | null;
+  nextDispatchAt?: string | null;
   startedAt?: string | null;
   endedAt?: string | null;
   promptProfileId?: string | null;

@@ -11,6 +11,7 @@ import {
   message,
   Progress,
   Space,
+  Tag,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import React, { useRef, useState } from 'react';
@@ -79,6 +80,7 @@ const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : '操作失败，请稍后重试';
 
 const getTaskExecutionLabel = (task: AiCallTask) => {
+  if (task.answerMode === 'web') return 'Web 接听';
   const dialerTypes = Array.from(new Set(task.attemptDialerTypes || []));
   if (dialerTypes.length === 0) return '尚未执行';
   if (dialerTypes.length > 1) return '混合执行';
@@ -90,6 +92,13 @@ const getTaskExecutionLabel = (task: AiCallTask) => {
 };
 
 const getTaskResultText = (task: AiCallTask) => {
+  if (task.answerMode === 'web') {
+    if (task.connectedTargets > 0) return `Web 接通 ${task.connectedTargets}`;
+    if ((task.failedAttempts || 0) > 0) {
+      return `Web 接听失败 ${task.failedAttempts}`;
+    }
+    return 'Web 接通 0';
+  }
   const dialerTypes = new Set(task.attemptDialerTypes || []);
   if (dialerTypes.size === 0) return '—';
   if (dialerTypes.size > 1) {
@@ -101,6 +110,12 @@ const getTaskResultText = (task: AiCallTask) => {
   }
   return `SIP 接通 ${task.connectedTargets}`;
 };
+
+const isWebTaskWaitingRetry = (task: AiCallTask) =>
+  task.answerMode === 'web' &&
+  task.status === 'RUNNING' &&
+  (task.failedAttempts || 0) > 0 &&
+  Boolean(task.nextDispatchAt);
 
 const AiCallTasksPage = () => {
   const actionRef = useRef<ActionType>(null);
@@ -261,7 +276,16 @@ const AiCallTasksPage = () => {
       valueEnum: statusValueEnum,
       render: (_value, task) => (
         <Space orientation="vertical" size={0}>
-          <TaskStatusTag status={task.status} />
+          {isWebTaskWaitingRetry(task) ? (
+            <Tag color="warning">等待重试</Tag>
+          ) : (
+            <TaskStatusTag status={task.status} />
+          )}
+          {isWebTaskWaitingRetry(task) ? (
+            <span className="text-gray-500">
+              下次重试：{task.nextDispatchAt}
+            </span>
+          ) : null}
           {task.status === 'FAILED' && task.errorMessage ? (
             <span className="text-red-500">{task.errorMessage}</span>
           ) : null}

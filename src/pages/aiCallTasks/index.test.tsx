@@ -236,6 +236,37 @@ describe('AI Call task list page', () => {
     ).toBeNull();
   });
 
+  it('Web 失败待重试时显示 Web 结果和下次重试时间', async () => {
+    mockedListTasks.mockResolvedValue({
+      rows: [
+        buildTask({
+          taskId: 'web-retry',
+          taskName: 'Web 重试任务',
+          taskMode: 'single',
+          answerMode: 'web',
+          attemptDialerTypes: ['owner_runtime'],
+          failedAttempts: 1,
+          nextDispatchAt: '2026-08-06 13:14:53',
+          completedTargets: 0,
+          connectedTargets: 0,
+          failedTargets: 0,
+        }),
+      ],
+      total: 1,
+    });
+
+    render(<AiCallTasksPage />);
+    await screen.findByText('Web 重试任务');
+
+    const row = getTaskRow('Web 重试任务');
+    expect(row.getByText('Web 接听')).toBeTruthy();
+    expect(row.getByText('Web 接听失败 1')).toBeTruthy();
+    expect(row.getByText('等待重试')).toBeTruthy();
+    expect(row.getByText('下次重试：2026-08-06 13:14:53')).toBeTruthy();
+    expect(row.queryByText('SIP 接通 0')).toBeNull();
+    expect(row.getByRole('button', { name: '暂停' })).toBeTruthy();
+  });
+
   it('renders actions strictly from the current task status', async () => {
     render(<AiCallTasksPage />);
     await screen.findByText('运行任务');
