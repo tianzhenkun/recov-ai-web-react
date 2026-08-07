@@ -70,6 +70,17 @@
   min-width: 0;
 }
 
+.agent-workbench-current-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+}
+
+.agent-workbench-current-content > .agent-current-call {
+  width: min(100%, 560px);
+}
+
 .agent-workbench-context-card {
   width: 100%;
   max-width: 480px;
@@ -78,7 +89,7 @@
 
 @media (min-width: 1200px) {
   .agent-workbench-viewport {
-    height: 100%;
+    height: calc(100dvh - 48px);
     min-height: 0;
     overflow: hidden;
   }
@@ -153,7 +164,7 @@
 .agent-workbench-next-handoff {
   display: grid;
   min-height: 360px;
-  align-content: center;
+  align-content: start;
   justify-items: center;
   gap: 10px;
   padding: 32px;

@@ -418,17 +418,19 @@ const AgentWorkbenchPage = () => {
               }}
             />
           ) : (
-            <CurrentCallPanel
-              phase={agentCall.phase}
-              connectionStage={agentCall.connectionStage}
-              microphoneEnabled={agentCall.microphoneEnabled}
-              remoteAudioReady={agentCall.remoteAudioReady}
-              networkQuality={agentCall.networkQuality}
-              errorMessage={agentCall.errorMessage}
-              onToggleMicrophone={agentCall.toggleMicrophone}
-              onSwitchAudioInput={agentCall.switchAudioInput}
-              onEndCall={agentCall.endCall}
-            />
+            <div className="agent-workbench-current-content">
+              <CurrentCallPanel
+                phase={agentCall.phase}
+                connectionStage={agentCall.connectionStage}
+                microphoneEnabled={agentCall.microphoneEnabled}
+                remoteAudioReady={agentCall.remoteAudioReady}
+                networkQuality={agentCall.networkQuality}
+                errorMessage={agentCall.errorMessage}
+                onToggleMicrophone={agentCall.toggleMicrophone}
+                onSwitchAudioInput={agentCall.switchAudioInput}
+                onEndCall={agentCall.endCall}
+              />
+            </div>
           )}
         </Card>
         <Card

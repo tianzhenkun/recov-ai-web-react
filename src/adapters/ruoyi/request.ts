@@ -47,6 +47,14 @@ type AxiosResponse<T = unknown> = {
   };
 };
 
+type HttpError = {
+  message?: string;
+  response?: {
+    data?: unknown;
+    status?: number;
+  };
+};
+
 type UmiRequest = (url: string, opts: RequestOptions) => Promise<AxiosResponse>;
 
 type InternalHeaders = Record<string, unknown> & {
@@ -177,6 +185,45 @@ const decryptResponseData = (encryptedKey: string, data: unknown) => {
   return JSON.parse(decrypted);
 };
 
+const getHttpError = (error: unknown): HttpError | undefined =>
+  error && typeof error === 'object' ? (error as HttpError) : undefined;
+
+const handleRuoyiErrorResponse = (
+  rawData: unknown,
+  options: RuoyiRequestOptions,
+) => {
+  if (!isRuoyiResponse(rawData)) return false;
+
+  if (rawData.code === RuoYiCode.UNAUTHORIZED) {
+    redirectToLogin();
+    throw new RuoyiError('无效的会话，或者会话已过期，请重新登录。', rawData);
+  }
+
+  const errorMessage = getRuoyiMessage(rawData);
+  if (!options.skipErrorHandler) {
+    showRuoyiError(errorMessage);
+  }
+  throw new RuoyiError(errorMessage, rawData);
+};
+
+const handleUnknownHttpError = (
+  error: unknown,
+  options: RuoyiRequestOptions,
+): never => {
+  const httpError = getHttpError(error);
+  const rawData = httpError?.response?.data;
+  handleRuoyiErrorResponse(rawData, options);
+
+  if (!options.skipErrorHandler) {
+    showRuoyiError(
+      httpError?.response?.status
+        ? `Response status:${httpError.response.status}`
+        : httpError?.message || '请求失败',
+    );
+  }
+  throw error;
+};
+
 const redirectToLogin = () => {
   stopSse();
   removeToken();
@@ -229,6 +276,7 @@ const requestWithBaseApi = async <T = unknown>(
     headers: requestHeaders,
     method,
     getResponse: true,
+    skipErrorHandler: true,
   };
 
   if (method === 'get') {
@@ -255,7 +303,10 @@ const requestWithBaseApi = async <T = unknown>(
   }
 
   const request = umiRequest as unknown as UmiRequest;
-  const response = await request(withBaseApi(url, baseApi), requestOptions);
+  const response = await request(
+    withBaseApi(url, baseApi),
+    requestOptions,
+  ).catch((error: unknown) => handleUnknownHttpError(error, options));
   const encryptedKey = response.headers?.[encryptHeader];
   const responseType = response.request?.responseType;
   const rawData =

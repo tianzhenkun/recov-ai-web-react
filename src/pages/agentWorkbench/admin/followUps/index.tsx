@@ -4,40 +4,36 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { useSearchParams } from '@umijs/max';
-import {
-  Alert,
-  Button,
-  Descriptions,
-  Drawer,
-  Tag,
-  Timeline,
-  Typography,
-} from 'antd';
+import { Button, Tag } from 'antd';
 import dayjs from 'dayjs';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  type FollowUpAttemptDto,
   type FollowUpTaskDto,
   getAdminFollowUp,
   listAdminFollowUps,
 } from '@/services/ruoyi/agent-console';
+import FollowUpTaskDetailDrawer from '../../components/FollowUpTaskDetailDrawer';
 import {
   AdminMetricRow,
   formatDateTime,
   sceneLabels,
   sceneValueEnum,
   statusColors,
-  statusLabels,
   unwrapPage,
 } from '../_shared';
-
-const { Text, Title } = Typography;
 
 const sourceLabels: Record<string, string> = {
   after_call_work: '接通后跟进',
   handoff_unanswered: '人工未接回访',
   ai_post_call: 'AI 话后跟进',
+};
+
+const followUpStatusLabels: Record<FollowUpTaskDto['status'], string> = {
+  pending: '待处理',
+  processing: '处理中',
+  completed: '已办结',
+  closed: '已终止',
 };
 
 const attemptResultLabels: Record<string, string> = {
@@ -49,26 +45,7 @@ const attemptResultLabels: Record<string, string> = {
   technical_failure: '技术失败',
 };
 
-const contactChannelLabels: Record<string, string> = {
-  system_callback: '系统回拨',
-  manual_phone: '人工电话',
-  wechat: '微信',
-  email: '邮件',
-  other: '其他',
-};
-
-type FollowUpAdminDetail = {
-  task: FollowUpTaskDto;
-  attempts: FollowUpAttemptDto[];
-  callbackRecords: {
-    id?: unknown;
-    call_id?: unknown;
-    status?: unknown;
-    end_reason?: unknown;
-  }[];
-};
-
-const normalizeDetail = (response: unknown): FollowUpAdminDetail => {
+const normalizeDetail = (response: unknown): FollowUpTaskDto => {
   const data =
     response &&
     typeof response === 'object' &&
@@ -76,23 +53,18 @@ const normalizeDetail = (response: unknown): FollowUpAdminDetail => {
       ? Reflect.get(response, 'data')
       : response;
   if (data && typeof data === 'object' && Reflect.get(data, 'task')) {
+    const task = Reflect.get(data, 'task') as FollowUpTaskDto;
     return {
-      task: Reflect.get(data, 'task') as FollowUpTaskDto,
-      attempts: (Reflect.get(data, 'attempts') || []) as FollowUpAttemptDto[],
-      callbackRecords: (Reflect.get(data, 'callback_records') || []) as {
-        id?: unknown;
-        call_id?: unknown;
-        status?: unknown;
-        end_reason?: unknown;
-      }[],
+      ...task,
+      attempts: (Reflect.get(data, 'attempts') ||
+        task.attempts ||
+        []) as FollowUpTaskDto['attempts'],
+      callback_records: (Reflect.get(data, 'callback_records') ||
+        task.callback_records ||
+        []) as FollowUpTaskDto['callback_records'],
     };
   }
-  const task = data as FollowUpTaskDto;
-  return {
-    task,
-    attempts: task?.attempts || [],
-    callbackRecords: [],
-  };
+  return data as FollowUpTaskDto;
 };
 
 export const FollowUpOverviewPage = () => {
@@ -106,7 +78,7 @@ export const FollowUpOverviewPage = () => {
   const presetSourceStartedAtEnd =
     searchParams.get('sourceStartedAtEnd')?.trim() || '';
   const [metrics, setMetrics] = useState<Record<string, number>>({});
-  const [detail, setDetail] = useState<FollowUpAdminDetail>();
+  const [detail, setDetail] = useState<FollowUpTaskDto>();
   const [selectedFollowUpId, setSelectedFollowUpId] = useState<string>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string>();
@@ -170,12 +142,6 @@ export const FollowUpOverviewPage = () => {
         hideInTable: true,
       },
       {
-        title: '负责人',
-        key: 'owner_agent_identity_filter',
-        dataIndex: 'owner_agent_identity',
-        hideInTable: true,
-      },
-      {
         title: '任务状态',
         dataIndex: 'status',
         initialValue: presetStatus || undefined,
@@ -183,72 +149,55 @@ export const FollowUpOverviewPage = () => {
         valueEnum: Object.fromEntries(
           ['pending', 'processing', 'completed', 'closed'].map((value) => [
             value,
-            { text: statusLabels[value] },
+            { text: followUpStatusLabels[value as FollowUpTaskDto['status']] },
           ]),
         ),
         render: (_, row) => (
           <Tag color={statusColors[row.status]}>
-            {statusLabels[row.status] || '未知状态'}
+            {followUpStatusLabels[row.status]}
           </Tag>
         ),
-      },
-      {
-        title: '客户预约时间',
-        dataIndex: 'customer_callback_at_range',
-        valueType: 'dateTimeRange',
-        hideInTable: true,
-      },
-      {
-        title: '来源通话时间',
-        dataIndex: 'source_started_at_range',
-        valueType: 'dateTimeRange',
-        hideInTable: true,
-        initialValue:
-          presetSourceStartedAtBegin && presetSourceStartedAtEnd
-            ? [presetSourceStartedAtBegin, presetSourceStartedAtEnd]
-            : undefined,
-      },
-      { title: '客户关键字', dataIndex: 'customer_keyword', hideInTable: true },
-      { title: '来源 call_id', dataIndex: 'source_call_id', hideInTable: true },
-      {
-        title: 'handoff_id',
-        dataIndex: 'source_handoff_id',
-        hideInTable: true,
       },
       {
         title: '脱敏客户',
         dataIndex: 'masked_contact',
         hideInSearch: true,
+        search: false,
         renderText: (value) => value || '联系方式已脱敏',
       },
       {
         title: '业务场景',
         dataIndex: 'scene_code',
         hideInSearch: true,
+        search: false,
         renderText: (value) => sceneLabels[value] || value,
       },
       {
         title: '跟进原因',
         dataIndex: 'follow_up_reason',
         hideInSearch: true,
+        search: false,
         ellipsis: true,
       },
       {
         title: '负责人',
         dataIndex: 'owner_agent_identity',
         hideInSearch: true,
+        search: false,
         renderText: (value) => value || '待认领',
       },
       {
         title: '客户预约时间',
         dataIndex: 'customer_callback_at',
         hideInSearch: true,
+        search: false,
         renderText: (value) => (value ? formatDateTime(value) : '未约定'),
       },
       {
         title: '最近联系结果',
         key: 'latest_attempt',
         hideInSearch: true,
+        search: false,
         render: (_, row) => {
           const latest = row.latest_attempt || row.attempts?.at(-1);
           return latest
@@ -259,6 +208,8 @@ export const FollowUpOverviewPage = () => {
       {
         title: '操作',
         valueType: 'option',
+        hideInSearch: true,
+        search: false,
         fixed: 'right',
         width: 100,
         render: (_, row) => (
@@ -280,8 +231,6 @@ export const FollowUpOverviewPage = () => {
     ],
   );
 
-  const detailTask = detail?.task;
-
   return (
     <PageContainer className="agent-admin-page" title="跟进总览">
       <AdminMetricRow
@@ -293,18 +242,6 @@ export const FollowUpOverviewPage = () => {
             tone: 'blue',
           },
           {
-            key: 'scheduled',
-            label: '客户预约待回访',
-            value: metrics.scheduled ?? 0,
-            tone: 'purple',
-          },
-          {
-            key: 'overdue',
-            label: '预约已逾期',
-            value: metrics.overdue ?? 0,
-            tone: 'red',
-          },
-          {
             key: 'unanswered',
             label: '人工未接回访',
             value: metrics.handoff_unanswered ?? metrics.unanswered ?? 0,
@@ -312,13 +249,13 @@ export const FollowUpOverviewPage = () => {
           },
           {
             key: 'completed',
-            label: '已完成',
+            label: '已办结',
             value: metrics.completed ?? 0,
             tone: 'green',
           },
           {
             key: 'closed',
-            label: '已关闭',
+            label: '已终止',
             value: metrics.closed ?? 0,
             tone: 'blue',
           },
@@ -327,7 +264,7 @@ export const FollowUpOverviewPage = () => {
       <ProTable<FollowUpTaskDto>
         rowKey={(row) => String(row.id)}
         columns={columns}
-        search={{ labelWidth: 112 }}
+        search={{ labelWidth: 112, defaultCollapsed: false }}
         scroll={{ x: 1300 }}
         pagination={{
           defaultPageSize: 10,
@@ -337,12 +274,15 @@ export const FollowUpOverviewPage = () => {
           current,
           pageSize,
           source_started_at_range,
+          source_type,
+          scene_code,
+          status: selectedStatus,
           ...filters
         }) => {
           const sourceRange = Array.isArray(source_started_at_range)
             ? source_started_at_range
             : undefined;
-          const status = (filters.status as string | undefined) || presetStatus;
+          const status = (selectedStatus as string | undefined) || presetStatus;
           const sourceStartedAtBegin = sourceRange?.[0]
             ? dayjs(sourceRange[0]).toISOString()
             : presetSourceStartedAtBegin;
@@ -354,6 +294,8 @@ export const FollowUpOverviewPage = () => {
               pageNum: current,
               pageSize,
               ...filters,
+              ...(source_type ? { sourceType: source_type } : {}),
+              ...(scene_code ? { sceneCode: scene_code } : {}),
               ...(status ? { status } : {}),
               ...(presetFormalOutboundOnly ? { formalOutboundOnly: true } : {}),
               ...(sourceStartedAtBegin ? { sourceStartedAtBegin } : {}),
@@ -369,157 +311,17 @@ export const FollowUpOverviewPage = () => {
         }}
       />
 
-      <Drawer
-        title="跟进任务详情"
-        open={Boolean(selectedFollowUpId)}
+      <FollowUpTaskDetailDrawer
+        error={detailError}
         loading={detailLoading}
-        size={720}
+        open={Boolean(selectedFollowUpId)}
+        task={detail}
         onClose={() => {
           setSelectedFollowUpId(undefined);
           setDetail(undefined);
           setDetailError(undefined);
         }}
-      >
-        {detailError ? (
-          <Alert showIcon title={detailError} type="error" />
-        ) : detailTask ? (
-          <div className="agent-admin-detail">
-            <section className="agent-admin-detail-section">
-              <Title level={5}>客户与业务引用</Title>
-              <Descriptions
-                column={2}
-                items={[
-                  {
-                    key: 'contact',
-                    label: '脱敏客户',
-                    children: detailTask.masked_contact || '联系方式未提供',
-                  },
-                  {
-                    key: 'scene',
-                    label: '业务场景',
-                    children:
-                      sceneLabels[detailTask.scene_code] ||
-                      detailTask.scene_code,
-                  },
-                  {
-                    key: 'business_type',
-                    label: '业务类型',
-                    children: detailTask.business_type || '-',
-                  },
-                  {
-                    key: 'business_id',
-                    label: '业务 ID',
-                    children: detailTask.business_id || '-',
-                  },
-                ]}
-              />
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>来源通话</Title>
-              <Descriptions
-                column={1}
-                items={[
-                  {
-                    key: 'source',
-                    label: '来源',
-                    children:
-                      sourceLabels[detailTask.source_type] || '其他来源',
-                  },
-                  {
-                    key: 'call',
-                    label: 'call_id',
-                    children: detailTask.source_call_id,
-                  },
-                  {
-                    key: 'handoff',
-                    label: 'handoff_id',
-                    children: detailTask.source_handoff_id ?? '-',
-                  },
-                ]}
-              />
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>任务摘要</Title>
-              <Text>{detailTask.summary || detailTask.follow_up_reason}</Text>
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>客户预约时间</Title>
-              <Text>
-                {detailTask.customer_callback_at
-                  ? formatDateTime(detailTask.customer_callback_at)
-                  : '未约定'}
-              </Text>
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>历次联系尝试</Title>
-              <Timeline
-                items={detail.attempts.map((attempt) => ({
-                  children: `${formatDateTime(attempt.contacted_at)} · ${
-                    contactChannelLabels[attempt.contact_channel] || '其他渠道'
-                  } · ${
-                    attemptResultLabels[attempt.attempt_result] || '其他结果'
-                  }`,
-                }))}
-              />
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>关联回拨通话</Title>
-              <div>
-                {detail.callbackRecords.length > 0 ? (
-                  detail.callbackRecords.map((record) => {
-                    const callId = String(record.call_id || '-');
-                    return (
-                      <div key={String(record.id || callId)}>
-                        <Text>{callId}</Text> ·{' '}
-                        <Text>{String(record.status || '-')}</Text> ·{' '}
-                        <Text>{String(record.end_reason || '-')}</Text>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <Text type="secondary">暂无关联回拨通话</Text>
-                )}
-              </div>
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>完成或关闭信息</Title>
-              <Descriptions
-                column={1}
-                items={[
-                  {
-                    key: 'status',
-                    label: '状态',
-                    children: (
-                      <Tag color={statusColors[detailTask.status]}>
-                        {statusLabels[detailTask.status] || '未知状态'}
-                      </Tag>
-                    ),
-                  },
-                  {
-                    key: 'reason',
-                    label: '关闭原因',
-                    children: detailTask.closed_reason || '-',
-                  },
-                  {
-                    key: 'remark',
-                    label: '关闭说明',
-                    children: detailTask.closed_remark || '-',
-                  },
-                ]}
-              />
-            </section>
-            <section className="agent-admin-detail-section">
-              <Title level={5}>操作审计</Title>
-              <Text type="secondary">
-                {String(
-                  Reflect.get(detailTask, 'audit_summary') ||
-                    '暂无可展示审计摘要',
-                )}
-              </Text>
-            </section>
-          </div>
-        ) : null}
-      </Drawer>
+      />
     </PageContainer>
   );
 };

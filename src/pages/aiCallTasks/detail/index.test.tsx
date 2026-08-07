@@ -81,6 +81,7 @@ describe('AI Call task detail page', () => {
       status: 'RUNNING',
       totalTargets: 100,
       completedTargets: 30,
+      attemptDialerTypes: ['owner_runtime'],
       connectedTargets: 18,
       failedTargets: 4,
       executionMode: 'immediate',
@@ -132,7 +133,10 @@ describe('AI Call task detail page', () => {
     expect(screen.getByText('18')).toBeTruthy();
     expect(screen.getByText('4')).toBeTruthy();
     expect(screen.getByText('客户回访 / intro_follow_up')).toBeTruthy();
-    expect(screen.getByText('芊悦 / Cherry')).toBeTruthy();
+    expect(screen.getByText('芊悦')).toBeTruthy();
+    expect(screen.queryByText('芊悦 / Cherry')).toBeNull();
+    expect(screen.getAllByText('平台运行时')).toHaveLength(2);
+    expect(screen.queryByText('owner_runtime')).toBeNull();
     expect(screen.getByText('工作日规则')).toBeTruthy();
     expect(screen.getByText('执行线路')).toBeTruthy();
     expect(
@@ -212,6 +216,7 @@ describe('AI Call task detail page', () => {
     render(<AiCallTaskDetailPage />);
 
     expect(await screen.findByTestId('web-task-call-modal')).toBeTruthy();
+    expect(screen.getByText('浏览器接听')).toBeTruthy();
     expect(mockWebTaskCallModal).toHaveBeenCalledWith(
       expect.objectContaining({ callId: 'call-web-1', open: true }),
     );

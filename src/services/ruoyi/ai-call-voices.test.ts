@@ -1,13 +1,12 @@
 import { ruoyiRequest } from '@/adapters/ruoyi/request';
 import {
   createVoiceEnrollment,
-  createVoicePreviewSession,
+  createVoicePreviewAudio,
   deleteTenantVoice,
-  endVoicePreviewSession,
   getVoiceDeletionCheck,
   listVoiceProfiles,
-  markVoicePreviewReady,
   reenrollVoice,
+  setTenantVoiceAvailability,
 } from './ai-call-voices';
 
 jest.mock('@/adapters/ruoyi/request', () => ({
@@ -96,6 +95,7 @@ describe('AI Call voice service', () => {
     expect(options.baseApi).toBe('/ai-call-agent-api');
     expect(options.method).toBe('post');
     expect(options.repeatSubmit).toBe(false);
+    expect(options.skipErrorHandler).toBe(true);
     expect(options.data).toBeInstanceOf(FormData);
     expect(options.data.get('file')).toBe(enrollmentPayload.file);
     expect(options.data.get('request')).toBe(
@@ -125,65 +125,27 @@ describe('AI Call voice service', () => {
     expect(options.data).toBeInstanceOf(FormData);
     expect(options.headers).toEqual({ 'Idempotency-Key': 'uuid-2' });
     expect(options.headers).not.toHaveProperty('Content-Type');
+    expect(options.skipErrorHandler).toBe(true);
   });
 
-  it('creates, marks ready, and ends isolated preview sessions', async () => {
-    const session = {
-      callId: 'call-1',
-      roomName: 'room-1',
-      participantToken: 'token',
-      participantIdentity: 'customer-call-1',
-      livekitUrl: 'ws://localhost',
-      status: 'ready',
-      effectiveConfig: {
-        model: 'qwen3.5-omni-plus-realtime',
-        voice: 'qwen-voice-1',
-        promptHash: 'prompt-hash',
-        openingMessageHash: 'opening-message-hash',
-        promptSourceKey: 'voice_preview',
-        bargeInEnabled: false,
-        vadType: 'server_vad',
-        vadThreshold: 0.5,
-        vadSilenceDurationMs: 500,
-      },
-      webAudioConstraints: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+  it('creates a direct preview audio without a LiveKit session lifecycle', async () => {
+    const previewAudio = {
+      audioUrl: 'data:audio/wav;base64,UklGRg==',
+      text: '您好，我是您的智能语音助手，很高兴为您服务。',
     };
-    mockRuoyiRequest
-      .mockResolvedValueOnce({ code: 200, data: session })
-      .mockResolvedValueOnce({ code: 200, data: { accepted: true } })
-      .mockResolvedValueOnce({ code: 200, data: { ended: true } });
+    mockRuoyiRequest.mockResolvedValueOnce({ code: 200, data: previewAudio });
 
-    await expect(
-      createVoicePreviewSession('qwen-voice-1'),
-    ).resolves.toEqual(session);
-    await expect(markVoicePreviewReady('call-1')).resolves.toBeUndefined();
-    await expect(endVoicePreviewSession('call-1')).resolves.toBeUndefined();
+    await expect(createVoicePreviewAudio('qwen-voice-1')).resolves.toEqual(
+      previewAudio,
+    );
 
     expect(mockRuoyiRequest.mock.calls).toEqual([
       [
-        '/ai-call/voice-preview-sessions',
+        '/ai-call/voice-preview-audio',
         {
           baseApi: '/ai-call-agent-api',
           method: 'post',
           data: { voice: 'qwen-voice-1' },
-        },
-      ],
-      [
-        '/ai-call/voice-preview-sessions/call-1/ready',
-        {
-          baseApi: '/ai-call-agent-api',
-          method: 'post',
-        },
-      ],
-      [
-        '/ai-call/voice-preview-sessions/call-1',
-        {
-          baseApi: '/ai-call-agent-api',
-          method: 'delete',
         },
       ],
     ]);
@@ -231,6 +193,34 @@ describe('AI Call voice service', () => {
     ]);
   });
 
+  it('updates custom voice availability with the dedicated status endpoint', async () => {
+    const disabledProfile = {
+      ...voiceProfile,
+      status: 'DISABLED',
+      canPreview: false,
+      canDelete: true,
+    };
+    mockRuoyiRequest.mockResolvedValueOnce({
+      code: 200,
+      data: disabledProfile,
+    });
+
+    await expect(
+      setTenantVoiceAvailability('9007199254740993', 'DISABLED'),
+    ).resolves.toEqual(disabledProfile);
+
+    expect(mockRuoyiRequest.mock.calls).toEqual([
+      [
+        '/ai-call/tenant-voice-profiles/9007199254740993/status',
+        {
+          baseApi: '/ai-call-agent-api',
+          method: 'patch',
+          data: { status: 'DISABLED' },
+        },
+      ],
+    ]);
+  });
+
   it('rejects malformed response envelopes', async () => {
     mockRuoyiRequest
       .mockResolvedValueOnce({ rows: [voiceProfile], total: 1 })
@@ -240,7 +230,7 @@ describe('AI Call voice service', () => {
       listVoiceProfiles({ pageNum: 1, pageSize: 20 }),
     ).rejects.toThrow('接口响应缺少 code');
     await expect(
-      createVoicePreviewSession('qwen-voice-1'),
+      createVoicePreviewAudio('qwen-voice-1'),
     ).rejects.toThrow('接口响应缺少 data');
   });
 });

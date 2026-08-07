@@ -6,6 +6,7 @@ describe('TaskConfirmation', () => {
   it('marks its root so the enclosing card can expand to fit the summary', () => {
     const { container } = render(
       <TaskConfirmation
+        answerMode="web"
         taskName="转人工测试"
         targetCount={1}
         promptName="GEO 产品介绍"

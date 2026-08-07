@@ -14,6 +14,7 @@ jest.mock('livekit-client', () => ({
     roomHandlers: new Map(),
   },
   RoomEvent: {
+    Disconnected: 'disconnected',
     TrackSubscribed: 'trackSubscribed',
   },
   Room: jest.fn().mockImplementation(() => {
@@ -91,6 +92,54 @@ describe('connectAiCallLabRoom', () => {
     ).toBe(true);
     expect(document.body.contains(remoteAudio)).toBe(true);
     expect(play).toHaveBeenCalled();
+  });
+
+  it('releases media and notifies when LiveKit disconnects remotely', async () => {
+    const onDisconnected = jest.fn();
+    await connectAiCallLabRoom(
+      {
+        callId: 'call-1',
+        livekitUrl: 'http://127.0.0.1:7880',
+        participantToken: 'participant-token-1',
+      },
+      onDisconnected,
+    );
+
+    const remoteAudio = document.createElement('audio');
+    Object.defineProperty(remoteAudio, 'play', {
+      value: jest.fn().mockResolvedValue(undefined),
+    });
+    Object.defineProperty(remoteAudio, 'pause', { value: jest.fn() });
+    liveKitMock.roomHandlers.get('trackSubscribed')?.({
+      attach: jest.fn(() => remoteAudio),
+      kind: 'audio',
+    });
+
+    liveKitMock.roomHandlers.get('disconnected')?.();
+
+    expect(liveKitMock.audioTrack.stop).toHaveBeenCalledTimes(1);
+    expect(document.body.contains(remoteAudio)).toBe(false);
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not notify a remote disconnect when the browser disconnects locally', async () => {
+    const onDisconnected = jest.fn();
+    const connection = await connectAiCallLabRoom(
+      {
+        callId: 'call-1',
+        livekitUrl: 'http://127.0.0.1:7880',
+        participantToken: 'participant-token-1',
+      },
+      onDisconnected,
+    );
+    liveKitMock.roomDisconnect.mockImplementationOnce(async () => {
+      liveKitMock.roomHandlers.get('disconnected')?.();
+    });
+
+    await connection.disconnect();
+
+    expect(onDisconnected).not.toHaveBeenCalled();
+    expect(liveKitMock.audioTrack.stop).toHaveBeenCalledTimes(1);
   });
 
   it('releases the local track and room when LiveKit connect fails', async () => {

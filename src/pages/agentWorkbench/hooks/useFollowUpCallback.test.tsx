@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,7 +11,7 @@ import { useFollowUpCallback } from './useFollowUpCallback';
 
 jest.mock('livekit-client', () => ({
   ConnectionQuality: {},
-  DisconnectReason: {},
+  DisconnectReason: { ROOM_DELETED: 1, PARTICIPANT_REMOVED: 2 },
   RoomEvent: {},
   Track: { Kind: { Audio: 'audio' } },
   Room: jest.fn(),
@@ -27,7 +28,7 @@ const credential = {
 };
 
 const createRoom = () => {
-  let disconnected: (() => void) | undefined;
+  let disconnected: ((reason?: number) => void) | undefined;
   let remoteAudio: (() => void) | undefined;
   return {
     connect: jest.fn().mockResolvedValue(undefined),
@@ -42,7 +43,7 @@ const createRoom = () => {
       remoteAudio = handler;
     }),
     onNetworkQuality: jest.fn(),
-    emitDisconnected: () => disconnected?.(),
+    emitDisconnected: (reason?: number) => disconnected?.(reason),
     emitRemoteAudio: () => remoteAudio?.(),
   };
 };
@@ -108,5 +109,28 @@ describe('useFollowUpCallback', () => {
       expect.objectContaining({ consoleSessionId: 'session-1' }),
     );
     expect(room.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a terminal LiveKit disconnect as a completed callback', async () => {
+    const room = createRoom();
+    render(
+      <Harness
+        options={{
+          credential,
+          followUpId: 'follow-up-1',
+          consoleSessionId: 'session-1',
+          roomFactory: () => room,
+        }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('connected'),
+    );
+    act(() => room.emitDisconnected(1));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('phase').textContent).toBe('ended'),
+    );
   });
 });

@@ -5,9 +5,10 @@ import type {
   PageResult,
   VoiceDeletionAccepted,
   VoiceDeletionCheck,
+  VoiceAvailabilityStatus,
   VoiceEnrollmentAccepted,
   VoiceEnrollmentPayload,
-  VoicePreviewSession,
+  VoicePreviewAudio,
   VoiceProfileQuery,
 } from './ai-call-voices.types';
 
@@ -15,7 +16,7 @@ const AI_CALL_AGENT_BASE_API = '/ai-call-agent-api';
 const VOICES_PATH = '/ai-call/voice-profiles';
 const ENROLLMENTS_PATH = '/ai-call/voice-enrollments';
 const TENANT_VOICES_PATH = '/ai-call/tenant-voice-profiles';
-const PREVIEW_SESSIONS_PATH = '/ai-call/voice-preview-sessions';
+const PREVIEW_AUDIO_PATH = '/ai-call/voice-preview-audio';
 
 const requestOptions = {
   baseApi: AI_CALL_AGENT_BASE_API,
@@ -61,9 +62,6 @@ const createEnrollmentFormData = (payload: VoiceEnrollmentPayload) => {
 const profilePath = (profileId: string) =>
   `${TENANT_VOICES_PATH}/${encodeURIComponent(profileId)}`;
 
-const previewPath = (callId: string) =>
-  `${PREVIEW_SESSIONS_PATH}/${encodeURIComponent(callId)}`;
-
 export type AiCallVoiceApi = {
   listVoiceProfiles: (
     query: VoiceProfileQuery,
@@ -77,14 +75,16 @@ export type AiCallVoiceApi = {
     payload: VoiceEnrollmentPayload,
     idempotencyKey: string,
   ) => Promise<VoiceEnrollmentAccepted>;
-  createVoicePreviewSession: (voice: string) => Promise<VoicePreviewSession>;
-  markVoicePreviewReady: (callId: string) => Promise<void>;
-  endVoicePreviewSession: (callId: string) => Promise<void>;
+  createVoicePreviewAudio: (voice: string) => Promise<VoicePreviewAudio>;
   getVoiceDeletionCheck: (profileId: string) => Promise<VoiceDeletionCheck>;
   deleteTenantVoice: (
     profileId: string,
     idempotencyKey: string,
   ) => Promise<VoiceDeletionAccepted>;
+  setTenantVoiceAvailability: (
+    profileId: string,
+    status: VoiceAvailabilityStatus,
+  ) => Promise<AiCallVoiceProfile>;
 };
 
 export const listVoiceProfiles: AiCallVoiceApi['listVoiceProfiles'] = async (
@@ -107,6 +107,7 @@ export const createVoiceEnrollment: AiCallVoiceApi['createVoiceEnrollment'] =
         data: createEnrollmentFormData(payload),
         headers: { 'Idempotency-Key': idempotencyKey },
         repeatSubmit: false,
+        skipErrorHandler: true,
       }),
     );
 
@@ -124,39 +125,20 @@ export const reenrollVoice: AiCallVoiceApi['reenrollVoice'] = async (
         data: createEnrollmentFormData(payload),
         headers: { 'Idempotency-Key': idempotencyKey },
         repeatSubmit: false,
+        skipErrorHandler: true,
       },
     ),
   );
 
-export const createVoicePreviewSession: AiCallVoiceApi['createVoicePreviewSession'] =
+export const createVoicePreviewAudio: AiCallVoiceApi['createVoicePreviewAudio'] =
   async (voice) =>
     unwrapData(
-      await ruoyiRequest<VoicePreviewSession>(PREVIEW_SESSIONS_PATH, {
+      await ruoyiRequest<VoicePreviewAudio>(PREVIEW_AUDIO_PATH, {
         ...requestOptions,
         method: 'post',
         data: { voice },
       }),
     );
-
-export const markVoicePreviewReady: AiCallVoiceApi['markVoicePreviewReady'] =
-  async (callId) => {
-    requireEnvelope(
-      await ruoyiRequest(`${previewPath(callId)}/ready`, {
-        ...requestOptions,
-        method: 'post',
-      }),
-    );
-  };
-
-export const endVoicePreviewSession: AiCallVoiceApi['endVoicePreviewSession'] =
-  async (callId) => {
-    requireEnvelope(
-      await ruoyiRequest(previewPath(callId), {
-        ...requestOptions,
-        method: 'delete',
-      }),
-    );
-  };
 
 export const getVoiceDeletionCheck: AiCallVoiceApi['getVoiceDeletionCheck'] =
   async (profileId) =>
@@ -181,3 +163,13 @@ export const deleteTenantVoice: AiCallVoiceApi['deleteTenantVoice'] = async (
       headers: { 'Idempotency-Key': idempotencyKey },
     }),
   );
+
+export const setTenantVoiceAvailability: AiCallVoiceApi['setTenantVoiceAvailability'] =
+  async (profileId, status) =>
+    unwrapData(
+      await ruoyiRequest<AiCallVoiceProfile>(`${profilePath(profileId)}/status`, {
+        ...requestOptions,
+        method: 'patch',
+        data: { status },
+      }),
+    );

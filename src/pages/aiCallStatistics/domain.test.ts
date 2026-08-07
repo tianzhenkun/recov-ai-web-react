@@ -68,7 +68,6 @@ describe('AI Call 外呼统计领域规则', () => {
     });
     expect(Object.fromEntries(followUps.searchParams)).toEqual({
       status: 'pending',
-      formalOutboundOnly: 'true',
       sourceStartedAtBegin: range.startedAtBegin,
       sourceStartedAtEnd: range.startedAtEnd,
     });

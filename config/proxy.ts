@@ -11,7 +11,6 @@ const baseApi = process.env.UMI_APP_BASE_API || '/dev-api';
 const adminApi = process.env.UMI_APP_ADMIN_API || '/admin-api';
 const voiceApi = process.env.UMI_APP_VOICE_API || '/voice-api';
 const agentConsoleApi = '/ai-call-agent-api';
-const aiCallLabApi = '/ai-call-lab-api';
 const apiTarget = process.env.UMI_APP_API_TARGET || 'http://localhost:8080';
 const adminTarget = process.env.UMI_APP_ADMIN_TARGET || apiTarget;
 const voiceApiTarget =
@@ -55,12 +54,6 @@ const createProxy = (): ProxyConfig => ({
     changeOrigin: true,
     ws: true,
     pathRewrite: { [`^${normalizedVoiceApi}`]: '' },
-  },
-  [aiCallLabApi]: {
-    target: agentConsoleTarget,
-    changeOrigin: true,
-    ws: true,
-    pathRewrite: { [`^${aiCallLabApi}`]: '' },
   },
   [agentConsoleApi]: {
     target: agentConsoleTarget,

@@ -49,6 +49,8 @@ describe('handoff administration page', () => {
     expect(source).not.toContain("title: 'call_id'");
     expect(source).not.toContain("title: '是否生成未接回访'");
     expect(source).not.toContain("label: 'handoff_id'");
+    expect(source).toContain("Reflect.get(executionConfig, 'voiceName')");
+    expect(source).not.toContain("Reflect.get(executionConfig, 'voice'),");
     expect(source).not.toContain('>三方对话<');
     expect(source).not.toContain("label: '模型与话术配置'");
     expect(source).not.toContain('重新补偿');

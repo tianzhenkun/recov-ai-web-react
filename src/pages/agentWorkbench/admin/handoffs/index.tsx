@@ -257,9 +257,7 @@ const HandoffAdminPage = () => {
           },
           {
             label: '音色',
-            value:
-              Reflect.get(executionConfig, 'voiceName') ||
-              Reflect.get(executionConfig, 'voice'),
+            value: Reflect.get(executionConfig, 'voiceName'),
           },
           {
             label: '外呼规则',

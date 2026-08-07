@@ -1,12 +1,15 @@
 export type VoiceStatus =
   | 'CREATING'
   | 'ENABLED'
+  | 'DISABLED'
   | 'CREATE_FAILED'
   | 'DELETING'
   | 'DELETE_FAILED'
   | 'DELETED';
 
 export type VoiceScope = 'GLOBAL' | 'TENANT';
+
+export type VoiceAvailabilityStatus = 'ENABLED' | 'DISABLED';
 
 export type AiCallVoiceProfile = {
   id: string;
@@ -60,41 +63,9 @@ export type VoiceEnrollmentAccepted = {
   displayName: string;
 };
 
-export type VoicePreviewSession = {
-  callId: string;
-  roomName: string;
-  participantToken: string;
-  participantIdentity: string;
-  livekitUrl: string;
-  status:
-    | 'created'
-    | 'preparing'
-    | 'ready'
-    | 'connected'
-    | 'user_speaking'
-    | 'ai_thinking'
-    | 'ai_speaking'
-    | 'interrupted'
-    | 'waiting'
-    | 'ending'
-    | 'completed'
-    | 'failed';
-  effectiveConfig: {
-    model: string;
-    voice: string;
-    promptHash: string;
-    openingMessageHash: string;
-    promptSourceKey: string;
-    bargeInEnabled: boolean;
-    vadType: string;
-    vadThreshold: number;
-    vadSilenceDurationMs: number;
-  };
-  webAudioConstraints: {
-    echoCancellation: boolean;
-    noiseSuppression: boolean;
-    autoGainControl: boolean;
-  };
+export type VoicePreviewAudio = {
+  audioUrl: string;
+  text?: string;
 };
 
 export type VoiceDeletionCheck = {

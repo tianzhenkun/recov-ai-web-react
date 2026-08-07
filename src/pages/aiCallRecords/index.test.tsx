@@ -244,13 +244,31 @@ describe('AI Call 通话记录页面', () => {
     });
   });
 
+  it('区分任务关联的 Web 接听与通用浏览器测试记录', async () => {
+    const { unmount } = render(<AiCallRecordsPage />);
+    expect(await screen.findByText(/Web 接听/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
+    const detailDrawer = await screen.findByRole('dialog', {
+      name: '通话记录详情',
+    });
+    expect(within(detailDrawer).getByText('Web 接听')).toBeTruthy();
+
+    unmount();
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [{ ...mockRecord, taskId: null, targetId: null }],
+      total: 1,
+    });
+    render(<AiCallRecordsPage />);
+    expect(await screen.findByText(/浏览器测试/)).toBeTruthy();
+  });
+
   it('提供业务筛选、复合列，并继承任务与外呼对象上下文', async () => {
     render(<AiCallRecordsPage />);
 
     for (const text of [
       '通话记录',
       '所属任务',
-      '手机号',
       '客户名称',
       '通话来源',
       '呼叫结果',
@@ -292,6 +310,10 @@ describe('AI Call 通话记录页面', () => {
     const searchFields = screen.getByTestId('search-fields');
     const tableColumns = screen.getByTestId('table-columns');
     expect(
+      within(searchFields).queryByText('手机号', { exact: true }),
+    ).toBeNull();
+    expect(screen.queryByText('task-1', { exact: true })).toBeNull();
+    expect(
       within(tableColumns).queryByText('所属任务', { exact: true }),
     ).toBeNull();
     for (const text of [
@@ -306,6 +328,29 @@ describe('AI Call 通话记录页面', () => {
       ).toBeNull();
     }
     expect(within(tableColumns).queryByText('录音')).toBeNull();
+  });
+
+  it('回拨记录回退计算时长，并脱敏号码和显示中文标识', async () => {
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          ...mockRecord,
+          entryType: 'sip_callback',
+          attemptNo: 1,
+          durationMs: null,
+          startedAt: '2026-08-05T23:03:50',
+          endedAt: '2026-08-05T23:04:25',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<AiCallRecordsPage />);
+
+    expect(await screen.findByText('35 秒')).toBeTruthy();
+    expect(screen.getByText('138****8000')).toBeTruthy();
+    expect(screen.queryByText('13800138000')).toBeNull();
+    expect(screen.getByText('人工回拨 · 第 1 次')).toBeTruthy();
   });
 
   it('在列表展示 AI 评分和人工质检，并提供复核入口', async () => {
@@ -365,8 +410,17 @@ describe('AI Call 通话记录页面', () => {
     expect(
       await within(drawer).findByText('客户问题回应完整，转人工时机合理。'),
     ).toBeTruthy();
-    expect(within(drawer).getByText(/价格怎么收费/)).toBeTruthy();
-    expect(within(drawer).getByTestId('dialogue-scroll-region')).toBeTruthy();
+    expect(within(drawer).getByText('录音')).toBeTruthy();
+    expect(within(drawer).getByText('对话文本')).toBeTruthy();
+    expect(within(drawer).getByText('价格怎么收费？')).toBeTruthy();
+    expect(getAiCallRecordRecording).toHaveBeenCalledWith('call-1');
+    expect(getAiCallRecordDialogue).toHaveBeenCalledWith('call-1');
+    expect(
+      within(drawer)
+        .getByTestId('quality-recording-player')
+        .querySelector('audio')
+        ?.getAttribute('controlslist'),
+    ).toBe('nodownload');
     expect(
       (
         within(drawer).getByRole('button', {
@@ -405,6 +459,50 @@ describe('AI Call 通话记录页面', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: '外呼质检复核' })).toBeNull(),
     );
+  });
+
+  it('任务关联的 Web 接听展示话后结论和复核入口', async () => {
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          ...mockRecord,
+          analysisStatus: '2',
+          customerIntent: 'neutral',
+          followUpId: 'follow-up-1',
+          followUpStatus: 'pending',
+          qualityScoreStatus: 'pending',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<AiCallRecordsPage />);
+
+    expect(await screen.findByText('中性')).toBeTruthy();
+    expect(screen.getByText('待跟进')).toBeTruthy();
+    expect(screen.getByText('待评分')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '复核' })).toBeTruthy();
+  });
+
+  it('已复核记录在人工质检列显示修改入口', async () => {
+    (listAiCallRecords as jest.Mock).mockResolvedValue({
+      rows: [
+        {
+          ...mockRecord,
+          entryType: 'sip_outbound',
+          qualityScoreStatus: 'completed',
+          qualityScore: 72,
+          qualityReviewResult: 'fail',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<AiCallRecordsPage />);
+
+    expect(await screen.findByText('不合格')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '修改' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '复核' })).toBeNull();
   });
 
   it('AI 评分未完成时不拉评分详情，可手动触发评分', async () => {
@@ -667,10 +765,13 @@ describe('AI Call 通话记录页面', () => {
     expect(within(drawer).getByText('模拟：占线')).toBeTruthy();
   });
 
-  it('详情使用业务化中文展示分析结果并限制对话区域高度', async () => {
-    (getAiCallRecordRecording as jest.Mock).mockRejectedValue(
-      new Error('recording unavailable'),
-    );
+  it('详情使用业务化中文展示分析结果、录音和对话', async () => {
+    (getAiCallRecordRecording as jest.Mock).mockResolvedValue({
+      id: 'recording-1',
+      callId: 'call-1',
+      status: 'completed',
+      playUrl: 'https://example.com/call-1.mp3',
+    });
     (getAiCallRecordDialogue as jest.Mock).mockResolvedValue({
       rows: [
         {
@@ -722,23 +823,16 @@ describe('AI Call 通话记录页面', () => {
 
     expect(await screen.findByText('call-1')).toBeTruthy();
     expect(screen.getByText('正式外呼任务')).toBeTruthy();
-    expect(screen.getByText('录音信息加载失败')).toBeTruthy();
+    expect(screen.getByText('录音与对话')).toBeTruthy();
     expect(screen.getByText('我需要人工协助')).toBeTruthy();
-    const dialogueRegion = screen.getByTestId('dialogue-scroll-region');
-    expect(dialogueRegion.style.maxHeight).toBe('420px');
-    expect(dialogueRegion.style.overflowY).toBe('auto');
+    expect(getAiCallRecordRecording).toHaveBeenCalledWith('call-1');
+    expect(getAiCallRecordDialogue).toHaveBeenCalledWith('call-1');
     expect(
       screen
-        .getByText('您好，请问现在方便沟通吗？')
-        .closest('.ai-call-dialogue-row')
-        ?.classList.contains('ai-call-dialogue-row--left'),
-    ).toBe(true);
-    expect(
-      screen
-        .getByText('我需要人工协助')
-        .closest('.ai-call-dialogue-row')
-        ?.classList.contains('ai-call-dialogue-row--right'),
-    ).toBe(true);
+        .getByTestId('recording-player')
+        .querySelector('audio')
+        ?.getAttribute('controlslist'),
+    ).toBe('nodownload');
     expect(screen.getAllByText('通话摘要').length).toBeGreaterThan(0);
     expect(screen.getByText('客户反馈')).toBeTruthy();
     expect(screen.getByText('关键要点')).toBeTruthy();
@@ -762,7 +856,8 @@ describe('AI Call 通话记录页面', () => {
     expect(screen.getByText('价格敏感').closest('.ant-tag')).toBeTruthy();
     expect(screen.getByText('执行配置')).toBeTruthy();
     expect(screen.getByText('新品回访提示词')).toBeTruthy();
-    expect(screen.getByText(/芊悦/)).toBeTruthy();
+    expect(screen.getByText('芊悦')).toBeTruthy();
+    expect(screen.queryByText('芊悦（Cherry）')).toBeNull();
     expect(screen.getByText('工作日规则')).toBeTruthy();
     expect(screen.queryByText(/技术事件/)).toBeNull();
     expect(getAiCallRecordEvents).not.toHaveBeenCalled();
@@ -789,9 +884,7 @@ describe('AI Call 通话记录页面', () => {
       'rgb(31, 31, 31)',
     );
     expect(screen.getByText('客户未提及')).toBeTruthy();
-    expect(screen.getByTestId('recording-player').style.marginBottom).toBe(
-      '16px',
-    );
+    expect(screen.getByTestId('recording-player')).toBeTruthy();
   });
 
   it('缺少执行快照时使用紧凑且准确的历史数据提示', async () => {
@@ -807,7 +900,7 @@ describe('AI Call 通话记录页面', () => {
     expect(screen.queryByText('暂无执行配置快照')).toBeNull();
   });
 
-  it('详情保留转人工后的客户对话并说明跟进判断', async () => {
+  it('详情展示转人工后的完整对话，并保留跟进判断', async () => {
     (getAiCallRecordDialogue as jest.Mock).mockResolvedValue({
       rows: [
         {
@@ -1024,7 +1117,7 @@ describe('AI Call 通话记录页面', () => {
     );
   });
 
-  it('从关联链接打开通话详情并展示原始通话与历次回拨', async () => {
+  it('从通话记录打开详情时只展示所属跟进任务', async () => {
     mockSearchParams = 'callId=call-callback-1';
     (getAiCallRecordDetail as jest.Mock).mockResolvedValue({
       record: {
@@ -1064,12 +1157,8 @@ describe('AI Call 通话记录页面', () => {
     expect(
       within(detailDrawer).getByText('客户要求人工进一步介绍'),
     ).toBeTruthy();
-    expect(
-      within(detailDrawer)
-        .getByRole('link', { name: '查看原始通话' })
-        .getAttribute('href'),
-    ).toBe('/ai-call/records?callId=call-original-1');
-    expect(within(detailDrawer).getByText('历次回拨')).toBeTruthy();
+    expect(within(detailDrawer).queryByText('原始通话')).toBeNull();
+    expect(within(detailDrawer).queryByText('历次回拨')).toBeNull();
   });
 
   it('从跟进次要入口进入时只筛选单条记录且不自动展开详情', async () => {

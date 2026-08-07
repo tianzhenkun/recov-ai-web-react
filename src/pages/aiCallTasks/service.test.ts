@@ -58,6 +58,7 @@ const runningTask = {
 const validationRequest = {
   taskName: '合同审查客户回访',
   taskMode: 'batch',
+  answerMode: 'linphone',
   promptProfileId: 'prompt-1',
   sceneCode: 'intro_contract',
   voice: 'Cherry',
@@ -295,12 +296,12 @@ describe('AI Call task service', () => {
     expect(mockedRuoyiRequest.mock.calls).toEqual([
       [
         '/ai-call/lab/outbound-task-tests/task-1/capability',
-        { baseApi: '/ai-call-lab-api', method: 'get' },
+        { baseApi: '/ai-call-agent-api', method: 'get' },
       ],
       [
         '/ai-call/lab/outbound-task-tests/task-1/runs',
         {
-          baseApi: '/ai-call-lab-api',
+          baseApi: '/ai-call-agent-api',
           method: 'post',
           headers: { 'Idempotency-Key': 'run-key' },
           data: { scenario: 'handoff' },
@@ -308,12 +309,12 @@ describe('AI Call task service', () => {
       ],
       [
         '/ai-call/lab/outbound-task-tests/task-1/status',
-        { baseApi: '/ai-call-lab-api', method: 'get' },
+        { baseApi: '/ai-call-agent-api', method: 'get' },
       ],
       [
         '/ai-call/lab/outbound-task-tests/task-1/active-call/end',
         {
-          baseApi: '/ai-call-lab-api',
+          baseApi: '/ai-call-agent-api',
           method: 'post',
           headers: { 'Idempotency-Key': 'end-key' },
         },

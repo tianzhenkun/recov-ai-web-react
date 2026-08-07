@@ -50,7 +50,13 @@ const WebTaskCallModal = ({
     setConnecting(true);
     try {
       const token = await getAiCallRuntimeBrowserToken(callId);
-      connectionRef.current = await connectAiCallLabRoom(token);
+      connectionRef.current = await connectAiCallLabRoom(token, () => {
+        connectionRef.current = undefined;
+        setConnected(false);
+        setMicrophoneEnabled(true);
+        setConnecting(false);
+        onClosed(callId);
+      });
       await reportAiCallTaskBrowserEvent(callId, 'browser_ready');
       setConnected(true);
     } catch {

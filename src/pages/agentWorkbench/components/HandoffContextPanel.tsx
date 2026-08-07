@@ -21,6 +21,21 @@ const dialogueSpeakerLabels: Record<'ai' | 'customer', string> = {
   ai: 'AI',
 };
 
+const handoffReasonLabels: Record<string, string> = {
+  customer_request: '客户要求转人工',
+  customer_requested_human: '客户要求转人工',
+  customer_requested_handoff: '客户要求转人工',
+  business_escalation: '业务升级转人工',
+  ai_escalation: 'AI 判断需要人工处理',
+  manual_request: '人工发起转接',
+};
+
+const handoffSourceLabels: Record<string, string> = {
+  customer: '客户发起',
+  operator: '人工发起',
+  system: '系统发起',
+};
+
 export type HandoffContextPanelProps = {
   handoff?: HandoffDto;
   context?: HandoffContextDto;
@@ -81,6 +96,22 @@ const HandoffContextPanel = ({
         </Paragraph>
       </section>
 
+      <section className="agent-handoff-business">
+        <Text className="agent-handoff-section-title" strong>
+          业务资料
+        </Text>
+        <div>
+          <Text type="secondary">转人工原因：</Text>
+          {handoffReasonLabels[displayHandoff.request_reason || ''] ||
+            '其他原因'}
+        </div>
+        <div>
+          <Text type="secondary">业务来源：</Text>
+          {handoffSourceLabels[displayHandoff.request_source || ''] ||
+            '其他来源'}
+        </div>
+      </section>
+
       <section className="agent-handoff-dialogue">
         <div className="agent-handoff-dialogue-heading">
           <Text className="agent-handoff-section-title" strong>
@@ -133,24 +164,6 @@ const HandoffContextPanel = ({
             />
           )}
         </Spin>
-      </section>
-
-      <section className="agent-handoff-business">
-        <Text className="agent-handoff-section-title" strong>
-          业务资料
-        </Text>
-        <div>
-          <Text type="secondary">转人工原因：</Text>
-          {displayHandoff.request_reason || '-'}
-        </div>
-        <div>
-          <Text type="secondary">业务来源：</Text>
-          {displayHandoff.request_source || '-'}
-        </div>
-        <div>
-          <Text type="secondary">通话编号：</Text>
-          {displayHandoff.call_id}
-        </div>
       </section>
     </div>
   );

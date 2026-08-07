@@ -172,7 +172,8 @@ describe('Linphone task test entry', () => {
     expect(await screen.findByText('张先生')).toBeTruthy();
     expect(screen.getByText('199****1001')).toBeTruthy();
     expect(screen.getByText('客户回访 / intro_follow_up')).toBeTruthy();
-    expect(screen.getByText('芊悦 / Cherry')).toBeTruthy();
+    expect(screen.getByText('芊悦')).toBeTruthy();
+    expect(screen.queryByText('芊悦 / Cherry')).toBeNull();
     expect(screen.getByText('工作日规则')).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('AI 转人工通话'));

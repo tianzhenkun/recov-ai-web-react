@@ -3,6 +3,7 @@ import React from 'react';
 import './TaskConfirmation.css';
 
 type TaskConfirmationProps = {
+  answerMode: 'linphone' | 'web';
   taskName: string;
   targetCount: number;
   phoneNumber?: string;
@@ -18,6 +19,7 @@ type TaskConfirmationProps = {
 };
 
 const TaskConfirmation = ({
+  answerMode,
   taskName,
   targetCount,
   phoneNumber,
@@ -43,9 +45,16 @@ const TaskConfirmation = ({
           label: '外呼对象',
           children: `${targetCount} 个`,
         },
-        ...(phoneNumber
-          ? [{ key: 'phoneNumber', label: '手机号', children: phoneNumber }]
-          : []),
+        {
+          key: 'answerMode',
+          label: '接听方式',
+          children: answerMode === 'web' ? 'Web（浏览器）' : 'Linphone（SIP）',
+        },
+        ...(answerMode === 'web'
+          ? [{ key: 'receiver', label: '客户终端', children: '浏览器接听' }]
+          : phoneNumber
+            ? [{ key: 'phoneNumber', label: '手机号', children: phoneNumber }]
+            : []),
         {
           key: 'customerName',
           label: '客户名称',

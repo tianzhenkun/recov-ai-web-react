@@ -60,7 +60,9 @@ const getTaskExecutionLabel = (task: AiCallTask) => {
   if (dialerTypes.length > 1) return '混合执行';
   if (dialerTypes[0] === 'mock') return '模拟执行';
   if (dialerTypes[0] === 'sip') return 'SIP 外呼';
-  return dialerTypes[0];
+  if (dialerTypes[0]?.startsWith('linphone')) return 'Linphone 本地验证';
+  if (dialerTypes[0] === 'owner_runtime') return '平台运行时';
+  return '其他执行方式';
 };
 
 const getConnectedStatTitle = (task: AiCallTask) => {
@@ -189,6 +191,8 @@ const AiCallTaskDetailPage = () => {
       title: '手机号',
       dataIndex: 'phoneNumber',
       width: 160,
+      renderText: (value) =>
+        task.answerMode === 'web' ? '浏览器接听' : value || '—',
     },
     {
       title: '客户名称',
@@ -326,9 +330,7 @@ const AiCallTaskDetailPage = () => {
               {
                 key: 'voice',
                 label: '音色',
-                children: task.voiceName
-                  ? `${task.voiceName} / ${task.voice}`
-                  : task.voice,
+                children: task.voiceName || '—',
               },
               {
                 key: 'rule',

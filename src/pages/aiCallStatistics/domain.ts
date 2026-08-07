@@ -103,7 +103,6 @@ export const buildRecordsUrl = (
 export const buildFollowUpsUrl = (params: DrillDownRange) => {
   const search = new URLSearchParams({
     status: 'pending',
-    formalOutboundOnly: 'true',
     sourceStartedAtBegin: params.startedAtBegin,
     sourceStartedAtEnd: params.startedAtEnd,
   });

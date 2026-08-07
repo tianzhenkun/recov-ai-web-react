@@ -28,6 +28,7 @@ import {
   statusLabels as handoffStatusLabels,
 } from '@/pages/agentWorkbench/admin/_shared';
 import { listAiCallTasks } from '@/pages/aiCallTasks/service';
+import DialogueSegments from './DialogueSegments';
 import {
   type AiCallDialogueSegment,
   type AiCallHandoff,
@@ -65,8 +66,17 @@ const entryTypeLabels: Record<string, string> = {
   outbound: '外呼',
   sip_outbound: 'SIP 外呼',
   sip_inbound: 'SIP 呼入',
+  sip_callback: '人工回拨',
+  owner_runtime: '平台运行时',
   outbound_mock: '模拟执行',
 };
+
+const getEntryTypeLabel = (
+  record: Pick<AiCallRecord, 'entryType' | 'taskId'>,
+) =>
+  record.entryType === 'web' && record.taskId
+    ? 'Web 接听'
+    : entryTypeLabels[record.entryType] || record.entryType;
 
 const statusLabels: Record<string, string> = {
   created: '已创建',
@@ -137,13 +147,6 @@ const endReasonLabels: Record<string, string> = {
   handoff_timeout: '转人工等待超时',
   sip_participant_left: '对方挂断',
   unknown: '未知原因',
-};
-
-const speakerLabels: Record<string, string> = {
-  customer: '客户',
-  ai: 'AI',
-  human_agent: '人工坐席',
-  agent: '人工坐席',
 };
 
 const businessTypeLabels: Record<string, string> = {
@@ -221,7 +224,9 @@ const qualityReviewOptions: Array<{
 ];
 
 const canOpenQualityReview = (row: AiCallRecord) =>
-  row.entryType === 'outbound' || row.entryType === 'sip_outbound';
+  row.entryType === 'outbound' ||
+  row.entryType === 'sip_outbound' ||
+  (row.entryType === 'web' && Boolean(row.taskId));
 
 const buildQualityFallback = (row: AiCallRecord): AiCallQualityDetail => {
   if (
@@ -383,6 +388,27 @@ const formatDuration = (durationMs?: number | null) => {
   return minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`;
 };
 
+const durationBetween = (
+  startedAt?: string | null,
+  endedAt?: string | null,
+) => {
+  if (!startedAt || !endedAt) return undefined;
+  const started = dayjs(startedAt);
+  const ended = dayjs(endedAt);
+  if (!started.isValid() || !ended.isValid()) return undefined;
+  return Math.max(0, ended.diff(started));
+};
+
+const displayDurationMs = (row: AiCallRecord) =>
+  row.durationMs ?? durationBetween(row.startedAt, row.endedAt);
+
+const maskPhoneNumber = (value?: string | null) => {
+  if (!value) return '-';
+  return value.length >= 7
+    ? `${value.slice(0, 3)}****${value.slice(-4)}`
+    : value;
+};
+
 const describeError = (row: AiCallRecord) =>
   row.failureMessage ||
   (row.endReason
@@ -455,69 +481,7 @@ const getQualityScoreTextColor = (score?: number | null) => {
 };
 
 const renderDialogueSegments = (segments: AiCallDialogueSegment[]) => (
-  <Flex
-    data-testid="dialogue-scroll-region"
-    vertical
-    gap={12}
-    className="ai-call-dialogue-region"
-    style={{
-      maxHeight: 420,
-      overflowY: 'auto',
-      padding: 12,
-      border: '1px solid #eef0f4',
-      borderRadius: 10,
-      background: '#f8f9fb',
-    }}
-  >
-    {segments.map((segment, index) => {
-      const isCustomer = segment.speakerType === 'customer';
-      const isHuman =
-        segment.speakerType === 'human_agent' ||
-        segment.speakerType === 'agent';
-      const speaker = speakerLabels[segment.speakerType] || segment.speakerType;
-      return (
-        <div
-          className={`ai-call-dialogue-row ai-call-dialogue-row--${
-            isCustomer ? 'right' : 'left'
-          }`}
-          style={{
-            display: 'flex',
-            width: '100%',
-            justifyContent: isCustomer ? 'flex-end' : 'flex-start',
-          }}
-          key={
-            segment.id || `${segment.segmentNo}-${segment.speakerType}-${index}`
-          }
-        >
-          <div
-            className={`ai-call-dialogue-bubble ai-call-dialogue-bubble--${
-              isCustomer ? 'customer' : segment.speakerType
-            }`}
-            style={{
-              maxWidth: '82%',
-              padding: '10px 12px',
-              border: `1px solid ${
-                isCustomer ? '#dfd4fa' : isHuman ? '#d4eadf' : '#e6ebf2'
-              }`,
-              borderRadius: isCustomer
-                ? '10px 10px 2px 10px'
-                : '10px 10px 10px 2px',
-              background: isCustomer
-                ? '#f1edfb'
-                : isHuman
-                  ? '#edf8f2'
-                  : '#f1f5fb',
-              lineHeight: 1.6,
-              overflowWrap: 'anywhere',
-            }}
-          >
-            <Text strong>{speaker}：</Text>
-            <Text>{segment.text}</Text>
-          </div>
-        </div>
-      );
-    })}
-  </Flex>
+  <DialogueSegments segments={segments} />
 );
 
 const MAX_POST_CALL_POLLS = 12;
@@ -836,11 +800,6 @@ const AiCallRecordsPage = () => {
         },
       },
       {
-        title: '手机号',
-        dataIndex: 'phoneNumber',
-        hideInTable: true,
-      },
-      {
         title: '客户名称',
         dataIndex: 'customerName',
         hideInTable: true,
@@ -855,6 +814,7 @@ const AiCallRecordsPage = () => {
           outbound: { text: entryTypeLabels.outbound },
           sip_outbound: { text: entryTypeLabels.sip_outbound },
           sip_inbound: { text: entryTypeLabels.sip_inbound },
+          sip_callback: { text: entryTypeLabels.sip_callback },
         },
         hideInTable: true,
       },
@@ -916,7 +876,9 @@ const AiCallRecordsPage = () => {
         render: (_, row) => (
           <Flex vertical gap={2}>
             <Text>{formatDateTime(row.startedAt)}</Text>
-            <Text type="secondary">{formatDuration(row.durationMs)}</Text>
+            <Text type="secondary">
+              {formatDuration(displayDurationMs(row))}
+            </Text>
           </Flex>
         ),
       },
@@ -928,7 +890,7 @@ const AiCallRecordsPage = () => {
         render: (_, row) => (
           <Flex vertical gap={2}>
             <Text>{row.customerName || '-'}</Text>
-            <Text type="secondary">{row.phoneNumber || '-'}</Text>
+            <Text type="secondary">{maskPhoneNumber(row.phoneNumber)}</Text>
           </Flex>
         ),
       },
@@ -940,7 +902,6 @@ const AiCallRecordsPage = () => {
         render: (_, row) => (
           <Flex vertical gap={2}>
             <Text>{row.taskName || '-'}</Text>
-            <Text type="secondary">{row.taskId || '-'}</Text>
           </Flex>
         ),
       },
@@ -963,7 +924,7 @@ const AiCallRecordsPage = () => {
               {describeCallResult(row)}
             </Text>
             <Text type="secondary">
-              {entryTypeLabels[row.entryType] || row.entryType}
+              {getEntryTypeLabel(row)}
               {row.attemptNo ? ` · 第 ${row.attemptNo} 次` : ''}
             </Text>
           </Flex>
@@ -1054,7 +1015,7 @@ const AiCallRecordsPage = () => {
                 style={{ height: 'auto', padding: 0 }}
                 onClick={() => void openQualityReview(row)}
               >
-                复核
+                {presentation ? '修改' : '复核'}
               </Button>
             </Flex>
           );
@@ -1113,8 +1074,6 @@ const AiCallRecordsPage = () => {
   const executionConfig = detail?.executionConfig;
   const afterCallWork = detail?.afterCallWork;
   const followUp = detail?.followUp;
-  const sourceRecord = followUp?.sourceRecord;
-  const callbackRecords = followUp?.callbackRecords || [];
   const analysisResult = analysis?.analysisResult || {};
   const analysisItems = analysisFieldOrder
     .filter((key) => Object.hasOwn(analysisResult, key))
@@ -1202,8 +1161,7 @@ const AiCallRecordsPage = () => {
                   {
                     key: 'entryType',
                     label: '通话来源',
-                    children:
-                      entryTypeLabels[record.entryType] || record.entryType,
+                    children: getEntryTypeLabel(record),
                   },
                   {
                     key: 'sceneCode',
@@ -1249,7 +1207,7 @@ const AiCallRecordsPage = () => {
                   {
                     key: 'duration',
                     label: '通话时长',
-                    children: formatDuration(record.durationMs),
+                    children: formatDuration(displayDurationMs(record)),
                   },
                   {
                     key: 'result',
@@ -1293,71 +1251,6 @@ const AiCallRecordsPage = () => {
                         </Flex>
                       ),
                     },
-                    {
-                      key: 'sourceCall',
-                      label: '原始通话',
-                      children: (
-                        <Flex align="center" gap={8} wrap>
-                          <Text>{followUp.sourceCallId}</Text>
-                          {sourceRecord ? (
-                            <Text type="secondary">
-                              {formatDateTime(sourceRecord.startedAt)} ·{' '}
-                              {describeRecordStatus(sourceRecord)}
-                            </Text>
-                          ) : null}
-                          {record.callId === followUp.sourceCallId ? (
-                            <Tag>当前通话</Tag>
-                          ) : (
-                            <Button
-                              size="small"
-                              type="link"
-                              href={`/ai-call/records?callId=${encodeURIComponent(
-                                followUp.sourceCallId,
-                              )}`}
-                            >
-                              查看原始通话
-                            </Button>
-                          )}
-                        </Flex>
-                      ),
-                    },
-                    {
-                      key: 'callbackCalls',
-                      label: '历次回拨',
-                      children: callbackRecords.length ? (
-                        <Flex vertical gap={8}>
-                          {callbackRecords.map((callbackRecord, index) => (
-                            <Flex
-                              key={callbackRecord.callId}
-                              align="center"
-                              gap={8}
-                              wrap
-                            >
-                              <Text>{`第${index + 1}次人工回拨`}</Text>
-                              <Text type="secondary">
-                                {formatDateTime(callbackRecord.startedAt)} ·{' '}
-                                {describeRecordStatus(callbackRecord)}
-                              </Text>
-                              {callbackRecord.callId === record.callId ? (
-                                <Tag>当前通话</Tag>
-                              ) : (
-                                <Button
-                                  size="small"
-                                  type="link"
-                                  href={`/ai-call/records?callId=${encodeURIComponent(
-                                    callbackRecord.callId,
-                                  )}`}
-                                >
-                                  查看本次通话
-                                </Button>
-                              )}
-                            </Flex>
-                          ))}
-                        </Flex>
-                      ) : (
-                        <Text type="secondary">暂无回拨记录</Text>
-                      ),
-                    },
                   ]}
                 />
               </section>
@@ -1383,12 +1276,7 @@ const AiCallRecordsPage = () => {
                     {
                       key: 'voice',
                       label: '音色',
-                      children:
-                        executionConfig.voiceName && executionConfig.voice
-                          ? `${executionConfig.voiceName}（${executionConfig.voice}）`
-                          : executionConfig.voiceName ||
-                            executionConfig.voice ||
-                            '-',
+                      children: executionConfig.voiceName || '-',
                     },
                     {
                       key: 'ruleName',
@@ -1408,9 +1296,14 @@ const AiCallRecordsPage = () => {
                 {detailErrors.recording ? (
                   <Alert showIcon title={detailErrors.recording} type="error" />
                 ) : recordingUrl ? (
-                  <audio controls preload="metadata" src={recordingUrl}>
-                    <track kind="captions" />
-                  </audio>
+                  // biome-ignore lint/a11y/useMediaCaption: 同一区域展示完整通话对话，录音暂无独立字幕轨道。
+                  <audio
+                    controls
+                    controlsList="nodownload"
+                    preload="metadata"
+                    src={recordingUrl}
+                    style={{ width: '100%' }}
+                  />
                 ) : (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1640,9 +1533,18 @@ const AiCallRecordsPage = () => {
               {qualityErrors.recording ? (
                 <Alert showIcon title={qualityErrors.recording} type="error" />
               ) : qualityRecordingUrl ? (
-                <audio controls preload="metadata" src={qualityRecordingUrl}>
-                  <track kind="captions" />
-                </audio>
+                <div data-testid="quality-recording-player">
+                  {
+                    // biome-ignore lint/a11y/useMediaCaption: 质检抽屉展示完整通话对话，录音暂无独立字幕轨道。
+                    <audio
+                      controls
+                      controlsList="nodownload"
+                      preload="metadata"
+                      src={qualityRecordingUrl}
+                      style={{ width: '100%' }}
+                    />
+                  }
+                </div>
               ) : (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}

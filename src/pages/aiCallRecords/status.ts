@@ -124,11 +124,18 @@ const qualityReviewPresentations = {
   },
 } as const satisfies Record<string, StatusPresentation>;
 
-const isFormalOutboundRecord = (record: Pick<AiCallRecord, 'entryType'>) =>
-  record.entryType === 'outbound' || record.entryType === 'sip_outbound';
+const isFormalOutboundRecord = (
+  record: Pick<AiCallRecord, 'entryType' | 'taskId'>,
+) =>
+  record.entryType === 'outbound' ||
+  record.entryType === 'sip_outbound' ||
+  (record.entryType === 'web' && Boolean(record.taskId));
 
 export const getCustomerIntentPresentation = (
-  record: Pick<AiCallRecord, 'entryType' | 'analysisStatus' | 'customerIntent'>,
+  record: Pick<
+    AiCallRecord,
+    'entryType' | 'taskId' | 'analysisStatus' | 'customerIntent'
+  >,
 ): StatusPresentation | null => {
   if (!isFormalOutboundRecord(record) || record.analysisStatus === '4') {
     return null;
@@ -151,7 +158,11 @@ export const getCustomerIntentPresentation = (
 export const getFollowUpPresentation = (
   record: Pick<
     AiCallRecord,
-    'entryType' | 'followUpId' | 'followUpStatus' | 'followUpSuggested'
+    | 'entryType'
+    | 'taskId'
+    | 'followUpId'
+    | 'followUpStatus'
+    | 'followUpSuggested'
   >,
 ): StatusPresentation | null => {
   if (!isFormalOutboundRecord(record)) {
@@ -193,7 +204,7 @@ export const getFollowUpPresentation = (
 export const getQualityScorePresentation = (
   record: Pick<
     AiCallRecord,
-    'entryType' | 'qualityScoreStatus' | 'qualityScore'
+    'entryType' | 'taskId' | 'qualityScoreStatus' | 'qualityScore'
   >,
 ): StatusPresentation | null => {
   if (!isFormalOutboundRecord(record)) {
@@ -206,7 +217,7 @@ export const getQualityScorePresentation = (
           ? `${record.qualityScore}分`
           : '已评分',
       color: 'success',
-      tooltip: 'AI 自动评分结果',
+      tooltip: 'AI 根据录音和通话转写自动评分，点击复核查看评分理由',
       target: null,
     };
   }
@@ -236,7 +247,11 @@ export const hasUnstablePostCallData = (
   records: Array<
     Pick<
       AiCallRecord,
-      'entryType' | 'status' | 'analysisStatus' | 'qualityScoreStatus'
+      | 'entryType'
+      | 'taskId'
+      | 'status'
+      | 'analysisStatus'
+      | 'qualityScoreStatus'
     >
   >,
 ) =>

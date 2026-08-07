@@ -11,6 +11,8 @@ const handoff: HandoffDto = {
   call_id: 'call-1',
   scene_code: 'intro_contract',
   status: 'connected',
+  request_source: 'customer',
+  request_reason: 'customer_request',
   request_message: '请转人工',
   handoff_summary: '客户希望人工确认续约时间',
   requested_at: '2026-07-30T10:00:00.000Z',
@@ -70,5 +72,21 @@ describe('HandoffContextPanel', () => {
     expect(
       screen.getByText('客户：客户回复').closest('[data-speaker]')?.textContent,
     ).toBe('客户：客户回复');
+  });
+
+  it('places Chinese business material before the dialogue without exposing the call ID', () => {
+    render(<HandoffContextPanel handoff={handoff} context={context} />);
+
+    const business = screen.getByText('业务资料').closest('section');
+    const dialogue = screen.getByText('完整会话').closest('section');
+    expect(business).toBeTruthy();
+    expect(dialogue).toBeTruthy();
+    expect(
+      business!.compareDocumentPosition(dialogue!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText('客户要求转人工')).toBeTruthy();
+    expect(screen.getByText('客户发起')).toBeTruthy();
+    expect(screen.queryByText('通话编号：')).toBeNull();
   });
 });

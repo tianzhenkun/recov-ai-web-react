@@ -244,7 +244,7 @@ const getTestEligibilityReasons = (taskId: string): string[] => {
 
   if (!task) return ['外呼任务不存在'];
   if (task.status !== 'SCHEDULED') reasons.push('任务不是待执行状态');
-  if (task.taskMode !== 'single') reasons.push('仅支持单号码外呼任务');
+  if (task.taskMode !== 'single') reasons.push('仅支持单个客户外呼任务');
   if (targets.length !== 1) reasons.push('任务必须且只能包含一个外呼对象');
   if (targets[0]?.status !== 'PENDING') reasons.push('外呼对象不是待拨打状态');
   if (targets[0]?.phoneNumber !== '19900001001') {
@@ -681,13 +681,13 @@ export default {
     undefined,
     '取消操作已受理',
   ),
-  'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/capability':
+  'GET /ai-call-agent-api/ai-call/lab/outbound-task-tests/:taskId/capability':
     getTestCapability,
-  'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/runs':
+  'POST /ai-call-agent-api/ai-call/lab/outbound-task-tests/:taskId/runs':
     startTestRun,
-  'GET /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/status':
+  'GET /ai-call-agent-api/ai-call/lab/outbound-task-tests/:taskId/status':
     getTestStatus,
-  'POST /ai-call-lab-api/ai-call/lab/outbound-task-tests/:taskId/active-call/end':
+  'POST /ai-call-agent-api/ai-call/lab/outbound-task-tests/:taskId/active-call/end':
     endActiveTestCall,
   'GET /ai-call-agent-api/ai-call/outbound-tasks/:taskId/targets': listTargets,
   'POST /ai-call-agent-api/ai-call/outbound-targets/import-template': (

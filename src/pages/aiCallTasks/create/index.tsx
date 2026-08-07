@@ -406,7 +406,7 @@ const CreateAiCallTaskPage = () => {
             <Form.Item label="外呼方式" name="taskMode">
               <Radio.Group
                 options={[
-                  { label: '单号码', value: 'single' },
+                  { label: '单个客户', value: 'single' },
                   { label: '名单外呼', value: 'batch' },
                 ]}
               />
@@ -507,9 +507,7 @@ const CreateAiCallTaskPage = () => {
                   loading={loadingConfig}
                   options={voiceProfiles.map((voice) => ({
                     value: voice.voice,
-                    label: voice.displayName
-                      ? `${voice.displayName} / ${voice.voice}`
-                      : voice.voice,
+                    label: voice.displayName,
                   }))}
                   placeholder="请选择音色"
                 />
@@ -591,6 +589,7 @@ const CreateAiCallTaskPage = () => {
             </RecovTableCard>
             <RecovTableCard>
               <TaskConfirmation
+                answerMode={validatedTask.request.answerMode}
                 creating={creating}
                 customerName={validatedTask.values.customerName}
                 executionTime={
@@ -605,9 +604,7 @@ const CreateAiCallTaskPage = () => {
                 sceneCode={validatedTask.prompt.sceneCode}
                 taskName={validatedTask.values.taskName}
                 targetCount={validatedTask.validation.validTargetCount}
-                voiceName={
-                  validatedTask.voice.displayName || validatedTask.voice.voice
-                }
+                voiceName={validatedTask.voice.displayName}
                 onConfirm={() => void confirmCreate()}
               />
             </RecovTableCard>

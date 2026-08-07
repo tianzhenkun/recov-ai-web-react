@@ -6,9 +6,9 @@ import {
 } from '@ant-design/pro-components';
 import {
   Alert,
+  Badge,
   Button,
-  Descriptions,
-  Drawer,
+  DatePicker,
   Flex,
   Input,
   Modal,
@@ -20,62 +20,44 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import * as React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type AttemptResult,
   type ClosedReason,
-  type ContactChannel,
   claimFollowUp,
-  closeFollowUp,
-  completeFollowUp,
-  createFollowUpAttempt,
   type FollowUpCallbackCredentialDto,
   type FollowUpListQuery,
+  type FollowUpNextAction,
   type FollowUpTaskDto,
   getAgentFollowUp,
   type IdempotentSessionInput,
   listAgentFollowUps,
+  type SubmitFollowUpHandlingResultInput,
   startFollowUpCall,
+  submitFollowUpHandlingResult,
 } from '@/services/ruoyi/agent-console';
 import './FollowUpPanel.css';
-import FollowUpCallDetail from './FollowUpCallDetail';
+import FollowUpTaskDetailDrawer from './FollowUpTaskDetailDrawer';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 type FollowUpServices = {
   list: (params?: FollowUpListQuery) => Promise<unknown>;
   detail: (followUpId: string) => Promise<unknown>;
   claim: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
   call: (followUpId: string, input: IdempotentSessionInput) => Promise<unknown>;
-  complete: (followUpId: string, idempotencyKey: string) => Promise<unknown>;
-  attempt: (
+  submitResult: (
     followUpId: string,
-    input: {
-      contactChannel: ContactChannel;
-      attemptResult: AttemptResult;
-      errorMessage?: string;
-      remark?: string;
-      contactedAt: string;
-      customerCallbackAt?: string;
-      idempotencyKey: string;
-    },
-  ) => Promise<unknown>;
-  close: (
-    followUpId: string,
-    input: {
-      closedReason: ClosedReason;
-      closedRemark?: string;
-      idempotencyKey: string;
-    },
+    input: SubmitFollowUpHandlingResultInput,
   ) => Promise<unknown>;
 };
 
 type FollowUpPanelProps = {
   agentStatus?: string;
-  attemptTaskToOpen?: FollowUpTaskDto;
+  handlingTaskToOpen?: { task: FollowUpTaskDto; callId?: string };
   callbackEnabled?: boolean;
   consoleSessionId?: string;
-  onAttemptTaskOpened?: () => void;
+  onHandlingTaskOpened?: () => void;
   onPrepareCallback?: () => Promise<boolean>;
   services?: FollowUpServices;
   onCallAccepted?: (
@@ -89,9 +71,7 @@ const defaultServices: FollowUpServices = {
   detail: getAgentFollowUp,
   claim: claimFollowUp,
   call: startFollowUpCall,
-  complete: completeFollowUp,
-  attempt: createFollowUpAttempt,
-  close: closeFollowUp,
+  submitResult: submitFollowUpHandlingResult,
 };
 
 const unwrapPage = (response: unknown) => {
@@ -116,23 +96,11 @@ const unwrapData = (response: unknown) =>
     ? Reflect.get(response, 'data')
     : response;
 
-const requiredRemarkReasons: ClosedReason[] = [
-  'created_by_error',
-  'no_longer_needed',
-  'other',
-];
-
 const followUpStatusLabels: Record<FollowUpTaskDto['status'], string> = {
   pending: '待认领',
   processing: '处理中',
-  completed: '已完成',
-  closed: '已关闭',
-};
-
-const followUpSourceLabels: Record<FollowUpTaskDto['source_type'], string> = {
-  after_call_work: '接通后跟进',
-  handoff_unanswered: '人工未接回访',
-  ai_post_call: 'AI 话后跟进',
+  completed: '已办结',
+  closed: '已终止',
 };
 
 const attemptResultLabels: Record<AttemptResult, string> = {
@@ -144,16 +112,11 @@ const attemptResultLabels: Record<AttemptResult, string> = {
   technical_failure: '技术失败',
 };
 
-const callStatusLabels: Record<string, string> = {
-  dialing: '正在呼叫',
-  ringing: '等待接听',
-  connected: '通话中',
-  completed: '已结束',
-  failed: '呼叫失败',
-};
-
 const formatCallbackAt = (value?: string | null) =>
-  value ? new Date(value).toLocaleString() : '未约定回访时间';
+  value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '未约定回访时间';
+
+export const isFutureFollowUpTime = (value: string, now = dayjs()) =>
+  dayjs(value).isAfter(now);
 
 const createIdempotencyKey = () => {
   const randomUuid = globalThis.crypto?.randomUUID;
@@ -163,60 +126,154 @@ const createIdempotencyKey = () => {
   return `follow-up-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const latestAttemptOf = (task: FollowUpTaskDto) =>
-  task.latest_attempt || task.attempts?.at(-1);
+const nextActionLabels: Record<FollowUpNextAction, string> = {
+  continue: '继续跟进',
+  complete: '办结任务',
+  close: '终止跟进',
+};
+
+const allowedNextActions = (result: AttemptResult): FollowUpNextAction[] => {
+  if (['no_answer', 'busy', 'technical_failure'].includes(result)) {
+    return ['continue'];
+  }
+  if (['rejected', 'invalid_contact'].includes(result)) {
+    return ['continue', 'close'];
+  }
+  return ['continue', 'complete', 'close'];
+};
+
+const attemptForCall = (task: FollowUpTaskDto, callId?: string) =>
+  callId
+    ? task.attempts?.find((attempt) => attempt.related_call_id === callId)
+    : undefined;
+
+const resultForCall = (task: FollowUpTaskDto, callId?: string) =>
+  attemptForCall(task, callId)?.attempt_result || 'connected';
+
+const defaultRemarkFor = (result: AttemptResult, hasCall: boolean) => {
+  if (hasCall && result === 'no_answer') return '本次回拨未接通';
+  if (!hasCall || result === 'connected') return '';
+  return result === 'technical_failure'
+    ? '本次回拨技术失败：'
+    : `本次回拨${attemptResultLabels[result]}`;
+};
 
 const FollowUpPanel = ({
   agentStatus = 'available',
-  attemptTaskToOpen,
+  handlingTaskToOpen,
   callbackEnabled = false,
   consoleSessionId,
-  onAttemptTaskOpened,
+  onHandlingTaskOpened,
   onPrepareCallback,
   services = defaultServices,
   onCallAccepted,
 }: FollowUpPanelProps) => {
   const [scope, setScope] = useState<'unassigned' | 'mine'>('unassigned');
+  const [scopeTotals, setScopeTotals] = useState<{
+    unassigned?: number;
+    mine?: number;
+  }>({});
   const [messageApi, messageContextHolder] = message.useMessage();
-  const [closeTask, setCloseTask] = useState<FollowUpTaskDto>();
-  const [closeReason, setCloseReason] = useState<ClosedReason>();
-  const [closeRemark, setCloseRemark] = useState('');
-  const [closeError, setCloseError] = useState('');
-  const [attemptTask, setAttemptTask] = useState<FollowUpTaskDto>();
-  const [contactChannel, setContactChannel] =
-    useState<ContactChannel>('manual_phone');
-  const [attemptResult, setAttemptResult] =
-    useState<AttemptResult>('no_answer');
-  const [attemptRemark, setAttemptRemark] = useState('');
-  const [attemptError, setAttemptError] = useState('');
-  const [callbackAt, setCallbackAt] = useState('');
+  const [handlingTask, setHandlingTask] = useState<FollowUpTaskDto>();
+  const [handlingCallId, setHandlingCallId] = useState<string>();
+  const [contactResult, setContactResult] =
+    useState<AttemptResult>('connected');
+  const [handlingRemark, setHandlingRemark] = useState('');
+  const [nextAction, setNextAction] = useState<FollowUpNextAction>('continue');
+  const [nextFollowUpAt, setNextFollowUpAt] = useState('');
+  const [closedReason, setClosedReason] = useState<ClosedReason>();
+  const [handlingError, setHandlingError] = useState('');
+  const [handlingIdempotencyKey, setHandlingIdempotencyKey] = useState('');
   const [selectedTask, setSelectedTask] = useState<FollowUpTaskDto>();
-  const [selectedCallId, setSelectedCallId] = useState<string>();
   const actionRef = useRef<ActionType | undefined>(undefined);
+  const loadedScopeRef = useRef(scope);
   const inFlightRef = useRef(new Set<string>());
 
-  useEffect(() => {
-    if (!attemptTaskToOpen) return;
-    setAttemptTask(attemptTaskToOpen);
-    onAttemptTaskOpened?.();
-  }, [attemptTaskToOpen, onAttemptTaskOpened]);
+  const runOnce = useCallback(
+    async (key: string, operation: () => Promise<void>) => {
+      if (inFlightRef.current.has(key)) return;
+      inFlightRef.current.add(key);
+      try {
+        await operation();
+      } finally {
+        inFlightRef.current.delete(key);
+      }
+    },
+    [],
+  );
 
-  const runOnce = async (key: string, operation: () => Promise<void>) => {
-    if (inFlightRef.current.has(key)) return;
-    inFlightRef.current.add(key);
+  const refreshScopeTotals = useCallback(async () => {
     try {
-      await operation();
-    } finally {
-      inFlightRef.current.delete(key);
+      const [unassigned, mine] = await Promise.all([
+        services.list({
+          pageNum: 1,
+          pageSize: 1,
+          ownership: 'unassigned',
+          status: ['pending'],
+        }),
+        services.list({ pageNum: 1, pageSize: 1, ownership: 'mine' }),
+      ]);
+      setScopeTotals({
+        unassigned: unwrapPage(unassigned).total,
+        mine: unwrapPage(mine).total,
+      });
+    } catch {
+      // 保留上一次已展示的数量，避免短暂请求失败显示错误的 0。
     }
-  };
+  }, [services]);
+
+  useEffect(() => {
+    void refreshScopeTotals();
+  }, [refreshScopeTotals]);
+
+  const openHandlingResult = useCallback(
+    (task: FollowUpTaskDto, callId?: string) =>
+      runOnce(`handling:${task.id}:${callId || 'manual'}`, async () => {
+        let detail = task;
+        if (callId) {
+          try {
+            detail = unwrapData(await services.detail(task.id));
+          } catch {
+            messageApi.error('本次回拨结果加载失败，请稍后重试');
+            return;
+          }
+        }
+        const result = resultForCall(detail, callId);
+        if (callId && !attemptForCall(detail, callId)) {
+          messageApi.warning('本次回拨结果尚未生成，请刷新后重试');
+          return;
+        }
+        setHandlingTask(detail);
+        setHandlingCallId(callId);
+        setContactResult(result);
+        setHandlingRemark(defaultRemarkFor(result, Boolean(callId)));
+        setNextAction('continue');
+        setNextFollowUpAt('');
+        setClosedReason(undefined);
+        setHandlingError('');
+        setHandlingIdempotencyKey(createIdempotencyKey());
+      }),
+    [messageApi, runOnce, services],
+  );
+
+  useEffect(() => {
+    if (!handlingTaskToOpen) return;
+    void openHandlingResult(handlingTaskToOpen.task, handlingTaskToOpen.callId);
+    onHandlingTaskOpened?.();
+  }, [handlingTaskToOpen, onHandlingTaskOpened, openHandlingResult]);
+
+  useEffect(() => {
+    if (loadedScopeRef.current === scope) return;
+    loadedScopeRef.current = scope;
+    void actionRef.current?.reload();
+  }, [scope]);
 
   const claim = (task: FollowUpTaskDto) =>
     runOnce(`claim:${task.id}`, async () => {
       try {
         await services.claim(task.id, createIdempotencyKey());
         messageApi.success('回访任务认领成功，负责人已固定为当前坐席');
-        await actionRef.current?.reload();
+        await Promise.all([actionRef.current?.reload(), refreshScopeTotals()]);
       } catch {
         messageApi.error('回访任务认领失败，请刷新后重试');
       }
@@ -263,13 +320,17 @@ const FollowUpPanel = ({
 
   const terminal = (task: FollowUpTaskDto) =>
     ['completed', 'closed'].includes(task.status);
+  const statusLabel = (task: FollowUpTaskDto) => {
+    if (task.awaiting_handling_result) return '待提交处理结果';
+    if (scope === 'mine' && task.status === 'pending') return '待跟进';
+    return followUpStatusLabels[task.status];
+  };
   const canStartCallback =
     Boolean(consoleSessionId) &&
     ['available', 'offline', 'paused'].includes(agentStatus);
-  const selectedTaskLatestAttempt = selectedTask
-    ? latestAttemptOf(selectedTask)
-    : undefined;
-  const selectedTaskCallbacks = selectedTask?.callback_records || [];
+  const callbackInProgress = ['claiming', 'in_call', 'reconnecting'].includes(
+    agentStatus,
+  );
 
   const taskActions = (task: FollowUpTaskDto) => (
     <Flex gap="small" wrap>
@@ -305,34 +366,22 @@ const FollowUpPanel = ({
               {agentStatus === 'available' ? '呼叫客户' : '上线并呼叫'}
             </Button>
           ) : null}
-          <Button
-            type="link"
-            size="small"
-            disabled={latestAttemptOf(task)?.attempt_result !== 'connected'}
-            title={
-              latestAttemptOf(task)?.attempt_result === 'connected'
-                ? undefined
-                : '请先登记已联系结果'
-            }
-            onClick={() =>
-              void services
-                .complete(task.id, createIdempotencyKey())
-                .then(() => actionRef.current?.reload())
-            }
-          >
-            完成任务
-          </Button>
-          <Button type="link" size="small" onClick={() => setAttemptTask(task)}>
-            登记联系结果
-          </Button>
-          <Button
-            danger
-            type="link"
-            size="small"
-            onClick={() => setCloseTask(task)}
-          >
-            关闭任务
-          </Button>
+          {task.status !== 'processing' ||
+          task.awaiting_handling_result ||
+          !callbackInProgress ? (
+            <Button
+              type="link"
+              size="small"
+              onClick={() =>
+                void openHandlingResult(
+                  task,
+                  task.pending_handling_call_id || undefined,
+                )
+              }
+            >
+              提交处理结果
+            </Button>
+          ) : null}
         </>
       ) : null}
     </Flex>
@@ -340,60 +389,37 @@ const FollowUpPanel = ({
 
   const columns: ProColumns<FollowUpTaskDto>[] = [
     {
-      title: '创建时间',
-      dataIndex: 'createdAtRange',
-      valueType: 'dateRange',
-      width: 180,
-      render: (_, task) => new Date(task.created_at).toLocaleString(),
-    },
-    {
-      title: '业务场景',
-      dataIndex: 'sceneCode',
-      valueType: 'select',
+      title: '客户姓名',
+      dataIndex: 'customerName',
       hideInTable: true,
-      valueEnum: {
-        intro_contract: { text: '合同审查产品介绍' },
-        intro_document: { text: '文书产品介绍' },
-        intro_overseas: { text: '涉外产品介绍' },
-        intro_geo: { text: 'GEO 产品介绍' },
-      },
-    },
-    {
-      title: '回访状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: Object.fromEntries(
-        Object.entries(followUpStatusLabels).map(([value, text]) => [
-          value,
-          { text },
-        ]),
-      ),
-      width: 100,
-      render: (_, task) => (
-        <Tag color={terminal(task) ? 'default' : 'processing'}>
-          {followUpStatusLabels[task.status]}
-        </Tag>
-      ),
-    },
-    {
-      title: '回访来源',
-      dataIndex: 'sourceType',
-      valueType: 'select',
-      width: 150,
-      valueEnum: Object.fromEntries(
-        Object.entries(followUpSourceLabels).map(([value, text]) => [
-          value,
-          { text },
-        ]),
-      ),
-      render: (_, task) => followUpSourceLabels[task.source_type],
     },
     {
       title: '客户',
       dataIndex: 'masked_contact',
       search: false,
-      width: 150,
-      renderText: (value) => value || '联系方式已脱敏',
+      width: 170,
+      render: (_, task) => (
+        <Flex vertical gap={2}>
+          {task.customer_name ? <Text>{task.customer_name}</Text> : null}
+          <Text type={task.customer_name ? 'secondary' : undefined}>
+            {task.masked_contact || '联系方式已脱敏'}
+          </Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '所属任务',
+      dataIndex: 'task_name',
+      search: false,
+      ellipsis: true,
+      renderText: (value) => value || '-',
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAtRange',
+      valueType: 'dateRange',
+      width: 180,
+      render: (_, task) => formatCallbackAt(task.created_at),
     },
     {
       title: '跟进原因',
@@ -408,23 +434,40 @@ const FollowUpPanel = ({
       width: 190,
       renderText: (value) => formatCallbackAt(value),
     },
-    {
-      title: '最近联系结果',
-      key: 'latest_attempt',
-      search: false,
-      width: 170,
-      render: (_, task) => {
-        const latest = latestAttemptOf(task);
-        return latest
-          ? `${attemptResultLabels[latest.attempt_result]} · ${new Date(latest.contacted_at).toLocaleString()}`
-          : '-';
-      },
-    },
+    ...(scope === 'mine'
+      ? [
+          {
+            title: '回访状态',
+            dataIndex: 'status',
+            valueType: 'select' as const,
+            valueEnum: {
+              pending: { text: '待跟进' },
+              processing: { text: '处理中' },
+              completed: { text: '已办结' },
+              closed: { text: '已终止' },
+            },
+            width: 120,
+            render: (_: unknown, task: FollowUpTaskDto) => (
+              <Tag
+                color={
+                  task.status === 'completed'
+                    ? 'success'
+                    : task.status === 'closed'
+                      ? 'default'
+                      : 'processing'
+                }
+              >
+                {statusLabel(task)}
+              </Tag>
+            ),
+          } satisfies ProColumns<FollowUpTaskDto>,
+        ]
+      : []),
     {
       title: '操作',
       valueType: 'option',
       fixed: 'right',
-      width: 260,
+      width: 220,
       render: (_, task) => taskActions(task),
     },
   ];
@@ -433,10 +476,41 @@ const FollowUpPanel = ({
     <div className="agent-follow-up-panel">
       {messageContextHolder}
       <Tabs
+        className="agent-follow-up-scope-tabs"
         activeKey={scope}
         items={[
-          { key: 'unassigned', label: '待认领回访' },
-          { key: 'mine', label: '我的跟进' },
+          {
+            key: 'unassigned',
+            label: (
+              <span className="agent-follow-up-scope-label">
+                待认领回访
+                {scopeTotals.unassigned !== undefined ? (
+                  <Badge
+                    color="#722ed1"
+                    count={scopeTotals.unassigned}
+                    showZero
+                    size="small"
+                  />
+                ) : null}
+              </span>
+            ),
+          },
+          {
+            key: 'mine',
+            label: (
+              <span className="agent-follow-up-scope-label">
+                我的跟进
+                {scopeTotals.mine !== undefined ? (
+                  <Badge
+                    color="#722ed1"
+                    count={scopeTotals.mine}
+                    showZero
+                    size="small"
+                  />
+                ) : null}
+              </span>
+            ),
+          },
         ]}
         onChange={(key) => setScope(key as 'unassigned' | 'mine')}
       />
@@ -468,13 +542,10 @@ const FollowUpPanel = ({
               ownership: ownership as 'unassigned' | 'mine',
               status: filters.status
                 ? [filters.status as FollowUpTaskDto['status']]
-                : ['pending', 'processing'],
-              sceneCode: filters.sceneCode as
-                | FollowUpTaskDto['scene_code']
-                | undefined,
-              sourceType: filters.sourceType as
-                | FollowUpTaskDto['source_type']
-                | undefined,
+                : ownership === 'unassigned'
+                  ? ['pending']
+                  : undefined,
+              customerName: filters.customerName as string | undefined,
               createdAtBegin: createdRange?.[0]
                 ? dayjs(createdRange[0]).startOf('day').toISOString()
                 : undefined,
@@ -487,298 +558,167 @@ const FollowUpPanel = ({
         }}
       />
 
-      <Drawer
-        title={selectedCallId ? '通话详情' : '跟进任务详情'}
+      <FollowUpTaskDetailDrawer
         open={Boolean(selectedTask)}
-        size={selectedCallId ? 800 : 520}
-        extra={
-          selectedCallId ? (
-            <Flex align="center" gap="small" wrap>
-              <Button type="link" onClick={() => setSelectedCallId(undefined)}>
-                返回跟进任务详情
-              </Button>
-              <Button
-                type="link"
-                href={`/ai-call/records?callId=${encodeURIComponent(selectedCallId)}&view=list`}
-              >
-                在通话记录中查看
-              </Button>
-            </Flex>
-          ) : null
-        }
-        onClose={() => {
-          setSelectedCallId(undefined);
-          setSelectedTask(undefined);
-        }}
-      >
-        {selectedCallId ? (
-          <FollowUpCallDetail callId={selectedCallId} />
-        ) : selectedTask ? (
-          <Flex vertical gap={24}>
-            <Descriptions
-              column={1}
-              items={[
-                {
-                  key: 'contact',
-                  label: '客户',
-                  children: selectedTask.masked_contact || '联系方式已脱敏',
-                },
-                {
-                  key: 'source',
-                  label: '来源',
-                  children: followUpSourceLabels[selectedTask.source_type],
-                },
-                {
-                  key: 'reason',
-                  label: '跟进原因',
-                  children: selectedTask.follow_up_reason,
-                },
-                {
-                  key: 'summary',
-                  label: '任务摘要',
-                  children: selectedTask.summary || '暂无摘要',
-                },
-                {
-                  key: 'callback',
-                  label: '应跟进时间',
-                  children: formatCallbackAt(selectedTask.customer_callback_at),
-                },
-                {
-                  key: 'latest',
-                  label: '最近联系结果',
-                  children: selectedTaskLatestAttempt
-                    ? attemptResultLabels[
-                        selectedTaskLatestAttempt.attempt_result
-                      ]
-                    : '暂无联系记录',
-                },
-              ]}
-            />
-            <section>
-              <Title level={5}>关联通话</Title>
-              <Descriptions
-                column={1}
-                items={[
-                  {
-                    key: 'sourceCall',
-                    label: '原始通话',
-                    children: (
-                      <Flex align="center" gap="small" wrap>
-                        <Text>
-                          {selectedTask.source_record
-                            ? `${formatCallbackAt(selectedTask.source_record.started_at)} · ${callStatusLabels[selectedTask.source_record.status] || '状态未知'}`
-                            : selectedTask.source_call_id}
-                        </Text>
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() =>
-                            setSelectedCallId(selectedTask.source_call_id)
-                          }
-                        >
-                          查看通话详情
-                        </Button>
-                      </Flex>
-                    ),
-                  },
-                  {
-                    key: 'callbackCalls',
-                    label: '历次回拨',
-                    children: selectedTaskCallbacks.length ? (
-                      <Flex vertical gap="small">
-                        {selectedTaskCallbacks.map((record, index) => {
-                          const attempt = selectedTask.attempts?.find(
-                            (item) => item.related_call_id === record.call_id,
-                          );
-                          return (
-                            <Flex
-                              key={record.call_id}
-                              align="center"
-                              gap="small"
-                              wrap
-                            >
-                              <Text>{`第${index + 1}次人工回拨`}</Text>
-                              <Text type="secondary">
-                                {formatCallbackAt(record.started_at)}
-                              </Text>
-                              <Tag>
-                                {attempt
-                                  ? attemptResultLabels[attempt.attempt_result]
-                                  : callStatusLabels[record.status] ||
-                                    '状态未知'}
-                              </Tag>
-                              <Button
-                                type="link"
-                                size="small"
-                                onClick={() =>
-                                  setSelectedCallId(record.call_id)
-                                }
-                              >
-                                查看本次通话详情
-                              </Button>
-                            </Flex>
-                          );
-                        })}
-                      </Flex>
-                    ) : (
-                      <Text type="secondary">暂无回拨记录</Text>
-                    ),
-                  },
-                ]}
-              />
-            </section>
-          </Flex>
-        ) : null}
-      </Drawer>
+        task={selectedTask}
+        onClose={() => setSelectedTask(undefined)}
+      />
 
       <Modal
-        title="关闭跟进任务"
-        open={Boolean(closeTask)}
-        okText="确认关闭"
-        okType="danger"
+        title="提交处理结果"
+        open={Boolean(handlingTask)}
+        okText="提交结果"
         cancelText="取消"
         mask={{ enabled: true, closable: false }}
-        onCancel={() => setCloseTask(undefined)}
+        onCancel={() => setHandlingTask(undefined)}
         onOk={async () => {
-          if (!closeTask || !closeReason) {
-            setCloseError('请选择关闭原因');
+          if (!handlingTask) return;
+          const remark = handlingRemark.trim();
+          if (!remark) {
+            setHandlingError('请填写处理备注');
             return;
           }
           if (
-            requiredRemarkReasons.includes(closeReason) &&
-            !closeRemark.trim()
+            contactResult === 'technical_failure' &&
+            remark === '本次回拨技术失败：'
           ) {
-            setCloseError('请填写关闭说明');
+            setHandlingError('请补充技术失败原因');
             return;
           }
-          await services.close(closeTask.id, {
-            closedReason: closeReason,
-            closedRemark: closeRemark.trim() || undefined,
-            idempotencyKey: createIdempotencyKey(),
-          });
-          setCloseTask(undefined);
-          setCloseReason(undefined);
-          setCloseRemark('');
-          setCloseError('');
-          await actionRef.current?.reload();
+          if (nextAction === 'continue' && !nextFollowUpAt) {
+            setHandlingError('请选择下次跟进时间');
+            return;
+          }
+          if (
+            nextAction === 'continue' &&
+            !isFutureFollowUpTime(nextFollowUpAt)
+          ) {
+            setHandlingError('下次跟进时间需晚于当前时间');
+            return;
+          }
+          if (nextAction === 'close' && !closedReason) {
+            setHandlingError('请选择终止原因');
+            return;
+          }
+          try {
+            await services.submitResult(handlingTask.id, {
+              callId: handlingCallId,
+              contactChannel: handlingCallId ? undefined : 'other',
+              contactResult,
+              remark,
+              nextAction,
+              nextFollowUpAt:
+                nextAction === 'continue'
+                  ? new Date(nextFollowUpAt).toISOString()
+                  : undefined,
+              closedReason: nextAction === 'close' ? closedReason : undefined,
+              idempotencyKey: handlingIdempotencyKey,
+            });
+            messageApi.success('处理结果已提交');
+            setHandlingTask(undefined);
+            setHandlingError('');
+            await Promise.all([
+              actionRef.current?.reload(),
+              refreshScopeTotals(),
+            ]);
+          } catch {
+            setHandlingError('处理结果提交失败，请保留当前内容后重试');
+          }
         }}
       >
         <div className="agent-follow-up-close-form">
-          {closeError ? (
-            <Alert type="error" showIcon title={closeError} />
+          {handlingError ? (
+            <Alert type="error" showIcon title={handlingError} />
           ) : null}
-          <Select
-            aria-label="关闭原因"
-            placeholder="选择关闭原因"
-            value={closeReason}
-            options={[
-              { value: 'customer_refused', label: '客户明确拒绝' },
-              { value: 'invalid_contact', label: '联系方式无效' },
-              { value: 'created_by_error', label: '任务误创建' },
-              { value: 'no_longer_needed', label: '已无需跟进' },
-              { value: 'other', label: '其他' },
-            ]}
-            onChange={(value) => setCloseReason(value)}
-          />
-          <Input.TextArea
-            aria-label="关闭说明"
-            placeholder="补充关闭说明"
-            maxLength={300}
-            value={closeRemark}
-            onChange={(event) => setCloseRemark(event.target.value)}
-          />
-        </div>
-      </Modal>
-
-      <Modal
-        title="登记联系结果"
-        open={Boolean(attemptTask)}
-        okText="保存联系记录"
-        cancelText="取消"
-        mask={{ enabled: true, closable: false }}
-        onCancel={() => setAttemptTask(undefined)}
-        onOk={async () => {
-          if (!attemptTask) return;
-          if (attemptResult === 'technical_failure' && !attemptRemark.trim()) {
-            setAttemptError('请填写技术失败摘要');
-            return;
-          }
-          await services.attempt(attemptTask.id, {
-            contactChannel,
-            attemptResult,
-            errorMessage:
-              attemptResult === 'technical_failure'
-                ? attemptRemark.trim()
-                : undefined,
-            remark: attemptRemark.trim() || undefined,
-            contactedAt: new Date().toISOString(),
-            customerCallbackAt: callbackAt
-              ? new Date(callbackAt).toISOString()
-              : undefined,
-            idempotencyKey: createIdempotencyKey(),
-          });
-          messageApi.success(
-            attemptResult === 'connected'
-              ? '联系结果已记录'
-              : '联系结果已记录，任务保持待处理',
-          );
-          setAttemptTask(undefined);
-          setAttemptRemark('');
-          setAttemptError('');
-          setCallbackAt('');
-          await actionRef.current?.reload();
-        }}
-      >
-        <div className="agent-follow-up-close-form">
-          {attemptError ? (
-            <Alert type="error" showIcon title={attemptError} />
-          ) : null}
-          <Select
-            aria-label="联系渠道"
-            value={contactChannel}
-            options={[
-              { value: 'manual_phone', label: '人工电话' },
-              { value: 'wechat', label: '微信' },
-              { value: 'email', label: '邮件' },
-              { value: 'other', label: '其他' },
-            ]}
-            onChange={(value) => setContactChannel(value)}
-          />
           <Select
             aria-label="联系结果"
-            value={attemptResult}
+            disabled={Boolean(handlingCallId)}
+            value={contactResult}
             options={[
-              { value: 'connected', label: '已联系' },
+              { value: 'connected', label: '已接通' },
               { value: 'no_answer', label: '无人接听' },
               { value: 'busy', label: '占线' },
-              { value: 'rejected', label: '电话被拒接' },
+              { value: 'rejected', label: '客户拒接' },
               { value: 'invalid_contact', label: '联系方式无效' },
               { value: 'technical_failure', label: '技术失败' },
             ]}
             onChange={(value) => {
-              setAttemptResult(value);
-              setAttemptError('');
-              if (value !== 'connected') setCallbackAt('');
+              setContactResult(value);
+              setNextAction('continue');
+              setHandlingRemark(defaultRemarkFor(value, false));
+              setHandlingError('');
             }}
           />
-          <Input
-            aria-label="客户预约回访时间"
-            type="datetime-local"
-            disabled={attemptResult !== 'connected'}
-            value={callbackAt}
-            onChange={(event) => setCallbackAt(event.target.value)}
-          />
-          <Text type="secondary">
-            仅在客户明确约定时间时填写；普通未接通不生成系统重拨时间。
-          </Text>
           <Input.TextArea
-            aria-label="联系备注"
-            rows={2}
-            placeholder="可选联系备注"
+            aria-label="处理备注"
+            rows={3}
+            placeholder="填写本次沟通结论"
             maxLength={300}
-            value={attemptRemark}
-            onChange={(event) => setAttemptRemark(event.target.value)}
+            value={handlingRemark}
+            onChange={(event) => {
+              setHandlingRemark(event.target.value);
+              setHandlingError('');
+            }}
           />
+          <Select
+            aria-label="下一步"
+            value={nextAction}
+            options={allowedNextActions(contactResult).map((value) => ({
+              value,
+              label: nextActionLabels[value],
+            }))}
+            onChange={(value) => {
+              setNextAction(value);
+              setHandlingError('');
+            }}
+          />
+          {nextAction === 'continue' ? (
+            <DatePicker
+              aria-label="下次跟进时间"
+              format="YYYY-MM-DD HH:mm"
+              showTime={{ format: 'HH:mm', hideDisabledOptions: true }}
+              style={{ width: '100%' }}
+              value={nextFollowUpAt ? dayjs(nextFollowUpAt) : null}
+              disabledDate={(current) => current.isBefore(dayjs(), 'day')}
+              disabledTime={(current) => {
+                const now = dayjs();
+                if (!current.isSame(now, 'day')) return {};
+                return {
+                  disabledHours: () =>
+                    Array.from({ length: now.hour() }, (_, hour) => hour),
+                  disabledMinutes: (hour) =>
+                    hour === now.hour()
+                      ? Array.from(
+                          { length: now.minute() + 1 },
+                          (_, minute) => minute,
+                        )
+                      : [],
+                };
+              }}
+              onChange={(value) => {
+                setNextFollowUpAt(value?.format('YYYY-MM-DDTHH:mm') || '');
+                setHandlingError('');
+              }}
+            />
+          ) : null}
+          {nextAction === 'close' ? (
+            <Select
+              aria-label="终止原因"
+              placeholder="选择终止原因"
+              value={closedReason}
+              options={[
+                { value: 'customer_refused', label: '客户明确拒绝' },
+                { value: 'invalid_contact', label: '联系方式无效' },
+                { value: 'created_by_error', label: '任务误创建' },
+                { value: 'no_longer_needed', label: '已无需跟进' },
+                { value: 'other', label: '其他' },
+              ]}
+              onChange={(value) => {
+                setClosedReason(value);
+                setHandlingError('');
+              }}
+            />
+          ) : null}
         </div>
       </Modal>
     </div>

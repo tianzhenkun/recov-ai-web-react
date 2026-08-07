@@ -30,6 +30,11 @@ const VOICE_STATUS_META: Record<VoiceStatus, VoiceStatusMeta> = {
     color: 'success',
     selectable: true,
   },
+  DISABLED: {
+    label: '停用',
+    color: 'default',
+    selectable: false,
+  },
   CREATE_FAILED: {
     label: '创建失败',
     color: 'error',

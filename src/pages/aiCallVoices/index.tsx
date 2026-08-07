@@ -1,8 +1,4 @@
-import {
-  PlusOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { ProTable } from '@ant-design/pro-components';
 import {
@@ -16,6 +12,7 @@ import {
   Tag,
   Tooltip,
 } from 'antd';
+import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { RuoyiError } from '@/adapters/ruoyi/response';
 import {
@@ -25,13 +22,15 @@ import {
 } from '@/pages/recov/components/RecovListLayout';
 import {
   createVoiceEnrollment,
-  createVoicePreviewSession,
+  createVoicePreviewAudio,
   deleteTenantVoice,
   getVoiceDeletionCheck,
   listVoiceProfiles,
+  setTenantVoiceAvailability,
 } from '@/services/ruoyi/ai-call-voices';
 import type {
   AiCallVoiceProfile,
+  VoiceAvailabilityStatus,
   VoiceDeletionCheck,
   VoiceEnrollmentRequest,
   VoiceProfileQuery,
@@ -40,14 +39,14 @@ import type {
 import { ACTIVE_VOICE_STATUSES, getVoiceStatusMeta } from './domain';
 import VoiceEnrollmentModal from './VoiceEnrollmentModal';
 import {
-  connectVoicePreview,
+  playVoicePreviewAudio,
   type VoicePreviewConnection,
 } from './VoicePreview';
 
 type VoiceFilters = {
   voiceType?: string;
   gender?: string;
-  status?: VoiceStatus;
+  status?: VoiceAvailabilityStatus;
 };
 
 const matchesFilters = (profile: AiCallVoiceProfile, filters: VoiceFilters) =>
@@ -56,21 +55,25 @@ const matchesFilters = (profile: AiCallVoiceProfile, filters: VoiceFilters) =>
   (!filters.status || profile.status === filters.status);
 
 const statusOptions: Array<{ label: string; value: VoiceStatus }> = [
-  { label: '创建中', value: 'CREATING' },
   { label: '可用', value: 'ENABLED' },
-  { label: '创建失败', value: 'CREATE_FAILED' },
-  { label: '删除中', value: 'DELETING' },
-  { label: '删除失败', value: 'DELETE_FAILED' },
-  { label: '已删除', value: 'DELETED' },
+  { label: '停用', value: 'DISABLED' },
 ];
 
 const DELETABLE_VOICE_STATUSES = new Set<VoiceStatus>([
   'ENABLED',
-  'CREATE_FAILED',
+  'DISABLED',
   'DELETE_FAILED',
 ]);
 
+const isAvailabilityVoiceStatus = (
+  status: VoiceStatus,
+): status is VoiceAvailabilityStatus =>
+  status === 'ENABLED' || status === 'DISABLED';
+
 const DEFAULT_PAGE_SIZE = 10;
+
+const formatDateTime = (value?: string | null) =>
+  value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-';
 
 export const createIdempotencyKey = (prefix: string) =>
   globalThis.crypto?.randomUUID?.() ||
@@ -100,6 +103,11 @@ type DeletionDialog = {
 type PendingDeletion = {
   profileId: string;
   key: string;
+};
+
+type AvailabilityDialog = {
+  profile: AiCallVoiceProfile;
+  nextStatus: VoiceAvailabilityStatus;
 };
 
 const isKnownDeletionFailure = (error: unknown) => {
@@ -142,6 +150,11 @@ const AiCallVoicesPage = () => {
     string | undefined
   >(undefined);
   const [deletionSubmitting, setDeletionSubmitting] = useState(false);
+  const [availabilityUpdatingProfileId, setAvailabilityUpdatingProfileId] =
+    useState<string | undefined>(undefined);
+  const [availabilityDialog, setAvailabilityDialog] = useState<
+    AvailabilityDialog | undefined
+  >(undefined);
   const [locallyDeletingProfileIds, setLocallyDeletingProfileIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -217,9 +230,24 @@ const AiCallVoicesPage = () => {
       }
 
       try {
-        const session = await createVoicePreviewSession(providerVoice);
-        const connection = await connectVoicePreview(session);
+        const previewAudio = await createVoicePreviewAudio(providerVoice);
+        let playbackEnded = false;
+        const connection = await playVoicePreviewAudio(previewAudio, () => {
+          playbackEnded = true;
+          if (activePreviewRef.current?.profileId === profile.id) {
+            activePreviewRef.current = undefined;
+          }
+          if (mountedRef.current) {
+            setPreviewState((current) =>
+              current?.profileId === profile.id ? undefined : current,
+            );
+          }
+        });
         if (!mountedRef.current) {
+          await connection.disconnect();
+          return;
+        }
+        if (playbackEnded) {
           await connection.disconnect();
           return;
         }
@@ -324,6 +352,40 @@ const AiCallVoicesPage = () => {
     }
   };
 
+  const requestAvailability = (profile: AiCallVoiceProfile) => {
+    if (
+      profile.scope !== 'TENANT' ||
+      !isAvailabilityVoiceStatus(profile.status) ||
+      availabilityUpdatingProfileId
+    ) {
+      return;
+    }
+    setAvailabilityDialog({
+      profile,
+      nextStatus: profile.status === 'ENABLED' ? 'DISABLED' : 'ENABLED',
+    });
+  };
+
+  const confirmAvailability = async () => {
+    if (!availabilityDialog) return;
+    const { profile, nextStatus } = availabilityDialog;
+    setAvailabilityUpdatingProfileId(profile.id);
+    try {
+      await setTenantVoiceAvailability(profile.id, nextStatus);
+      setAvailabilityDialog(undefined);
+      messageApi.success(
+        nextStatus === 'ENABLED' ? '音色已启用' : '音色已停用',
+      );
+      void actionRef.current?.reload();
+    } catch (error) {
+      messageApi.error(
+        error instanceof Error ? error.message : '更新音色状态失败，请稍后重试',
+      );
+    } finally {
+      setAvailabilityUpdatingProfileId(undefined);
+    }
+  };
+
   const columns = useMemo<ProColumns<AiCallVoiceProfile>[]>(
     () => [
       {
@@ -331,10 +393,7 @@ const AiCallVoicesPage = () => {
         dataIndex: 'displayName',
         width: 220,
         render: (_value, profile) => (
-          <Space orientation="vertical" size={0}>
-            <span className="font-medium">{profile.displayName}</span>
-            <span className="text-gray-500">{profile.voice || '—'}</span>
-          </Space>
+          <span className="font-medium">{profile.displayName}</span>
         ),
       },
       {
@@ -372,6 +431,7 @@ const AiCallVoicesPage = () => {
         title: '更新时间',
         dataIndex: 'updatedAt',
         width: 180,
+        render: (_value, profile) => formatDateTime(profile.updatedAt),
       },
       {
         title: '操作',
@@ -390,8 +450,12 @@ const AiCallVoicesPage = () => {
             profile.scope === 'TENANT' &&
             profile.canDelete &&
             DELETABLE_VOICE_STATUSES.has(profile.status);
+          const canSetAvailability =
+            !isLocallyDeleting &&
+            profile.scope === 'TENANT' &&
+            isAvailabilityVoiceStatus(profile.status);
           const isCurrentPreview = previewState?.profileId === profile.id;
-          if (!canPreview && !canDelete) return null;
+          if (!canPreview && !canDelete && !canSetAvailability) return null;
           return (
             <Space size={4}>
               {canPreview ? (
@@ -416,6 +480,15 @@ const AiCallVoicesPage = () => {
                   onClick={() => requestDeletionCheck(profile)}
                 >
                   删除
+                </Button>
+              ) : null}
+              {canSetAvailability ? (
+                <Button
+                  loading={availabilityUpdatingProfileId === profile.id}
+                  type="link"
+                  onClick={() => requestAvailability(profile)}
+                >
+                  {profile.status === 'ENABLED' ? '停用' : '启用'}
                 </Button>
               ) : null}
             </Space>
@@ -505,7 +578,7 @@ const AiCallVoicesPage = () => {
         <h2 className="m-0 text-xl font-semibold">音色管理</h2>
 
         <RecovTableCard className="recov-toolbar-card">
-          <div className="flex w-full flex-wrap items-start justify-between gap-3">
+          <div className="flex w-full flex-wrap items-start gap-3">
             <Form<VoiceFilters>
               colon={false}
               form={filterForm}
@@ -529,7 +602,6 @@ const AiCallVoicesPage = () => {
                   allowClear
                   aria-label="性别"
                   options={[
-                    { label: '未知', value: '未知' },
                     { label: '女声', value: '女声' },
                     { label: '男声', value: '男声' },
                   ]}
@@ -559,29 +631,22 @@ const AiCallVoicesPage = () => {
                 </Space>
               </Form.Item>
             </Form>
-
-            <Space size={8} wrap>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={() => actionRef.current?.reload()}
-              >
-                刷新
-              </Button>
-              <Button
-                icon={<PlusOutlined />}
-                type="primary"
-                onClick={() => {
-                  pendingEnrollmentRef.current = undefined;
-                  setCreateModalOpen(true);
-                }}
-              >
-                创建自定义音色
-              </Button>
-            </Space>
           </div>
         </RecovTableCard>
 
         <RecovTableCard>
+          <div className="mb-3 flex justify-end">
+            <Button
+              icon={<PlusOutlined />}
+              type="primary"
+              onClick={() => {
+                pendingEnrollmentRef.current = undefined;
+                setCreateModalOpen(true);
+              }}
+            >
+              创建自定义音色
+            </Button>
+          </div>
           <ProTable<AiCallVoiceProfile>
             actionRef={actionRef}
             className="recov-stable-pagination-table"
@@ -598,7 +663,7 @@ const AiCallVoicesPage = () => {
               const query: VoiceProfileQuery = {
                 pageNum: params.current || 1,
                 pageSize: params.pageSize || DEFAULT_PAGE_SIZE,
-                includeDeleted: filters.status === 'DELETED',
+                includeDeleted: false,
                 ...filters,
               };
               const result = await listVoiceProfiles(query).finally(() => {
@@ -674,6 +739,38 @@ const AiCallVoicesPage = () => {
         onSubmit={submitEnrollment}
         open={createModalOpen}
       />
+
+      <Modal
+        cancelButtonProps={{ disabled: Boolean(availabilityUpdatingProfileId) }}
+        cancelText="取消"
+        closable={!availabilityUpdatingProfileId}
+        confirmLoading={Boolean(availabilityUpdatingProfileId)}
+        destroyOnHidden
+        mask={{ closable: !availabilityUpdatingProfileId }}
+        okText={
+          availabilityDialog?.nextStatus === 'ENABLED' ? '确认启用' : '确认停用'
+        }
+        open={Boolean(availabilityDialog)}
+        title={
+          availabilityDialog
+            ? `确认${availabilityDialog.nextStatus === 'ENABLED' ? '启用' : '停用'}音色“${availabilityDialog.profile.displayName}”吗？`
+            : undefined
+        }
+        onCancel={() => setAvailabilityDialog(undefined)}
+        onOk={confirmAvailability}
+      >
+        {availabilityDialog ? (
+          <Alert
+            description={
+              availabilityDialog.nextStatus === 'ENABLED'
+                ? '启用后，该音色可用于创建新任务和试听。'
+                : '停用后，该音色不能用于创建新任务或试听；已有任务不受影响。'
+            }
+            showIcon
+            type="warning"
+          />
+        ) : null}
+      </Modal>
 
       <Modal
         cancelButtonProps={{ disabled: deletionSubmitting }}

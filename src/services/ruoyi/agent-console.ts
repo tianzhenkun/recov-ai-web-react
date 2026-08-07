@@ -214,6 +214,22 @@ export type FollowUpAttemptDto = {
   customer_callback_at?: string | null;
 };
 
+export type FollowUpNextAction = 'continue' | 'complete' | 'close';
+
+export type FollowUpHandlingResultDto = {
+  id: BigintString;
+  follow_up_id: BigintString;
+  related_call_id?: string | null;
+  contact_channel: Exclude<ContactChannel, 'system_callback'>;
+  contact_result: AttemptResult;
+  remark: string;
+  next_action: FollowUpNextAction;
+  next_follow_up_at?: string | null;
+  closed_reason?: ClosedReason | null;
+  agent_identity: string;
+  handled_at: string;
+};
+
 export type FollowUpRecordDto = {
   id: BigintString;
   call_id: string;
@@ -234,6 +250,8 @@ export type FollowUpTaskDto = {
   scene_code: SceneCode;
   business_type?: string | null;
   business_id?: string | null;
+  customer_name?: string | null;
+  task_name?: string | null;
   masked_contact?: string;
   owner_agent_identity?: string | null;
   status: FollowUpStatus;
@@ -244,6 +262,9 @@ export type FollowUpTaskDto = {
   closed_remark?: string | null;
   attempts?: FollowUpAttemptDto[];
   latest_attempt?: FollowUpAttemptDto | null;
+  handling_results?: FollowUpHandlingResultDto[];
+  awaiting_handling_result?: boolean;
+  pending_handling_call_id?: string | null;
   source_record?: FollowUpRecordDto | null;
   callback_records?: FollowUpRecordDto[];
   created_at: string;
@@ -268,7 +289,7 @@ export type FollowUpListQuery = {
   ownership?: 'unassigned' | 'mine';
   status?: FollowUpStatus[];
   sceneCode?: SceneCode;
-  sourceType?: FollowUpSourceType;
+  customerName?: string;
   createdAtBegin?: string;
   createdAtEnd?: string;
 };
@@ -318,6 +339,20 @@ export type FollowUpAttemptInput = {
 export type CloseFollowUpInput = {
   closedReason: ClosedReason;
   closedRemark?: string;
+  idempotencyKey: string;
+};
+
+export type SubmitFollowUpHandlingResultInput = {
+  callId?: string;
+  contactChannel?: Exclude<
+    ContactChannel,
+    'system_callback' | 'manual_phone'
+  >;
+  contactResult: AttemptResult;
+  remark: string;
+  nextAction: FollowUpNextAction;
+  nextFollowUpAt?: string;
+  closedReason?: ClosedReason;
   idempotencyKey: string;
 };
 
@@ -531,6 +566,29 @@ export const createFollowUpAttempt = (
         remark: input.remark,
         contacted_at: input.contactedAt,
         customer_callback_at: input.customerCallbackAt,
+      },
+    },
+  );
+
+export const submitFollowUpHandlingResult = (
+  followUpId: BigintString,
+  input: SubmitFollowUpHandlingResultInput,
+) =>
+  agentConsoleRequest<FollowUpTaskDto>(
+    `${AGENT_CONSOLE_API_PREFIX}/follow-ups/${encodeId(followUpId)}/handling-results`,
+    {
+      method: 'post',
+      headers: idempotencyHeaders(input.idempotencyKey),
+      data: {
+        call_id: input.callId,
+        ...(input.contactChannel
+          ? { contact_channel: input.contactChannel }
+          : {}),
+        contact_result: input.contactResult,
+        remark: input.remark,
+        next_action: input.nextAction,
+        next_follow_up_at: input.nextFollowUpAt,
+        closed_reason: input.closedReason,
       },
     },
   );

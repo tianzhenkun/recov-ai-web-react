@@ -344,9 +344,7 @@ const LinphoneTaskTest = ({
                 {
                   key: 'voice',
                   label: '音色',
-                  children: task.voiceName
-                    ? `${task.voiceName} / ${task.voice}`
-                    : task.voice,
+                  children: task.voiceName || '—',
                 },
                 {
                   key: 'rule',

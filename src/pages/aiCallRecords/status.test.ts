@@ -79,6 +79,33 @@ describe('通话记录话后状态映射', () => {
     });
   });
 
+  it('展示任务关联 Web 接听的话后结论，但不展示通用浏览器测试', () => {
+    const taskWebRecord = {
+      ...baseRecord,
+      entryType: 'web',
+      taskId: 'task-1',
+      analysisStatus: '2',
+      customerIntent: 'neutral',
+      followUpSuggested: true,
+      followUpId: 'follow-up-1',
+      followUpStatus: 'pending',
+    } as const;
+
+    expect(getCustomerIntentPresentation(taskWebRecord)).toMatchObject({
+      text: '中性',
+    });
+    expect(getFollowUpPresentation(taskWebRecord)).toMatchObject({
+      text: '待跟进',
+      target: 'follow_up',
+    });
+    expect(
+      getCustomerIntentPresentation({ ...taskWebRecord, taskId: null }),
+    ).toBeNull();
+    expect(
+      getFollowUpPresentation({ ...taskWebRecord, taskId: null }),
+    ).toBeNull();
+  });
+
   it('不把 Mock 记录展示成正式话后结论', () => {
     const mockRecord = {
       ...baseRecord,
@@ -98,7 +125,11 @@ describe('通话记录话后状态映射', () => {
         qualityScoreStatus: 'completed',
         qualityScore: 86,
       }),
-    ).toMatchObject({ text: '86分', color: 'success' });
+    ).toMatchObject({
+      text: '86分',
+      color: 'success',
+      tooltip: 'AI 根据录音和通话转写自动评分，点击复核查看评分理由',
+    });
     expect(
       getQualityScorePresentation({
         ...baseRecord,

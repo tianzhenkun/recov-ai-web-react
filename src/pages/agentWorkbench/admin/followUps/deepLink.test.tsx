@@ -8,6 +8,8 @@ import FollowUpOverviewPage from './overview';
 
 let mockDeepLinkFollowUpId = 'follow-up-1';
 let mockStatisticsSearch = '';
+let mockTableQuery: Record<string, unknown> = { current: 1, pageSize: 10 };
+let latestProTableProps: Record<string, unknown> = {};
 
 jest.mock('@umijs/max', () => ({
   useSearchParams: () => [
@@ -32,8 +34,9 @@ jest.mock('@ant-design/pro-components', () => {
       ),
     ProTable: (props: Record<string, unknown>) => {
       const request = props.request as CallableFunction;
+      latestProTableProps = props;
       React.useEffect(() => {
-        void request({ current: 1, pageSize: 10 });
+        void request(mockTableQuery);
       }, []);
       return React.createElement('div');
     },
@@ -46,12 +49,39 @@ jest.mock('@/services/ruoyi/agent-console', () => ({
 }));
 
 jest.mock('../_shared', () => ({
-  AdminMetricRow: () => null,
+  AdminMetricRow: ({
+    items,
+  }: {
+    items: { key: string; label: string; value: number }[];
+  }) => {
+    const React = require('react');
+    return React.createElement(
+      'div',
+      null,
+      items.map((item) =>
+        React.createElement(
+          'span',
+          { key: item.key },
+          `${item.label} ${item.value}`,
+        ),
+      ),
+    );
+  },
   formatDateTime: (value: string) => value,
   sceneLabels: { intro_geo: 'GEO 获客' },
   sceneValueEnum: {},
-  statusColors: { pending: 'warning' },
-  statusLabels: { pending: '待处理' },
+  statusColors: {
+    pending: 'warning',
+    processing: 'processing',
+    completed: 'success',
+    closed: 'default',
+  },
+  statusLabels: {
+    pending: '待处理',
+    processing: '处理中',
+    completed: '已完成',
+    closed: '已关闭',
+  },
   unwrapPage: (value: unknown) => value,
 }));
 
@@ -76,6 +106,8 @@ describe('跟进总览深链', () => {
     jest.clearAllMocks();
     mockDeepLinkFollowUpId = 'follow-up-1';
     mockStatisticsSearch = '';
+    mockTableQuery = { current: 1, pageSize: 10 };
+    latestProTableProps = {};
     (listAdminFollowUps as jest.Mock).mockResolvedValue({
       rows: [],
       total: 0,
@@ -91,9 +123,9 @@ describe('跟进总览深链', () => {
       name: '跟进任务详情',
     });
     expect(within(drawer).getByText('AI 话后跟进')).toBeTruthy();
-    expect(within(drawer).getByText('call-1')).toBeTruthy();
-    expect(within(drawer).getByText('handoff_id')).toBeTruthy();
-    expect(within(drawer).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(drawer).getByText('关联通话与处理记录')).toBeTruthy();
+    expect(within(drawer).queryByText('call-1')).toBeNull();
+    expect(within(drawer).queryByText('handoff_id')).toBeNull();
   });
 
   it('继承外呼统计下钻的待跟进状态和来源通话时间', async () => {
@@ -117,9 +149,103 @@ describe('跟进总览深链', () => {
         sourceStartedAtEnd: '2026-07-31T16:20:00+08:00',
       }),
     );
+    expect(
+      (
+        latestProTableProps.columns as {
+          dataIndex?: string;
+          initialValue?: string;
+        }[]
+      ).find((column) => column.dataIndex === 'status'),
+    ).toMatchObject({ initialValue: 'pending' });
   });
 
-  it('展示详情接口返回的关联回拨通话', async () => {
+  it('仅保留来源类型、任务状态和业务场景筛选，并映射管理端参数', async () => {
+    mockDeepLinkFollowUpId = '';
+    mockTableQuery = {
+      current: 1,
+      pageSize: 10,
+      source_type: 'after_call_work',
+      status: 'completed',
+      scene_code: 'intro_geo',
+    };
+
+    render(<FollowUpOverviewPage />);
+
+    await waitFor(() =>
+      expect(listAdminFollowUps).toHaveBeenCalledWith({
+        pageNum: 1,
+        pageSize: 10,
+        sourceType: 'after_call_work',
+        status: 'completed',
+        sceneCode: 'intro_geo',
+      }),
+    );
+    const searchableTitles = (
+      latestProTableProps.columns as { title: string; hideInSearch?: boolean }[]
+    )
+      .filter((column) => !column.hideInSearch)
+      .map((column) => column.title);
+    expect(searchableTitles).toEqual(['来源类型', '业务场景', '任务状态']);
+    expect(
+      (
+        latestProTableProps.columns as {
+          hideInSearch?: boolean;
+          search?: boolean;
+        }[]
+      )
+        .filter((column) => column.hideInSearch)
+        .every((column) => column.search === false),
+    ).toBe(true);
+    expect(
+      (
+        latestProTableProps.columns as {
+          dataIndex?: string;
+          valueEnum?: Record<string, { text: string }>;
+        }[]
+      ).find((column) => column.dataIndex === 'status')?.valueEnum,
+    ).toMatchObject({
+      completed: { text: '已办结' },
+      closed: { text: '已终止' },
+    });
+  });
+
+  it('默认展开三项筛选', async () => {
+    mockDeepLinkFollowUpId = '';
+
+    render(<FollowUpOverviewPage />);
+
+    await waitFor(() => expect(listAdminFollowUps).toHaveBeenCalled());
+    expect(latestProTableProps.search).toMatchObject({
+      defaultCollapsed: false,
+    });
+  });
+
+  it('只展示当前提交结果对应的跟进指标', async () => {
+    mockDeepLinkFollowUpId = '';
+    (listAdminFollowUps as jest.Mock).mockResolvedValue({
+      rows: [],
+      total: 0,
+      metrics: {
+        pending: 2,
+        handoff_unanswered: 3,
+        completed: 4,
+        closed: 5,
+        scheduled: 6,
+        overdue: 7,
+      },
+    });
+
+    render(<FollowUpOverviewPage />);
+
+    expect(await screen.findByText('待处理 2')).toBeTruthy();
+    expect(screen.getByText('人工未接回访 3')).toBeTruthy();
+    expect(screen.getByText('已办结 4')).toBeTruthy();
+    expect(screen.getByText('已终止 5')).toBeTruthy();
+    expect(screen.queryByText('客户预约待回访 6')).toBeNull();
+    expect(screen.queryByText('预约已逾期 7')).toBeNull();
+  });
+
+  it('使用公共详情抽屉展示详情接口返回的关联回拨通话', async () => {
     (getAdminFollowUp as jest.Mock).mockResolvedValue({
       data: {
         task,
@@ -140,9 +266,9 @@ describe('跟进总览深链', () => {
     const drawer = await screen.findByRole('dialog', {
       name: '跟进任务详情',
     });
-    expect(within(drawer).getByText('callback-call-1')).toBeTruthy();
-    expect(within(drawer).getByText('completed')).toBeTruthy();
-    expect(within(drawer).getByText('customer_hangup')).toBeTruthy();
+    expect(within(drawer).getByText('第1次人工回拨')).toBeTruthy();
+    expect(within(drawer).getByText('已结束')).toBeTruthy();
+    expect(within(drawer).queryByText('callback-call-1')).toBeNull();
   });
 
   it('深链任务不存在时在详情抽屉展示明确错误', async () => {
@@ -180,15 +306,15 @@ describe('跟进总览深链', () => {
       resolveSecond({
         ...task,
         id: 'follow-up-2',
-        source_call_id: 'call-2',
+        follow_up_reason: '第二条任务',
       });
     });
-    expect(await screen.findByText('call-2')).toBeTruthy();
+    expect(await screen.findByText('第二条任务')).toBeTruthy();
 
     await act(async () => {
       resolveFirst(task);
     });
-    expect(screen.getByText('call-2')).toBeTruthy();
-    expect(screen.queryByText('call-1')).toBeNull();
+    expect(screen.getByText('第二条任务')).toBeTruthy();
+    expect(screen.queryByText('客户明确要求稍后联系')).toBeNull();
   });
 });

@@ -35,7 +35,7 @@ describe('AI Call Lab configuration service', () => {
     ).toEqual({ rows: [{ id: 'profile-2' }], total: 1 });
   });
 
-  it('loads prompt profiles from the existing Lab endpoint', async () => {
+  it('loads prompt profiles through the AI Call agent proxy', async () => {
     mockRequest.mockResolvedValueOnce({
       data: {
         rows: [{ id: 'prompt-1', name: '客户回访', sceneCode: 'follow_up' }],
@@ -46,7 +46,7 @@ describe('AI Call Lab configuration service', () => {
     await getAiCallLabPromptProfiles();
 
     expect(mockRequest).toHaveBeenCalledWith(
-      '/ai-call-lab-api/ai-call/prompt-profiles',
+      '/ai-call-agent-api/ai-call/prompt-profiles',
       { method: 'get', params: { pageSize: 200 }, timeout: 10_000 },
     );
   });

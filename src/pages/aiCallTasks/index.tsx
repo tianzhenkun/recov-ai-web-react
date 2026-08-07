@@ -229,7 +229,7 @@ const AiCallTasksPage = () => {
         <Space orientation="vertical" size={0}>
           <span>{task.taskName}</span>
           <span className="text-gray-500">
-            {task.taskMode === 'single' ? '单号码' : '名单外呼'}
+            {task.taskMode === 'single' ? '单个客户' : '名单外呼'}
           </span>
         </Space>
       ),

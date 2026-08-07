@@ -448,9 +448,7 @@ const AiCallLabCustomerPage = () => {
                     value={selectedVoice || undefined}
                     options={voiceProfiles.map((item) => ({
                       value: item.voice,
-                      label: item.displayName
-                        ? `${item.displayName} / ${item.voice}`
-                        : item.voice,
+                      label: item.displayName,
                     }))}
                     style={{ width: '100%' }}
                     onChange={setSelectedVoice}

@@ -238,6 +238,7 @@ describe('VoiceEnrollmentModal', () => {
     expect(
       displayNameLabel.classList.contains('ant-form-item-label-left'),
     ).toBe(false);
+    expect(displayNameLabel.classList.contains('ant-col-sm-5')).toBe(true);
     expect(consentText.classList.contains('sm:whitespace-nowrap')).toBe(true);
     expect(screen.queryByText('录音对应文本（建议填写）')).toBeNull();
   });

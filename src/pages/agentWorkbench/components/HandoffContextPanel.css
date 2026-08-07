@@ -50,7 +50,7 @@
 
 .agent-handoff-dialogue-scroll {
   display: grid;
-  max-height: 600px;
+  max-height: min(42dvh, 420px);
   gap: 10px;
   padding: 12px;
   overflow-y: auto;
@@ -86,38 +86,7 @@
 }
 
 @media (min-width: 1200px) {
-  .agent-workbench-viewport .agent-workbench-context-card .ant-card-body {
-    min-height: 0;
-  }
-
-  .agent-workbench-viewport .agent-handoff-context {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-  }
-
-  .agent-workbench-viewport .agent-handoff-dialogue {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .agent-workbench-viewport .agent-handoff-dialogue > .ant-spin,
-  .agent-workbench-viewport
-    .agent-handoff-dialogue
-    > .ant-spin
-    > .ant-spin-container {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
   .agent-workbench-viewport .agent-handoff-dialogue-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
+    max-height: min(42dvh, 420px);
   }
 }

@@ -18,7 +18,6 @@ import type {
 } from './domain';
 
 export const AI_CALL_AGENT_BASE_API = '/ai-call-agent-api';
-const AI_CALL_LAB_BASE_API = '/ai-call-lab-api';
 
 const OUTBOUND_PREFIX = '/ai-call';
 const TASKS_PATH = `${OUTBOUND_PREFIX}/outbound-tasks`;
@@ -59,7 +58,7 @@ export type ValidationIssueQuery = {
 export type ValidationRequest = {
   taskName: string;
   taskMode: TaskMode;
-  answerMode?: AnswerMode;
+  answerMode: AnswerMode;
   promptProfileId?: string;
   sceneCode: string;
   voice: string;
@@ -248,7 +247,7 @@ export const getAiCallTaskTestCapability = async (
     await ruoyiRequest<AiCallTaskTestCapability>(
       `${TASK_TESTS_PATH}/${taskId}/capability`,
       {
-        baseApi: AI_CALL_LAB_BASE_API,
+        baseApi: AI_CALL_AGENT_BASE_API,
         method: 'get',
       },
     ),
@@ -263,7 +262,7 @@ export const runAiCallTaskTest = async (
     await ruoyiRequest<AiCallTaskTestAccepted>(
       `${TASK_TESTS_PATH}/${taskId}/runs`,
       {
-        baseApi: AI_CALL_LAB_BASE_API,
+        baseApi: AI_CALL_AGENT_BASE_API,
         method: 'post',
         headers: { 'Idempotency-Key': idempotencyKey },
         data: { scenario },
@@ -278,7 +277,7 @@ export const getAiCallTaskTestStatus = async (
     await ruoyiRequest<AiCallTaskTestStatus>(
       `${TASK_TESTS_PATH}/${taskId}/status`,
       {
-        baseApi: AI_CALL_LAB_BASE_API,
+        baseApi: AI_CALL_AGENT_BASE_API,
         method: 'get',
       },
     ),
@@ -292,7 +291,7 @@ export const endAiCallTaskActiveCall = async (
     await ruoyiRequest<AcceptedCommand>(
       `${TASK_TESTS_PATH}/${taskId}/active-call/end`,
       {
-        baseApi: AI_CALL_LAB_BASE_API,
+        baseApi: AI_CALL_AGENT_BASE_API,
         method: 'post',
         headers: { 'Idempotency-Key': idempotencyKey },
       },

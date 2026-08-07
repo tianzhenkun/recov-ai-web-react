@@ -133,19 +133,22 @@ describe('agent console service contract', () => {
     });
   });
 
-  it('maps follow-up ownership and contact actions to their endpoints', async () => {
+  it('maps follow-up ownership and atomic handling results to their endpoints', async () => {
     await call('listAgentFollowUps', {
       status: ['pending'],
       sceneCode: 'intro_geo',
-      sourceType: 'handoff_unanswered',
+      customerName: '张三',
       createdAtBegin: '2026-08-05T00:00:00.000Z',
       createdAtEnd: '2026-08-05T23:59:59.999Z',
     });
     await call('getAgentFollowUp', 'follow-up-1');
-    await call('createFollowUpAttempt', 'follow-up-1', {
-      contactChannel: 'wechat',
-      attemptResult: 'connected',
-      idempotencyKey: 'attempt-1',
+    await call('submitFollowUpHandlingResult', 'follow-up-1', {
+      callId: 'call-1',
+      contactResult: 'connected',
+      remark: '客户确认需求，明天下午继续沟通',
+      nextAction: 'continue',
+      nextFollowUpAt: '2026-08-06T07:00:00.000Z',
+      idempotencyKey: 'handling-result-1',
     });
     await call('claimFollowUp', 'follow-up-1', 'follow-up-claim-1');
     await call('startFollowUpCall', 'follow-up-1', {
@@ -156,36 +159,39 @@ describe('agent console service contract', () => {
       consoleSessionId: 'session-1',
       idempotencyKey: 'follow-up-end-1',
     });
-    await call('completeFollowUp', 'follow-up-1', 'follow-up-complete-1');
-    await call('closeFollowUp', 'follow-up-1', {
-      closedReason: 'customer_refused',
-      idempotencyKey: 'follow-up-close-1',
-    });
 
     expect(mockedRequest.mock.calls.map(([url]) => url)).toEqual([
       '/ai-call/agent-console/follow-ups',
       '/ai-call/agent-console/follow-ups/follow-up-1',
-      '/ai-call/agent-console/follow-ups/follow-up-1/attempts',
+      '/ai-call/agent-console/follow-ups/follow-up-1/handling-results',
       '/ai-call/agent-console/follow-ups/follow-up-1/claim',
       '/ai-call/agent-console/follow-ups/follow-up-1/call',
       '/ai-call/agent-console/follow-ups/follow-up-1/call/call-1/end',
-      '/ai-call/agent-console/follow-ups/follow-up-1/complete',
-      '/ai-call/agent-console/follow-ups/follow-up-1/close',
     ]);
     expect(mockedRequest.mock.calls[0][1]).toMatchObject({
       method: 'get',
       params: {
         status: 'pending',
         sceneCode: 'intro_geo',
-        sourceType: 'handoff_unanswered',
+        customerName: '张三',
         createdAtBegin: '2026-08-05T00:00:00.000Z',
         createdAtEnd: '2026-08-05T23:59:59.999Z',
       },
     });
     expect(mockedRequest.mock.calls[2][1]).toMatchObject({
-      headers: { 'Idempotency-Key': 'attempt-1' },
-      data: { contact_channel: 'wechat', attempt_result: 'connected' },
+      method: 'post',
+      headers: { 'Idempotency-Key': 'handling-result-1' },
+      data: {
+        call_id: 'call-1',
+        contact_result: 'connected',
+        remark: '客户确认需求，明天下午继续沟通',
+        next_action: 'continue',
+        next_follow_up_at: '2026-08-06T07:00:00.000Z',
+      },
     });
+    expect(mockedRequest.mock.calls[2][1]?.data).not.toHaveProperty(
+      'contact_channel',
+    );
     expect(mockedRequest.mock.calls[4][1]).toMatchObject({
       headers: { 'Idempotency-Key': 'follow-up-call-1' },
       data: { console_session_id: 'session-1' },

@@ -8,6 +8,7 @@ export type AiCallLabRoomConnection = {
 
 export const connectAiCallLabRoom = async (
   session: AiCallLabSession,
+  onDisconnected?: () => void,
 ): Promise<AiCallLabRoomConnection> => {
   const token = session.participantToken || session.token;
   if (!session.livekitUrl || !token) {
@@ -37,14 +38,28 @@ export const connectAiCallLabRoom = async (
     echoCancellation: true,
     noiseSuppression: true,
   });
+  let disconnectingLocally = false;
+  let mediaReleased = false;
 
-  const disconnect = async () => {
+  const releaseMedia = () => {
+    if (mediaReleased) return;
+    mediaReleased = true;
     audioTrack.stop();
     remoteAudioElements.forEach((media) => {
       media.pause();
       media.remove();
     });
     remoteAudioElements.length = 0;
+  };
+
+  room.on(RoomEvent.Disconnected, () => {
+    releaseMedia();
+    if (!disconnectingLocally) onDisconnected?.();
+  });
+
+  const disconnect = async () => {
+    disconnectingLocally = true;
+    releaseMedia();
     await room.disconnect(true);
   };
 

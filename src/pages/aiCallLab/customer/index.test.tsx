@@ -125,7 +125,8 @@ describe('AiCallLabCustomerPage', () => {
     render(React.createElement(AiCallLabCustomerPage));
 
     expect(screen.getByText('AI Call 浏览器通话测试台')).toBeTruthy();
-    expect(await screen.findByText(/甜甜 Tina/)).toBeTruthy();
+    expect(await screen.findByText('甜甜 Tina')).toBeTruthy();
+    expect(screen.queryByText('甜甜 Tina / Tina')).toBeNull();
     expect(screen.getByText(/GEO 产品介绍/)).toBeTruthy();
   });
 

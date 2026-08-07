@@ -122,6 +122,31 @@ describe('AgentWorkbenchPage presence shell', () => {
     ).toBeTruthy();
   });
 
+  it('centers active call controls horizontally without using the empty-state layout', () => {
+    mockUseAgentPresence.mockReturnValue({
+      ...basePresence,
+      status: 'in_call',
+      consoleSessionId: 'session-1',
+    });
+    mockUseAgentCall.mockReturnValue({
+      phase: 'connected',
+      connectionStage: 'connected',
+      microphoneEnabled: true,
+      remoteAudioReady: true,
+      networkQuality: 'good',
+      errorMessage: '',
+      toggleMicrophone: jest.fn(),
+      switchAudioInput: jest.fn(),
+      endCall: jest.fn(),
+    });
+
+    const view = render(<AgentWorkbenchPage />);
+
+    expect(
+      view.container.querySelector('.agent-workbench-current-content'),
+    ).toBeTruthy();
+  });
+
   it('does not query the public waiting pool while the agent is offline', async () => {
     mockUseAgentPresence.mockReturnValue({
       ...basePresence,

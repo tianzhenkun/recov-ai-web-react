@@ -153,7 +153,7 @@ describe('single target AI Call task creation', () => {
     await screen.findAllByText('客户回访 / intro_follow_up');
 
     expect(
-      (screen.getByRole('radio', { name: '单号码' }) as HTMLInputElement)
+      (screen.getByRole('radio', { name: '单个客户' }) as HTMLInputElement)
         .checked,
     ).toBe(true);
     expect(
@@ -183,7 +183,8 @@ describe('single target AI Call task creation', () => {
       availableOnly: true,
       pageSize: 200,
     });
-    expect(screen.getByText('芊悦 / Cherry')).toBeTruthy();
+    expect(screen.getByText('芊悦')).toBeTruthy();
+    expect(screen.queryByText('芊悦 / Cherry')).toBeNull();
     expect(screen.queryByText(/创建中音色/)).toBeNull();
     expect(screen.queryByText(/失败音色/)).toBeNull();
 
@@ -310,6 +311,8 @@ describe('single target AI Call task creation', () => {
       expect.objectContaining({ taskMode: 'single', answerMode: 'web' }),
     );
     expect(request).not.toHaveProperty('phoneNumber');
+    expect(await screen.findAllByText('接听方式')).toHaveLength(2);
+    expect(screen.getByText('浏览器接听')).toBeTruthy();
   });
 
   it('downloads the template and directly uploads one xlsx list for validation', async () => {

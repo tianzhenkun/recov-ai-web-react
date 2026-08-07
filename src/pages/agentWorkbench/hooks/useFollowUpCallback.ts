@@ -1,3 +1,4 @@
+import { DisconnectReason } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   endFollowUpCall,
@@ -86,12 +87,21 @@ export const useFollowUpCallback = ({
     room.onNetworkQuality((quality) => {
       if (generation === generationRef.current) setNetworkQuality(quality);
     });
-    room.onDisconnected(() => {
+    room.onDisconnected((reason) => {
       if (
         generation !== generationRef.current ||
         intentionalDisconnectRef.current ||
         endingRef.current
       ) {
+        return;
+      }
+      if (
+        reason === DisconnectReason.ROOM_DELETED ||
+        reason === DisconnectReason.PARTICIPANT_REMOVED
+      ) {
+        setPhase('ended');
+        setErrorMessage('通话已挂断，正在同步处理结果');
+        void refresh?.();
         return;
       }
       setPhase('error');

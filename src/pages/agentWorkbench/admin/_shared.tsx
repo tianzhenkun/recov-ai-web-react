@@ -1,5 +1,6 @@
 import { ProCard } from '@ant-design/pro-components';
 import { Typography } from 'antd';
+import dayjs from 'dayjs';
 import * as React from 'react';
 import type {
   AfterCallWorkDto,
@@ -185,7 +186,7 @@ export const normalizeHandoffMetrics = (
 };
 
 export const formatDateTime = (value?: string | null) =>
-  value ? new Date(value).toLocaleString() : '-';
+  value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-';
 
 export const unwrapPage = <T,>(response: unknown): PageResult<T> => {
   if (!response || typeof response !== 'object') return { rows: [], total: 0 };

@@ -22,14 +22,15 @@ describe('follow-up processing page', () => {
     expect(source).not.toContain('修改正常结果');
   });
 
-  it('keeps callback controls in a modal and enters contact result after ending', () => {
+  it('keeps callback controls in a modal and enters handling result after ending', () => {
     const source = fs.readFileSync(sourcePath, 'utf8');
     for (const text of [
       'message.useMessage',
       '<Modal',
       'open={Boolean(callback)}',
       "agent.status === 'available' || agent.goOnline()",
-      'attemptTaskToOpen',
+      'handlingTaskToOpen',
+      'callId',
       'onEndCall={endCallbackCall}',
     ])
       expect(source).toContain(text);

@@ -5,7 +5,7 @@ import type {
   VoiceProfileQuery,
 } from './ai-call-voices.types';
 
-const AI_CALL_LAB_PREFIX = '/ai-call-lab-api/ai-call';
+const AI_CALL_AGENT_PREFIX = '/ai-call-agent-api/ai-call';
 const AI_CALL_LAB_READ_TIMEOUT = 10_000;
 const AI_CALL_LAB_ACTION_TIMEOUT = 15_000;
 
@@ -111,7 +111,7 @@ export type AiCallLabHandoff = {
   failureMessage?: string;
 };
 
-const buildPath = (path: string) => `${AI_CALL_LAB_PREFIX}${path}`;
+const buildPath = (path: string) => `${AI_CALL_AGENT_PREFIX}${path}`;
 
 const unwrapAiCallLabResponse = <T>(
   response: AiCallLabResponse<T> | T,

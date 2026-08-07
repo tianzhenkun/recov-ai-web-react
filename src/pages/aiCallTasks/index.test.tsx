@@ -267,6 +267,26 @@ describe('AI Call task list page', () => {
     expect(row.getByRole('button', { name: '暂停' })).toBeTruthy();
   });
 
+  it('将单客户任务展示为单个客户', async () => {
+    mockedListTasks.mockResolvedValue({
+      rows: [
+        buildTask({
+          taskId: 'single-customer',
+          taskName: '单客户任务',
+          taskMode: 'single',
+        }),
+      ],
+      total: 1,
+    });
+
+    render(<AiCallTasksPage />);
+    await screen.findByText('单客户任务');
+
+    const row = getTaskRow('单客户任务');
+    expect(row.getByText('单个客户')).toBeTruthy();
+    expect(row.queryByText('单号码')).toBeNull();
+  });
+
   it('renders actions strictly from the current task status', async () => {
     render(<AiCallTasksPage />);
     await screen.findByText('运行任务');

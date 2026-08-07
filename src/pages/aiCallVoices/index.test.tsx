@@ -11,24 +11,26 @@ import * as React from 'react';
 import { RuoyiError } from '@/adapters/ruoyi/response';
 import {
   createVoiceEnrollment,
-  createVoicePreviewSession,
+  createVoicePreviewAudio,
   deleteTenantVoice,
   getVoiceDeletionCheck,
   listVoiceProfiles,
+  setTenantVoiceAvailability,
 } from '@/services/ruoyi/ai-call-voices';
 import AiCallVoicesPage from './index';
-import { connectVoicePreview } from './VoicePreview';
+import { playVoicePreviewAudio } from './VoicePreview';
 
 jest.mock('@/services/ruoyi/ai-call-voices', () => ({
   createVoiceEnrollment: jest.fn(),
-  createVoicePreviewSession: jest.fn(),
+  createVoicePreviewAudio: jest.fn(),
   deleteTenantVoice: jest.fn(),
   getVoiceDeletionCheck: jest.fn(),
   listVoiceProfiles: jest.fn(),
+  setTenantVoiceAvailability: jest.fn(),
 }));
 
 jest.mock('./VoicePreview', () => ({
-  connectVoicePreview: jest.fn(),
+  playVoicePreviewAudio: jest.fn(),
 }));
 
 jest.mock('@ant-design/pro-components', () => {
@@ -172,10 +174,11 @@ jest.mock('@ant-design/pro-components', () => {
 
 const mockList = listVoiceProfiles as jest.Mock;
 const mockCreate = createVoiceEnrollment as jest.Mock;
-const mockCreatePreview = createVoicePreviewSession as jest.Mock;
-const mockConnectPreview = connectVoicePreview as jest.Mock;
+const mockCreatePreview = createVoicePreviewAudio as jest.Mock;
+const mockPlayPreview = playVoicePreviewAudio as jest.Mock;
 const mockDeletionCheck = getVoiceDeletionCheck as jest.Mock;
 const mockDelete = deleteTenantVoice as jest.Mock;
+const mockSetAvailability = setTenantVoiceAvailability as jest.Mock;
 
 const voice = (overrides: Record<string, unknown> = {}) => ({
   id: '1',
@@ -229,17 +232,16 @@ describe('AI Call voice management page', () => {
     mockList.mockReset();
     mockCreate.mockReset();
     mockCreatePreview.mockReset();
-    mockConnectPreview.mockReset();
+    mockPlayPreview.mockReset();
     mockDeletionCheck.mockReset();
     mockDelete.mockReset();
+    mockSetAvailability.mockReset();
     mockList.mockResolvedValue({ rows: [voice()], total: 1 });
     mockCreatePreview.mockResolvedValue({
-      callId: 'call-preview-1',
-      roomName: 'voice-preview-room',
-      participantToken: 'participant-token-1',
-      livekitUrl: 'ws://127.0.0.1:7880',
+      audioUrl: 'data:audio/wav;base64,UklGRg==',
+      text: '您好，我是您的智能语音助手，很高兴为您服务。',
     });
-    mockConnectPreview.mockResolvedValue({
+    mockPlayPreview.mockResolvedValue({
       disconnect: jest.fn().mockResolvedValue(undefined),
     });
     Object.defineProperty(document, 'hidden', {
@@ -369,6 +371,18 @@ describe('AI Call voice management page', () => {
     );
   });
 
+  it('keeps the create action above the table and removes refresh', async () => {
+    render(<AiCallVoicesPage />);
+
+    const createButton = await screen.findByRole('button', {
+      name: /创建自定义音色/,
+    });
+    const table = screen.getByRole('table');
+
+    expect(screen.queryByRole('button', { name: '刷新' })).toBeNull();
+    expect(createButton.closest('section')?.contains(table)).toBe(true);
+  });
+
   it('puts an accepted voice first and deduplicates it when the server returns it', async () => {
     const builtin = voice({
       id: '2',
@@ -410,7 +424,7 @@ describe('AI Call voice management page', () => {
 
     serverRows = [serverVoice, builtin];
     const callsBeforeRefresh = mockList.mock.calls.length;
-    fireEvent.click(screen.getByRole('button', { name: /刷\s*新/ }));
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
     await waitFor(() =>
       expect(mockList.mock.calls.length).toBeGreaterThan(callsBeforeRefresh),
     );
@@ -424,6 +438,73 @@ describe('AI Call voice management page', () => {
     expect(
       within(acceptedRow).queryByRole('button', { name: '删除' }),
     ).toBeNull();
+  });
+
+  it('only exposes available and disabled status filters, without unknown gender', async () => {
+    render(<AiCallVoicesPage />);
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1));
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '性别' }));
+    expect(screen.queryByTitle('未知')).toBeNull();
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '性别' }), {
+      key: 'Escape',
+    });
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '状态' }));
+    expect(await screen.findByTitle('可用')).toBeTruthy();
+    expect(screen.getByTitle('停用')).toBeTruthy();
+    expect(screen.queryByTitle('创建中')).toBeNull();
+    expect(screen.queryByTitle('删除中')).toBeNull();
+  });
+
+  it('only toggles availability for custom voices after confirmation', async () => {
+    mockList.mockResolvedValue({
+      rows: [
+        voice({ id: '1', displayName: '可用自定义音色' }),
+        voice({
+          id: '2',
+          scope: 'GLOBAL',
+          displayName: '内置音色',
+          voiceType: '内置',
+        }),
+        voice({
+          id: '3',
+          displayName: '停用自定义音色',
+          status: 'DISABLED',
+          canPreview: false,
+        }),
+      ],
+      total: 3,
+    });
+    mockSetAvailability.mockResolvedValue(
+      voice({ status: 'DISABLED', canPreview: false }),
+    );
+    render(<AiCallVoicesPage />);
+
+    expect(await screen.findByText('可用自定义音色')).toBeTruthy();
+    const rows = screen.getAllByTestId('voice-row');
+    expect(within(rows[0]).getByRole('button', { name: '停用' })).toBeTruthy();
+    expect(within(rows[1]).queryByRole('button', { name: '停用' })).toBeNull();
+    expect(within(rows[2]).getByRole('button', { name: '启用' })).toBeTruthy();
+
+    fireEvent.click(within(rows[0]).getByRole('button', { name: '停用' }));
+    expect(
+      await screen.findByText('确认停用音色“可用自定义音色”吗？'),
+    ).toBeTruthy();
+    expect(mockSetAvailability).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '确认停用' }));
+    await waitFor(() =>
+      expect(mockSetAvailability).toHaveBeenCalledWith('1', 'DISABLED'),
+    );
+
+    fireEvent.click(within(rows[2]).getByRole('button', { name: '启用' }));
+    expect(
+      await screen.findByText('确认启用音色“停用自定义音色”吗？'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '确认启用' }));
+    await waitFor(() =>
+      expect(mockSetAvailability).toHaveBeenCalledWith('3', 'ENABLED'),
+    );
   });
 
   it('does not show or poll an accepted custom voice excluded by the active filters', async () => {
@@ -548,10 +629,39 @@ describe('AI Call voice management page', () => {
     expect(within(rows[3]).queryByRole('button', { name: '试听' })).toBeNull();
   });
 
-  it('ignores a duplicate start and disconnects the active preview on unmount', async () => {
+  it('does not expose the provider voice id in the list', async () => {
+    const providerVoiceId = 'qwen-omni-vc-3310888221872128-voice-example';
+    mockList.mockResolvedValue({
+      rows: [voice({ displayName: '利哥音色', voice: providerVoiceId })],
+      total: 1,
+    });
+
+    render(<AiCallVoicesPage />);
+
+    expect(await screen.findByText('利哥音色')).toBeTruthy();
+    expect(screen.queryByText(providerVoiceId)).toBeNull();
+  });
+
+  it('formats the updated time for display', async () => {
+    mockList.mockResolvedValue({
+      rows: [voice({ updatedAt: '2026-08-05T08:34:58.731766Z' })],
+      total: 1,
+    });
+
+    render(<AiCallVoicesPage />);
+
+    expect(await screen.findByText('2026-08-05 16:34:58')).toBeTruthy();
+    expect(screen.queryByText('2026-08-05T08:34:58.731766Z')).toBeNull();
+  });
+
+  it('returns to preview after playback ends', async () => {
     const disconnect = jest.fn().mockResolvedValue(undefined);
-    mockConnectPreview.mockResolvedValue({ disconnect });
-    const view = render(<AiCallVoicesPage />);
+    let onPlaybackEnded: (() => void) | undefined;
+    mockPlayPreview.mockImplementation((_previewAudio, onEnded) => {
+      onPlaybackEnded = onEnded;
+      return Promise.resolve({ disconnect });
+    });
+    render(<AiCallVoicesPage />);
     const previewButton = await screen.findByRole('button', {
       name: '试听',
     });
@@ -560,11 +670,30 @@ describe('AI Call voice management page', () => {
     fireEvent.click(previewButton);
 
     await waitFor(() => expect(mockCreatePreview).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(mockConnectPreview).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockPlayPreview).toHaveBeenCalledTimes(1));
     expect(mockCreatePreview).toHaveBeenCalledWith('qwen-voice-1');
+    expect(mockPlayPreview).toHaveBeenCalledWith(
+      {
+        audioUrl: 'data:audio/wav;base64,UklGRg==',
+        text: '您好，我是您的智能语音助手，很高兴为您服务。',
+      },
+      expect.any(Function),
+    );
     expect(
       await screen.findByRole('button', { name: '停止试听' }),
     ).toBeTruthy();
+
+    act(() => onPlaybackEnded?.());
+    expect(await screen.findByRole('button', { name: '试听' })).toBeTruthy();
+  });
+
+  it('disconnects the active preview on unmount', async () => {
+    const disconnect = jest.fn().mockResolvedValue(undefined);
+    mockPlayPreview.mockResolvedValue({ disconnect });
+    const view = render(<AiCallVoicesPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '试听' }));
+    await waitFor(() => expect(mockPlayPreview).toHaveBeenCalledTimes(1));
 
     view.unmount();
     await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
@@ -589,12 +718,9 @@ describe('AI Call voice management page', () => {
       total: 2,
     });
     mockCreatePreview.mockImplementation(async (providerVoice: string) => ({
-      callId: `call-${providerVoice}`,
-      roomName: `room-${providerVoice}`,
-      participantToken: `token-${providerVoice}`,
-      livekitUrl: 'ws://127.0.0.1:7880',
+      audioUrl: `data:audio/wav;base64,${providerVoice}`,
     }));
-    mockConnectPreview
+    mockPlayPreview
       .mockResolvedValueOnce({ disconnect: firstDisconnect })
       .mockResolvedValueOnce({ disconnect: secondDisconnect });
     const view = render(<AiCallVoicesPage />);
@@ -602,13 +728,13 @@ describe('AI Call voice management page', () => {
     const rows = screen.getAllByTestId('voice-row');
 
     fireEvent.click(within(rows[0]).getByRole('button', { name: '试听' }));
-    await waitFor(() => expect(mockConnectPreview).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockPlayPreview).toHaveBeenCalledTimes(1));
     fireEvent.click(within(rows[1]).getByRole('button', { name: '试听' }));
 
-    await waitFor(() => expect(mockConnectPreview).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockPlayPreview).toHaveBeenCalledTimes(2));
     expect(firstDisconnect).toHaveBeenCalledTimes(1);
     expect(firstDisconnect.mock.invocationCallOrder[0]).toBeLessThan(
-      mockConnectPreview.mock.invocationCallOrder[1],
+      mockPlayPreview.mock.invocationCallOrder[1],
     );
 
     view.unmount();

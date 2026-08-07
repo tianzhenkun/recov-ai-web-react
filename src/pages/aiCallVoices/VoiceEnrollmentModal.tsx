@@ -138,10 +138,10 @@ const VoiceEnrollmentModal = ({
         form={form}
         initialValues={initialFormValues(initialDisplayName)}
         labelAlign="right"
-        labelCol={{ xs: { span: 24 }, sm: { span: 6 } }}
+        labelCol={{ xs: { span: 24 }, sm: { span: 5 } }}
         layout="horizontal"
         onFinish={handleFinish}
-        wrapperCol={{ xs: { span: 24 }, sm: { span: 18 } }}
+        wrapperCol={{ xs: { span: 24 }, sm: { span: 19 } }}
       >
         <Form.Item
           label="音色展示名"
@@ -223,7 +223,7 @@ const VoiceEnrollmentModal = ({
             },
           ]}
           valuePropName="checked"
-          wrapperCol={{ xs: { span: 24 }, sm: { offset: 6, span: 18 } }}
+          wrapperCol={{ xs: { span: 24 }, sm: { offset: 5, span: 19 } }}
         >
           <Checkbox>
             <span className="sm:whitespace-nowrap">
