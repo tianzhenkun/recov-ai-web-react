@@ -6,6 +6,7 @@
   "repository": "git@github.com:ant-design/ant-design-pro.git",
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
+    "prebuild": "node scripts/check-build-env.js",
     "build": "max build",
     "deploy": "cross-env CI=true max build && gh-pages -d dist",
     "dev": "cross-env UMI_ENV=dev MOCK=none max dev",
