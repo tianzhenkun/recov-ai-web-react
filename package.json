@@ -6,6 +6,7 @@
   "repository": "git@github.com:ant-design/ant-design-pro.git",
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
+    "prebuild": "node scripts/check-build-env.js",
     "build": "max build",
     "deploy": "cross-env CI=true max build && gh-pages -d dist",
     "dev": "cross-env UMI_ENV=dev MOCK=none max dev",
@@ -59,7 +60,6 @@
     "highlight.js": "^11.11.1",
     "jsencrypt": "^3.5.4",
     "jssip": "^3.13.8",
-    "livekit-client": "^2.20.2",
     "markdown-it": "^14.1.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

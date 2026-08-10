@@ -42,11 +42,14 @@ jobs:
           workflow_conclusion: success
           name: dist
 
+      - name: extract dist artifact
+        run: mkdir dist && tar -xzf dist.tar.gz -C dist
+
       - name: upload surge service
         id: deploy
         run: |
           export DEPLOY_DOMAIN=https://ant-design-pro-preview-pr-${{ steps.pr.outputs.id }}.surge.sh
-          npx surge --project ./ --domain $DEPLOY_DOMAIN --token ${{ secrets.SURGE_TOKEN }}
+          npx surge --project ./dist --domain $DEPLOY_DOMAIN --token ${{ secrets.SURGE_TOKEN }}
 
       - name: update status comment
         uses: actions-cool/maintain-one-comment@v1.2.1

@@ -4,7 +4,7 @@ import { ruoyiRequest } from './request';
 
 jest.mock('@umijs/max', () => ({
   history: {
-    location: { hash: '', pathname: '/ai-call/voices', search: '' },
+    location: { hash: '', pathname: '/system/user', search: '' },
     replace: jest.fn(),
   },
   request: jest.fn(),
@@ -29,24 +29,24 @@ describe('ruoyiRequest', () => {
         status: 503,
         data: {
           code: -1,
-          msg: '音色复刻功能未启用',
+          msg: '服务暂时不可用',
           data: null,
         },
       },
     });
 
     await expect(
-      ruoyiRequest('/ai-call/voice-enrollments', {
-        baseApi: '/ai-call-agent-api',
-        method: 'post',
+      ruoyiRequest('/system/user/list', {
+        baseApi: '/dev-api',
+        method: 'get',
       }),
     ).rejects.toMatchObject({
-      message: '音色复刻功能未启用',
+      message: '服务暂时不可用',
     });
 
     expect(mockUmiRequest.mock.calls[0][1]).toMatchObject({
       skipErrorHandler: true,
     });
-    expect(mockShowRuoyiError).toHaveBeenCalledWith('音色复刻功能未启用');
+    expect(mockShowRuoyiError).toHaveBeenCalledWith('服务暂时不可用');
   });
 });

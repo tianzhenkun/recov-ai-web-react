@@ -1,5 +1,4 @@
 import {
-  attachAiCallManagementMenu,
   attachSalesAgentOverviewMenu,
   buildLayoutMenuData,
   buildRuoyiMenuData,
@@ -152,178 +151,41 @@ describe('RuoYi menu transform', () => {
     expect(menuData[0].redirect).toBeUndefined();
   });
 
-  it('adds generic outbound management entries under an AI Call management menu', () => {
-    const source = [
-      {
-        path: '/ai-call',
-        name: 'AI Call',
-        children: [
-          {
-            path: '/agent-workbench',
-            name: '坐席工作台',
-          },
-          {
-            path: '/ai-call/agents',
-            name: '坐席管理',
-          },
-        ],
-      },
-    ];
-
-    const permissions = [
-      'ai_call:voice:manage',
-      'ai_call:agent:console',
-      'ai_call:agent:manage',
-    ];
-    const once = attachAiCallManagementMenu(source, permissions);
-    const twice = attachAiCallManagementMenu(once, permissions);
-
-    expect(once[0].children?.slice(0, 7)).toEqual([
-      expect.objectContaining({
-        path: '/ai-call/tasks',
-        name: '外呼任务',
-      }),
-      expect.objectContaining({
-        path: '/ai-call/records',
-        name: '通话记录',
-      }),
-      expect.objectContaining({
-        path: '/ai-call/voices',
-        name: '音色管理',
-      }),
-      expect.objectContaining({
-        path: '/ai-call/lines',
-        name: '线路配置',
-      }),
-      expect.objectContaining({
-        path: '/ai-call/rules',
-        name: '呼叫规则',
-      }),
-      expect.objectContaining({
-        path: '/ai-call/follow-ups',
-        name: '跟进处理',
-      }),
-      expect.objectContaining({
-        path: '/ai-call/follow-up-overview',
-        name: '跟进总览',
-      }),
-    ]);
-    expect(twice).toEqual(once);
-    expect(
-      twice[0].children?.filter((item) => item.path === '/ai-call/tasks'),
-    ).toHaveLength(1);
-  });
-
-  it('does not inject voice management without its independent permission', () => {
-    const menuData = attachAiCallManagementMenu(
+  it('removes migrated AI Call entries from backend menus', () => {
+    const menuData = buildLayoutMenuData(
       [
+        {
+          path: '/intelligent-outbound',
+          name: '智能外呼',
+        },
         {
           path: '/ai-call',
           name: 'AI Call',
           children: [
             {
-              path: '/ai-call/agents',
-              name: '坐席管理',
+              path: '/ai-call/tasks',
+              name: '外呼任务',
             },
           ],
         },
-      ],
-      ['ai_call:agent:manage'],
-    );
-
-    expect(
-      menuData[0].children?.some((item) => item.path === '/ai-call/voices'),
-    ).toBe(false);
-  });
-
-  it('injects only voice management for a user with only the voice permission', () => {
-    const menuData = attachAiCallManagementMenu(
-      [
         {
-          path: '/ai-call',
-          name: 'AI Call',
+          path: '/operations',
+          name: '运营管理',
           children: [
             {
-              path: '/ai-call-lab/customer',
-              name: '通话测试台',
+              path: '/agent-workbench',
+              name: '坐席工作台',
             },
           ],
         },
       ],
-      ['ai_call:voice:manage'],
+      [],
     );
 
-    expect(menuData[0].children?.map((item) => item.path)).toEqual([
-      '/ai-call/voices',
-      '/ai-call-lab/customer',
+    expect(menuData).toEqual([
+      expect.objectContaining({ path: '/intelligent-outbound' }),
+      expect.objectContaining({ path: '/operations', children: [] }),
     ]);
-  });
-
-  it('only exposes the follow-up entry allowed by the current permission', () => {
-    const source = [
-      {
-        path: '/ai-call',
-        name: 'AI Call',
-        children: [
-          {
-            path: '/agent-workbench',
-            name: '坐席工作台',
-          },
-        ],
-      },
-    ];
-
-    const menuData = attachAiCallManagementMenu(source, [
-      'ai_call:agent:console',
-    ]);
-
-    expect(menuData[0].children?.map((item) => item.path)).toEqual([
-      '/ai-call/follow-ups',
-      '/agent-workbench',
-    ]);
-  });
-
-  it('keeps voice management visible in its workspace with only the voice permission', () => {
-    const menuData = attachAiCallManagementMenu(
-      [
-        {
-          path: '/ai-call',
-          name: 'AI Call',
-          ruoyiComponent: 'Layout',
-          children: [
-            {
-              path: '/ai-call-lab/customer',
-              name: '通话测试台',
-            },
-          ],
-        },
-      ],
-      ['ai_call:voice:manage'],
-    );
-
-    const workspaceMenu = getScopedRuoyiMenuData(menuData, '/ai-call', [
-      'AI Call',
-    ]);
-    expect(workspaceMenu.some((item) => item.path === '/ai-call/voices')).toBe(
-      true,
-    );
-  });
-
-  it('does not expose generic outbound entries without an AI Call management child', () => {
-    const menuData = attachAiCallManagementMenu([
-      {
-        path: '/ai-call',
-        name: 'AI Call',
-        children: [
-          {
-            path: '/ai-call-lab/customer',
-            name: '通话测试台',
-          },
-        ],
-      },
-    ]);
-
-    expect(menuData[0].children).toHaveLength(1);
   });
 
   it('does not append template example menus to business navigation', () => {

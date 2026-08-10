@@ -34,22 +34,10 @@ describe('proxy config', () => {
     });
   });
 
-  it('keeps the agent console api proxy isolated with long-lived connections', () => {
+  it('does not proxy the AI Reach backend from Recov', () => {
     const devProxy = proxy.dev as Record<string, ProxyRule>;
 
-    expect(devProxy['/ai-call-agent-api']).toMatchObject({
-      target:
-        process.env.UMI_APP_AI_CALL_API_TARGET || 'http://127.0.0.1:19011',
-      changeOrigin: true,
-      ws: true,
-      proxyTimeout: 0,
-      timeout: 0,
-      pathRewrite: { '^/ai-call-agent-api': '' },
-      headers: {
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    });
+    expect(devProxy['/ai-call-agent-api']).toBeUndefined();
   });
 
   it('does not retain the legacy AI Call Lab proxy', () => {
