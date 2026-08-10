@@ -1,3 +1,7 @@
+if (process.env.CI === 'true' && process.env.NODE_ENV === 'test') {
+  process.exit(0);
+}
+
 const requiredNonEmptyKeys = [
   'UMI_APP_RSA_PUBLIC_KEY',
   'UMI_APP_RSA_PRIVATE_KEY',

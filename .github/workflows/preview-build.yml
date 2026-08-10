@@ -21,6 +21,8 @@ jobs:
       - name: Set COMMIT_HASH
         run: echo "COMMIT_HASH=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
       - run: ut build
+        env:
+          NODE_ENV: test
 
       - name: upload dist artifact
         uses: actions/upload-artifact@v4

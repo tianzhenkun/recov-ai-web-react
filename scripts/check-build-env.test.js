@@ -22,6 +22,13 @@ const runCheck = (values = {}) => {
 };
 
 describe('production build environment guard', () => {
+  it('CI 测试构建不要求生产登录配置', () => {
+    const result = runCheck({ CI: 'true', NODE_ENV: 'test' });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+  });
+
   it('缺少登录加密配置时列出变量名并失败', () => {
     const result = runCheck();
 
