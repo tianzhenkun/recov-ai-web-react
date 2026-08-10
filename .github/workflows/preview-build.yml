@@ -24,11 +24,14 @@ jobs:
         env:
           NODE_ENV: test
 
+      - name: package dist artifact
+        run: tar -czf dist.tar.gz -C dist .
+
       - name: upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: dist.tar.gz
           retention-days: 5
 
       - name: Save PR number
