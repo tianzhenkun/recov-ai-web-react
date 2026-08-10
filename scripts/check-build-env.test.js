@@ -11,7 +11,7 @@ const requiredKeys = [
 
 const runCheck = (values = {}) => {
   const env = { ...process.env };
-  requiredKeys.forEach((key) => {
+  [...requiredKeys, 'CI', 'NODE_ENV'].forEach((key) => {
     delete env[key];
   });
   Object.assign(env, values);
