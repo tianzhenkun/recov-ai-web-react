@@ -27,91 +27,17 @@ describe('routes', () => {
     });
   });
 
-  it.each([
-    ['/agent-workbench', './agentWorkbench', 'ai_call:agent:console'],
-    ['/ai-call/agent-workbench', './agentWorkbench', 'ai_call:agent:console'],
-    [
-      '/ai-call/agents',
-      './agentWorkbench/admin/agents',
-      'ai_call:agent:manage',
-    ],
-    [
-      '/ai-call/handoffs',
-      './agentWorkbench/admin/handoffs',
-      'ai_call:agent:manage',
-    ],
-    [
-      '/ai-call/follow-ups',
-      './agentWorkbench/admin/followUps/processing',
-      'ai_call:agent:console',
-    ],
-    [
-      '/ai-call/follow-up-overview',
-      './agentWorkbench/admin/followUps/overview',
-      'ai_call:agent:manage',
-    ],
-  ])('maps %s to the independent agent workbench module', (path, component, requiredPermission) => {
-    const route = flattenRoutes(routes).find((item) => item.path === path);
-
-    expect(route).toMatchObject({
-      path,
-      component,
-      hideInMenu: true,
-      access: 'hasRoutePermission',
-      requiredPermission,
+  it('does not expose routes migrated to AI Reach', () => {
+    const migratedRoute = flattenRoutes(routes).find((item) => {
+      const path = item.path || '';
+      return (
+        path === '/agent-workbench' ||
+        path === '/ai-call' ||
+        path.startsWith('/ai-call/') ||
+        path.startsWith('/ai-call-lab/')
+      );
     });
-  });
 
-  it('maps the independent voice management page with its own permission', () => {
-    const route = flattenRoutes(routes).find(
-      (item) => item.path === '/ai-call/voices',
-    );
-
-    expect(route).toMatchObject({
-      path: '/ai-call/voices',
-      component: './aiCallVoices',
-      hideInMenu: true,
-      access: 'hasRoutePermission',
-      requiredPermission: 'ai_call:voice:manage',
-    });
-  });
-
-  it.each([
-    ['/ai-call/tasks', './aiCallTasks'],
-    ['/ai-call/tasks/create', './aiCallTasks/create'],
-    ['/ai-call/tasks/:taskId', './aiCallTasks/detail'],
-    ['/ai-call/statistics', './aiCallStatistics'],
-    ['/ai-call/records', './aiCallRecords'],
-    ['/ai-call/lines', './aiCallLines'],
-    ['/ai-call/rules', './aiCallRules'],
-  ])('maps %s to %s', (path, component) => {
-    const route = flattenRoutes(routes).find((item) => item.path === path);
-
-    expect(route).toMatchObject({
-      path,
-      component,
-      hideInMenu: true,
-      access: 'hasRoutePermission',
-      requiredPermission: 'ai_call:agent:manage',
-    });
-  });
-
-  it.each([
-    ['/ai-call-lab/customer', './aiCallLab/customer', 'ai_call:lab:use'],
-    [
-      '/ai-call-lab/prompt-config',
-      './aiCallLab/promptConfig',
-      'ai_call:prompt:manage',
-    ],
-  ])('maps %s to the migrated AI Call Lab page', (path, component, requiredPermission) => {
-    const route = flattenRoutes(routes).find((item) => item.path === path);
-
-    expect(route).toMatchObject({
-      path,
-      component,
-      hideInMenu: true,
-      access: 'hasRoutePermission',
-      requiredPermission,
-    });
+    expect(migratedRoute).toBeUndefined();
   });
 });

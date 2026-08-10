@@ -250,14 +250,14 @@ describe('getInitialState dynamic tenant restore', () => {
   it('does not wrap an existing login redirect when getInfo already redirected', async () => {
     mockHistory.location = {
       hash: '',
-      pathname: '/ai-call/tasks',
+      pathname: '/intelligent-outbound',
       search: '',
     };
     mockGetInfo.mockImplementationOnce(async () => {
       mockHistory.location = {
         hash: '',
         pathname: '/user/login',
-        search: '?redirect=%2Fai-call%2Ftasks',
+        search: '?redirect=%2Fintelligent-outbound',
       };
       throw new Error('会话已过期');
     });

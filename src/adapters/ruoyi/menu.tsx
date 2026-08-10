@@ -1,17 +1,9 @@
-import {
-  BarChartOutlined,
-  ExperimentOutlined,
-  FieldTimeOutlined,
-  HistoryOutlined,
-  PhoneOutlined,
-  SoundOutlined,
-} from '@ant-design/icons';
+import { BarChartOutlined, ExperimentOutlined } from '@ant-design/icons';
 import type { MenuDataItem } from '@ant-design/pro-components';
 import React from 'react';
 import { getMenuWorkspaceNames } from '@/adapters/ruoyi/env';
 import type { RuoyiRoute } from '@/services/ruoyi/menu';
 import { getRouters } from '@/services/ruoyi/menu';
-import { hasPermission } from '@/utils/permission';
 import { toRuoyiMenuIcon } from '@/utils/ruoyiIcons';
 
 export type RuoyiMenuDataItem = MenuDataItem & {
@@ -42,27 +34,6 @@ const salesOverviewPath = '/sales/dashboard';
 const salesOverviewTitle = '数据总览';
 const salesIcpModelingPath = '/sales/icp-modeling';
 const salesIcpModelingTitle = 'ICP 建模';
-const aiCallTasksPath = '/ai-call/tasks';
-const aiCallRecordsPath = '/ai-call/records';
-const aiCallVoicesPath = '/ai-call/voices';
-const aiCallVoiceManagePermission = 'ai_call:voice:manage';
-const aiCallAgentConsolePermission = 'ai_call:agent:console';
-const aiCallAgentManagePermission = 'ai_call:agent:manage';
-const aiCallLinesPath = '/ai-call/lines';
-const aiCallRulesPath = '/ai-call/rules';
-const aiCallFollowUpsPath = '/ai-call/follow-ups';
-const aiCallFollowUpOverviewPath = '/ai-call/follow-up-overview';
-const aiCallManagementPaths = new Set([
-  '/ai-call/agents',
-  '/ai-call/handoffs',
-  aiCallFollowUpsPath,
-  aiCallFollowUpOverviewPath,
-]);
-const aiCallAgentConsolePaths = new Set([
-  '/agent-workbench',
-  '/ai-call/agent-workbench',
-]);
-
 let cachedRuoyiMenuData: RuoyiMenuDataItem[] | undefined;
 let cachedRuoyiMenuRequest: Promise<RuoyiMenuDataItem[]> | undefined;
 
@@ -97,58 +68,6 @@ const salesIcpModelingMenuItem: RuoyiMenuDataItem = {
 const salesAgentInjectedChildren: RuoyiMenuDataItem[] = [
   salesOverviewMenuItem,
   salesIcpModelingMenuItem,
-];
-
-const aiCallInjectedChildren: RuoyiMenuDataItem[] = [
-  {
-    key: aiCallTasksPath,
-    path: aiCallTasksPath,
-    name: '外呼任务',
-    locale: false,
-    icon: <PhoneOutlined />,
-  },
-  {
-    key: aiCallRecordsPath,
-    path: aiCallRecordsPath,
-    name: '通话记录',
-    locale: false,
-    icon: <HistoryOutlined />,
-  },
-  {
-    key: aiCallVoicesPath,
-    path: aiCallVoicesPath,
-    name: '音色管理',
-    locale: false,
-    icon: <SoundOutlined />,
-  },
-  {
-    key: aiCallLinesPath,
-    path: aiCallLinesPath,
-    name: '线路配置',
-    locale: false,
-    icon: <PhoneOutlined />,
-  },
-  {
-    key: aiCallRulesPath,
-    path: aiCallRulesPath,
-    name: '呼叫规则',
-    locale: false,
-    icon: <FieldTimeOutlined />,
-  },
-  {
-    key: aiCallFollowUpsPath,
-    path: aiCallFollowUpsPath,
-    name: '跟进处理',
-    locale: false,
-    icon: <FieldTimeOutlined />,
-  },
-  {
-    key: aiCallFollowUpOverviewPath,
-    path: aiCallFollowUpOverviewPath,
-    name: '跟进总览',
-    locale: false,
-    icon: <BarChartOutlined />,
-  },
 ];
 
 const isSalesAgentMenuItem = (item: MenuDataItem) => {
@@ -201,81 +120,35 @@ export const attachSalesAgentOverviewMenu = (
     };
   });
 
-export const attachAiCallManagementMenu = (
+const isMigratedAiCallMenu = (item: RuoyiMenuDataItem) => {
+  const path = normalizePath(item.path);
+  return (
+    path === '/agent-workbench' ||
+    path === '/ai-call' ||
+    path.startsWith('/ai-call/') ||
+    path === '/ai-call-lab' ||
+    path.startsWith('/ai-call-lab/') ||
+    String(item.name || '')
+      .trim()
+      .toLowerCase() === 'ai call'
+  );
+};
+
+export const omitMigratedAiCallMenus = (
   menuData: RuoyiMenuDataItem[],
-  permissions?: string[],
 ): RuoyiMenuDataItem[] =>
-  menuData.map((item) => {
-    const canManageVoices =
-      permissions === undefined ||
-      hasPermission({ permissions }, aiCallVoiceManagePermission);
-    const canUseAgentConsole =
-      permissions === undefined ||
-      hasPermission({ permissions }, aiCallAgentConsolePermission);
-    const canManageAgents =
-      permissions === undefined ||
-      hasPermission({ permissions }, aiCallAgentManagePermission);
-    const children = (
+  menuData
+    .filter((item) => !isMigratedAiCallMenu(item))
+    .map((item) =>
       item.children
-        ? attachAiCallManagementMenu(
-            item.children as RuoyiMenuDataItem[],
-            permissions,
-          )
-        : []
-    ).filter((child) => {
-      const path = normalizePath(child.path);
-      return (
-        (canManageVoices || path !== aiCallVoicesPath) &&
-        (canUseAgentConsole || path !== aiCallFollowUpsPath) &&
-        (canManageAgents || path !== aiCallFollowUpOverviewPath)
-      );
-    });
-    const isAiCallRoot =
-      normalizePath(item.path) === '/ai-call' ||
-      String(item.name || '')
-        .trim()
-        .toLowerCase() === 'ai call';
-    const hasManagementChild = children.some((child) =>
-      aiCallManagementPaths.has(normalizePath(child.path)),
+        ? {
+            ...item,
+            children: omitMigratedAiCallMenus(
+              item.children as RuoyiMenuDataItem[],
+            ),
+          }
+        : item,
     );
-    const hasAgentConsoleChild = children.some((child) =>
-      aiCallAgentConsolePaths.has(normalizePath(child.path)),
-    );
-    const shouldInjectVoice =
-      permissions === undefined ? hasManagementChild : canManageVoices;
-    const shouldInjectFollowUps =
-      permissions === undefined
-        ? hasManagementChild || hasAgentConsoleChild
-        : canUseAgentConsole;
-    const shouldInjectFollowUpOverview =
-      permissions === undefined ? hasManagementChild : canManageAgents;
-    const injectedChildren = aiCallInjectedChildren.filter((child) => {
-      const path = normalizePath(child.path);
-      if (path === aiCallVoicesPath) return shouldInjectVoice;
-      if (path === aiCallFollowUpsPath) return shouldInjectFollowUps;
-      if (path === aiCallFollowUpOverviewPath) {
-        return shouldInjectFollowUpOverview;
-      }
-      return hasManagementChild;
-    });
-    const injectedPaths = new Set(
-      injectedChildren.map((child) => normalizePath(child.path)),
-    );
-
-    if (!isAiCallRoot || injectedChildren.length === 0) {
-      return children.length > 0 ? { ...item, children } : item;
-    }
-
-    return {
-      ...item,
-      children: [
-        ...injectedChildren,
-        ...children.filter(
-          (child) => !injectedPaths.has(normalizePath(child.path)),
-        ),
-      ],
-    };
-  });
 
 const joinPath = (parentPath: string, childPath?: string) => {
   const child = (childPath || '').trim();
@@ -367,12 +240,9 @@ export const buildRuoyiMenuData = (routes: RuoyiRoute[] = []) =>
 export const buildLayoutMenuData = (
   ruoyiMenuData: RuoyiMenuDataItem[],
   _defaultMenuData: MenuDataItem[],
-  permissions?: string[],
+  _permissions?: string[],
 ) => {
-  return attachAiCallManagementMenu(
-    attachSalesAgentOverviewMenu(ruoyiMenuData),
-    permissions,
-  );
+  return omitMigratedAiCallMenus(attachSalesAgentOverviewMenu(ruoyiMenuData));
 };
 
 export const setCachedRuoyiMenuData = (menuData: RuoyiMenuDataItem[]) => {
@@ -531,7 +401,7 @@ export const loadRuoyiMenuData = async () => {
 
   cachedRuoyiMenuRequest = getRouters({ skipErrorHandler: true })
     .then((response) => {
-      const menuData = attachAiCallManagementMenu(
+      const menuData = omitMigratedAiCallMenus(
         attachSalesAgentOverviewMenu(buildRuoyiMenuData(response.data || [])),
       );
       setCachedRuoyiMenuData(menuData);

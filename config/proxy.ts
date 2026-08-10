@@ -10,13 +10,10 @@ import type { ProxyOptions } from '@umijs/bundler-utils/dist/types';
 const baseApi = process.env.UMI_APP_BASE_API || '/dev-api';
 const adminApi = process.env.UMI_APP_ADMIN_API || '/admin-api';
 const voiceApi = process.env.UMI_APP_VOICE_API || '/voice-api';
-const agentConsoleApi = '/ai-call-agent-api';
 const apiTarget = process.env.UMI_APP_API_TARGET || 'http://localhost:8080';
 const adminTarget = process.env.UMI_APP_ADMIN_TARGET || apiTarget;
 const voiceApiTarget =
   process.env.UMI_APP_VOICE_API_TARGET || 'http://111.229.146.182:9100';
-const agentConsoleTarget =
-  process.env.UMI_APP_AI_CALL_API_TARGET || 'http://127.0.0.1:19011';
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/g, '');
 
 const normalizedBaseApi = trimTrailingSlash(baseApi);
@@ -54,18 +51,6 @@ const createProxy = (): ProxyConfig => ({
     changeOrigin: true,
     ws: true,
     pathRewrite: { [`^${normalizedVoiceApi}`]: '' },
-  },
-  [agentConsoleApi]: {
-    target: agentConsoleTarget,
-    changeOrigin: true,
-    ws: true,
-    proxyTimeout: 0,
-    timeout: 0,
-    pathRewrite: { [`^${agentConsoleApi}`]: '' },
-    headers: {
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
   },
 });
 
